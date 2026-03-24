@@ -9,6 +9,7 @@ import argparse
 import asyncio
 import logging
 import signal
+import socket
 import sys
 
 from .acquisition import AcquisitionLoop
@@ -120,10 +121,19 @@ def main():
     signal.signal(signal.SIGTERM, shutdown)
 
     # --- Run ---
-    display_host = args.host if args.host != "0.0.0.0" else "raspberrypi.local"
-    logger.info("PiEEG-16 server ready - ws://%s:%d", display_host, args.port)
+    # Show all ways clients can connect
+    hostname = socket.gethostname()
+    try:
+        local_ip = socket.gethostbyname(hostname)
+    except socket.gaierror:
+        local_ip = "127.0.0.1"
+
+    logger.info("PiEEG-16 server ready:")
+    logger.info("  WebSocket: ws://%s:%d", local_ip, args.port)
+    logger.info("  WebSocket: ws://%s.local:%d  (mDNS)", hostname, args.port)
     if not args.no_dashboard:
-        logger.info("Dashboard - http://%s:%d", display_host, args.dashboard_port)
+        logger.info("  Dashboard: http://%s:%d", local_ip, args.dashboard_port)
+        logger.info("  Dashboard: http://%s.local:%d  (mDNS)", hostname, args.dashboard_port)
     loop.run_until_complete(server.run())
 
 
