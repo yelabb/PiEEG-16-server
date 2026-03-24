@@ -28,7 +28,7 @@ dependencies = [
 [project.optional-dependencies]
 rpi = [
     "spidev>=3.6",
-    "gpiod>=1.5.4,<2.0",
+    "gpiod>=1.5.4",
 ]
 
 [project.scripts]

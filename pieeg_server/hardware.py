@@ -4,16 +4,44 @@ Low-level hardware interface for PiEEG-16.
 Manages two ADS1299 ADC chips via SPI (8 channels each = 16 total)
 and GPIO lines for chip-select and data-ready signaling.
 
-Requires: spidev, gpiod==1.5.4
+Requires: spidev, gpiod (v1.x or v2.x)
 Must run on Raspberry Pi with SPI enabled and PiEEG-16 shield connected.
 """
 
 import logging
-
-import spidev
-import gpiod
+import sys
 
 logger = logging.getLogger("pieeg.hardware")
+
+try:
+    import spidev
+except ImportError:
+    spidev = None
+
+try:
+    import gpiod
+except ImportError:
+    gpiod = None
+
+
+def _require_hardware_libs():
+    """Check that spidev and gpiod are available, exit with a clear message if not."""
+    missing = []
+    if spidev is None:
+        missing.append("spidev")
+    if gpiod is None:
+        missing.append("gpiod")
+    if missing:
+        print(
+            f"\n  ERROR: Missing hardware libraries: {', '.join(missing)}\n\n"
+            f"  These are Raspberry Pi-only packages.\n"
+            f"  Install them inside the project venv:\n"
+            f"    cd PiEEG-16-Server && ./setup.sh\n\n"
+            f"  Or for testing without hardware:\n"
+            f"    pieeg-server --mock\n",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
 # --- ADC register addresses ---
 WHO_I_AM = 0x00
@@ -63,14 +91,21 @@ EXPECTED_STATUS = (192, 0, 8)  # 0xC0, 0x00, 0x08
 SPIKE_THRESHOLD = 5000  # max allowed jump in raw 24-bit signed value
 
 
+# Detect gpiod API version at import time (if gpiod is available)
+_GPIOD_V2 = (gpiod is not None
+             and hasattr(gpiod, 'Chip')
+             and hasattr(gpiod, 'LineSettings'))
+
+
 class PiEEGHardware:
     """Hardware abstraction for the PiEEG-16 shield."""
 
     def __init__(self, gpio_chip: str = "/dev/gpiochip4"):
         self._gpio_chip_name = gpio_chip
         self._chip = None
-        self._cs_line = None
-        self._drdy_line = None
+        self._gpio_request = None   # gpiod v2
+        self._cs_line = None        # gpiod v1
+        self._drdy_line = None      # gpiod v1
         self._spi1 = None
         self._spi2 = None
         self._last_valid_value: int | None = None
@@ -80,6 +115,7 @@ class PiEEGHardware:
 
     def open(self):
         """Initialize GPIO and SPI, configure both ADC chips."""
+        _require_hardware_libs()
         self._init_gpio()
         self._init_spi()
         self._configure_adc(chip_num=1)
@@ -91,10 +127,16 @@ class PiEEGHardware:
             self._spi1.close()
         if self._spi2:
             self._spi2.close()
-        if self._cs_line:
-            self._cs_line.release()
-        if self._drdy_line:
-            self._drdy_line.release()
+        if _GPIOD_V2:
+            if self._gpio_request:
+                self._gpio_request.release()
+            if self._chip:
+                self._chip.close()
+        else:
+            if self._cs_line:
+                self._cs_line.release()
+            if self._drdy_line:
+                self._drdy_line.release()
 
     def __enter__(self):
         self.open()
@@ -117,9 +159,9 @@ class PiEEGHardware:
         # Read 27 bytes from each ADC chip
         raw1 = self._spi1.readbytes(BYTES_PER_READ)
 
-        self._cs_line.set_value(0)
+        self._cs_set(0)
         raw2 = self._spi2.readbytes(BYTES_PER_READ)
-        self._cs_line.set_value(1)
+        self._cs_set(1)
 
         # Spike detection: check last channel of chip 2 (bytes 24-26)
         if not self._is_valid_frame(raw2):
@@ -163,12 +205,62 @@ class PiEEGHardware:
         Returns True when DRDY is high, meaning data will be ready
         on the next low transition.
         """
-        return self._drdy_line.get_value() == 1
+        return self._drdy_get() == 1
+
+    # --- GPIO helpers (v1/v2 compatible) ---
+
+    def _cs_set(self, value: int):
+        """Set chip-select line: 1 = high (deselect), 0 = low (select)."""
+        if _GPIOD_V2:
+            from gpiod.line import Value
+            self._gpio_request.set_value(
+                CS_PIN, Value.ACTIVE if value else Value.INACTIVE)
+        else:
+            self._cs_line.set_value(value)
+
+    def _drdy_get(self) -> int:
+        """Read data-ready line. Returns 1 when high."""
+        if _GPIOD_V2:
+            from gpiod.line import Value
+            return 1 if self._gpio_request.get_value(DRDY_PIN) == Value.ACTIVE else 0
+        else:
+            return self._drdy_line.get_value()
 
     # --- private helpers ---
 
     def _init_gpio(self):
-        self._chip = gpiod.chip(self._gpio_chip_name)
+        if _GPIOD_V2:
+            self._init_gpio_v2()
+        else:
+            self._init_gpio_v1()
+
+    def _init_gpio_v2(self):
+        """Initialize GPIO using gpiod >= 2.0 API."""
+        from gpiod.line import Direction, Value
+        logger.info("Using gpiod v2 API")
+        self._chip = gpiod.Chip(self._gpio_chip_name)
+        self._gpio_request = self._chip.request_lines(
+            consumer="pieeg",
+            config={
+                CS_PIN: gpiod.LineSettings(
+                    direction=Direction.OUTPUT,
+                    output_value=Value.ACTIVE,
+                ),
+                DRDY_PIN: gpiod.LineSettings(
+                    direction=Direction.INPUT,
+                ),
+            },
+        )
+
+    def _init_gpio_v1(self):
+        """Initialize GPIO using gpiod < 2.0 API."""
+        logger.info("Using gpiod v1 API")
+        # Try OPEN_BY_PATH first (needed for libgpiodcxx wrapper)
+        try:
+            self._chip = gpiod.chip(self._gpio_chip_name,
+                                    gpiod.chip.OPEN_BY_PATH)
+        except (TypeError, AttributeError):
+            self._chip = gpiod.chip(self._gpio_chip_name)
 
         # Chip-select line (output, default high)
         self._cs_line = self._chip.get_line(CS_PIN)
@@ -204,18 +296,18 @@ class PiEEGHardware:
         if chip_num == 1:
             self._spi1.xfer([command])
         else:
-            self._cs_line.set_value(0)
+            self._cs_set(0)
             self._spi2.xfer([command])
-            self._cs_line.set_value(1)
+            self._cs_set(1)
 
     def _write_register(self, chip_num: int, register: int, value: int):
         data = [0x40 | register, 0x00, value]
         if chip_num == 1:
             self._spi1.xfer(data)
         else:
-            self._cs_line.set_value(0)
+            self._cs_set(0)
             self._spi2.xfer(data)
-            self._cs_line.set_value(1)
+            self._cs_set(1)
 
     def _configure_adc(self, chip_num: int):
         """Send the full initialization sequence to one ADC chip."""

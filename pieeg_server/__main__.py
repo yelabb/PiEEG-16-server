@@ -28,7 +28,9 @@ def _check_dependencies():
             f"    cd PiEEG-16-Server && ./setup.sh\n\n"
             f"  Or activate the virtual environment:\n"
             f"    source .venv/bin/activate\n"
-            f"    pieeg-server\n",
+            f"    pieeg-server\n\n"
+            f"  For testing without a Raspberry Pi:\n"
+            f"    pieeg-server --mock\n",
             file=sys.stderr,
         )
         sys.exit(1)
