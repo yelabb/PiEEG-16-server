@@ -33,6 +33,10 @@ class _DashboardHandler(SimpleHTTPRequestHandler):
         logger.debug(format, *args)
 
 
+class _ReusableTCPServer(socketserver.TCPServer):
+    allow_reuse_address = True
+
+
 class DashboardServer:
     """Runs the dashboard HTTP server in a background thread."""
 
@@ -43,7 +47,7 @@ class DashboardServer:
         self._thread = None
 
     def start(self):
-        self._httpd = socketserver.TCPServer(
+        self._httpd = _ReusableTCPServer(
             (self._host, self._port), _DashboardHandler
         )
         self._thread = threading.Thread(

@@ -93,7 +93,7 @@ class PiEEGServer:
                 lowcut = float(msg.get("lowcut", 1.0))
                 highcut = float(msg.get("highcut", 40.0))
                 self.enable_filter(lowcut, highcut)
-                logger.info("Filter enabled: %.1f–%.1f Hz", lowcut, highcut)
+                logger.info("Filter enabled: %.1f-%.1f Hz", lowcut, highcut)
             else:
                 self.disable_filter()
                 logger.info("Filter disabled")

@@ -85,20 +85,20 @@ def main():
         hw = PiEEGHardware(gpio_chip=args.gpio_chip)
     hw.open()
     if not args.mock:
-        logger.info("Hardware initialized — ADCs configured, LEDs should be ON")
+        logger.info("Hardware initialized - ADCs configured, LEDs should be ON")
 
     # --- Acquisition ---
     loop = asyncio.new_event_loop()
 
     acq = AcquisitionLoop(hw, loop, mock=args.mock)
     acq.start()
-    logger.info("Acquisition started (250 Hz, 16 channels%s)", " — MOCK" if args.mock else "")
+    logger.info("Acquisition started (250 Hz, 16 channels%s)", " - MOCK" if args.mock else "")
 
     # --- Server ---
     server = PiEEGServer(acq, host=args.host, port=args.port)
     if args.filter:
         server.enable_filter(args.lowcut, args.highcut)
-        logger.info("Server-side filter: %.1f–%.1f Hz", args.lowcut, args.highcut)
+        logger.info("Server-side filter: %.1f-%.1f Hz", args.lowcut, args.highcut)
 
     # --- Dashboard ---
     dashboard = None
@@ -121,9 +121,9 @@ def main():
 
     # --- Run ---
     display_host = args.host if args.host != "0.0.0.0" else "raspberrypi.local"
-    logger.info("PiEEG-16 server ready — ws://%s:%d", display_host, args.port)
+    logger.info("PiEEG-16 server ready - ws://%s:%d", display_host, args.port)
     if not args.no_dashboard:
-        logger.info("Dashboard — http://%s:%d", display_host, args.dashboard_port)
+        logger.info("Dashboard - http://%s:%d", display_host, args.dashboard_port)
     loop.run_until_complete(server.run())
 
 
