@@ -90,6 +90,7 @@ def main():
 
     # --- Acquisition ---
     loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
 
     acq = AcquisitionLoop(hw, loop, mock=args.mock)
     acq.start()
