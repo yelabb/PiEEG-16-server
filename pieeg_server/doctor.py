@@ -252,6 +252,26 @@ def run_doctor(quiet: bool = False) -> int:
         warn("pieeg-server not in PATH")
         warn("  Run setup.sh or: pip install -e .")
 
+    # Windows-specific: check Scripts dir permissions
+    if platform.system() == "Windows":
+        import sysconfig
+        scripts_dir = sysconfig.get_path("scripts")
+        if scripts_dir and os.path.isdir(scripts_dir):
+            if os.access(scripts_dir, os.W_OK):
+                ok(f"Scripts directory is writable: {scripts_dir}")
+            else:
+                fail(f"Scripts directory is NOT writable: {scripts_dir}")
+                fail("  This causes 'Could not install packages due to an OSError' during pip install.")
+                fail("  Fix: run your terminal as Administrator, or use:")
+                fail("    pip uninstall pieeg-server -y")
+                fail("    pip install -e .")
+        # Check for leftover .exe.deleteme files
+        if scripts_dir and os.path.isdir(scripts_dir):
+            deleteme = [f for f in os.listdir(scripts_dir) if f.endswith(".deleteme")]
+            if deleteme:
+                warn(f"Stale .deleteme files in {scripts_dir}: {', '.join(deleteme)}")
+                warn("  Delete them manually, then retry: pip install -e .")
+
     # Check systemd service (Linux only)
     if platform.system() == "Linux":
         service_file = "/etc/systemd/system/pieeg-server.service"

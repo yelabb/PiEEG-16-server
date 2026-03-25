@@ -67,6 +67,19 @@ pieeg-server doctor
 
 Checks everything in one shot: Pi model, Python version, SPI devices, GPIO chips, file permissions, port availability, installed dependencies, systemd service. Returns exit code `0` (all good), `1` (warnings), or `2` (errors) — scriptable with `--quiet`.
 
+### Windows: `Could not install packages due to an OSError`
+
+If `pip install -e .` fails with a `WinError 2` or `Failed to write executable` error, pip can't replace an old `pieeg-server.exe` in your Python Scripts folder. Fix it:
+
+```powershell
+pip uninstall pieeg-server -y
+pip install -e .
+```
+
+If that still fails, run your terminal **as Administrator** (right-click → Run as administrator).
+
+> On Windows you can only use mock mode (`pieeg-server --mock`) since SPI/GPIO hardware is not available.
+
 ## Connect from any device
 
 ### Python
