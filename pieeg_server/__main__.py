@@ -257,6 +257,12 @@ def main():
         hw.close()
         return
 
+    # --- Serve (default) subcommand ---
+    _check_dependencies()
+    from .acquisition import AcquisitionLoop
+    from .server import PiEEGServer, DEFAULT_HOST, DEFAULT_PORT
+    from .dashboard import DashboardServer, DEFAULT_DASHBOARD_PORT
+
     logging.basicConfig(
         level=logging.DEBUG if args.verbose else logging.INFO,
         format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
