@@ -97,7 +97,7 @@ class AcquisitionLoop:
         armed = False
 
         while not self._stop_event.is_set():
-            drdy = self._hw._drdy_line.get_value()
+            drdy = self._hw._drdy_get()
 
             # Arm: wait for DRDY to go high
             if not armed:
