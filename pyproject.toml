@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "One-command local streaming server for PiEEG-16 (16-channel EEG shield for Raspberry Pi)"
 readme = "README.md"
 requires-python = ">=3.11"
-license = {text = "MIT"}
+license = {file = "LICENSE"}
 authors = [
     {name = "PiEEG Community"},
 ]
