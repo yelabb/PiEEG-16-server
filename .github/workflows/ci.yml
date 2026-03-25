@@ -9,28 +9,32 @@ on:
 jobs:
   install-and-smoke-test:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: ["3.11", "3.12", "3.13"]
+    container:
+      image: debian:bookworm  # same base as Raspberry Pi OS
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python-version }}
-
-      - name: Install package
+      - name: Install system dependencies
         run: |
+          apt-get update -qq
+          apt-get install -y -qq python3 python3-pip python3-venv
+
+      - name: Create venv and install package
+        run: |
+          python3 -m venv .venv
+          . .venv/bin/activate
           pip install --upgrade pip
           pip install -e .
 
       - name: Verify entry point exists
-        run: pieeg-server --help
+        run: |
+          . .venv/bin/activate
+          pieeg-server --help
 
       - name: Import all modules
         run: |
+          . .venv/bin/activate
           python -c "
           from pieeg_server.server import PiEEGServer
           from pieeg_server.acquisition import AcquisitionLoop
@@ -43,6 +47,7 @@ jobs:
 
       - name: Smoke test (mock mode, 3 seconds)
         run: |
+          . .venv/bin/activate
           timeout 5 pieeg-server --mock --no-dashboard -v || EXIT_CODE=$?
           # timeout returns 124 on timeout (expected), anything else is a real failure
           if [ "${EXIT_CODE:-124}" -eq 124 ]; then
@@ -54,6 +59,7 @@ jobs:
 
       - name: Verify no gpiod dependency
         run: |
+          . .venv/bin/activate
           python -c "
           import importlib.util
           spec = importlib.util.find_spec('gpiod')

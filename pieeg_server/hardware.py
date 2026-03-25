@@ -8,11 +8,15 @@ Requires: spidev (pip), Linux GPIO chardev (kernel, no pip package needed)
 Must run on Raspberry Pi with SPI enabled and PiEEG-16 shield connected.
 """
 
-import fcntl
 import logging
 import os
 import struct
 import sys
+
+try:
+    import fcntl
+except ImportError:
+    fcntl = None  # not on Linux — hardware methods will fail, mock mode still works
 
 logger = logging.getLogger("pieeg.hardware")
 
