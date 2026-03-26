@@ -11,6 +11,10 @@ export default defineConfig({
         ws: true,
         rewriteWsPath: true,
       },
+      "/auth": {
+        target: "http://localhost:1617",
+        changeOrigin: true,
+      },
     },
   },
   build: {

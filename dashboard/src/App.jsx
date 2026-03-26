@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useEEG } from "./hooks/useEEG";
+import AuthGate from "./components/AuthGate";
 import ChannelCanvas from "./components/ChannelCanvas";
 
 const NUM_CHANNELS = 16;
@@ -56,7 +57,7 @@ export default function App() {
   }
 
   return (
-    <>
+    <AuthGate>
       {/* Header */}
       <header className="header">
         <h1>
@@ -163,6 +164,6 @@ export default function App() {
         <span>PiEEG-16-server · React Dashboard</span>
         <span>Battery powered only · Not a medical device</span>
       </footer>
-    </>
+    </AuthGate>
   );
 }

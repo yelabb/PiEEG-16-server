@@ -168,3 +168,69 @@ body {
   justify-content: space-between;
   flex-shrink: 0;
 }
+
+/* --- Auth gate --- */
+.auth-overlay {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  background: var(--bg);
+}
+.auth-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 40px 48px;
+  text-align: center;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  max-width: 400px;
+  width: 90%;
+}
+.auth-card h1 {
+  font-size: 22px;
+  margin-bottom: 6px;
+}
+.auth-card h1 span {
+  color: var(--accent);
+}
+.auth-sub {
+  color: var(--text-dim);
+  font-size: 13px;
+  margin-bottom: 28px;
+}
+.auth-input {
+  width: 100%;
+  padding: 12px 16px;
+  font-size: 28px;
+  text-align: center;
+  letter-spacing: 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  outline: none;
+  font-family: monospace;
+}
+.auth-input:focus {
+  border-color: var(--accent);
+}
+.auth-btn {
+  margin-top: 18px;
+  padding: 10px 32px;
+  font-size: 15px;
+  border: none;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+  font-weight: 600;
+}
+.auth-btn:hover {
+  opacity: 0.9;
+}
+.auth-error {
+  color: var(--red);
+  font-size: 13px;
+  margin-top: 12px;
+}

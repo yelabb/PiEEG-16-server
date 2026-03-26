@@ -45,6 +45,7 @@ def _is_doctor_command():
 if not _is_doctor_command():
     _check_dependencies()
     from .acquisition import AcquisitionLoop
+    from .auth import AuthManager
     from .server import PiEEGServer, DEFAULT_HOST, DEFAULT_PORT
     from .dashboard import DashboardServer, DEFAULT_DASHBOARD_PORT
 
@@ -264,6 +265,7 @@ def main():
     # --- Serve (default) subcommand ---
     _check_dependencies()
     from .acquisition import AcquisitionLoop
+    from .auth import AuthManager
     from .server import PiEEGServer, DEFAULT_HOST, DEFAULT_PORT
     from .dashboard import DashboardServer, DEFAULT_DASHBOARD_PORT
 
@@ -276,6 +278,9 @@ def main():
 
     # --- Hardware ---
     hw = _make_hardware(args, logger)
+
+    # --- Auth ---
+    auth = AuthManager()
 
     # --- Acquisition ---
     loop = asyncio.new_event_loop()
@@ -298,6 +303,7 @@ def main():
             host=args.host,
             port=args.dashboard_port,
             legacy=args.legacy_dashboard,
+            auth=auth,
         )
         dashboard.start()
 
@@ -353,6 +359,10 @@ def main():
         logger.info("  Recording: %s", args.record)
     if args.monitor:
         logger.info("  Monitor:   terminal (live)")
+
+    # --- Show access code ---
+    if not args.no_dashboard:
+        auth.print_code()
 
     async def _run_all():
         tasks = [asyncio.create_task(server.run())]
