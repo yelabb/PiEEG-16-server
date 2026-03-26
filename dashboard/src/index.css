@@ -131,6 +131,19 @@ body {
 }
 
 /* --- Channel grid --- */
+.main-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+.main-area .grid {
+  flex: 1;
+}
+.main-area.with-fft .grid {
+  flex: 0 0 50%;
+}
 .grid {
   flex: 1;
   display: grid;
@@ -233,4 +246,147 @@ body {
   color: var(--red);
   font-size: 13px;
   margin-top: 12px;
+}
+
+/* --- Spectral Panel --- */
+.spectral-panel {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+}
+
+.spectral-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 5px 12px;
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+.spectral-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+}
+.spectral-channels {
+  display: flex;
+  gap: 2px;
+  flex-wrap: wrap;
+}
+.sp-ch {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  font-size: 10px;
+  font-family: monospace;
+  padding: 1px 5px;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all 0.12s;
+  line-height: 1.4;
+}
+.sp-ch:hover {
+  background: #484f58;
+  color: var(--text);
+}
+.sp-ch.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #000;
+}
+.spectral-ctrls {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.spectral-canvas-wrap {
+  position: relative;
+  height: 160px;
+  background: var(--bg);
+}
+.spectral-paused {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  font-size: 10px;
+  font-family: monospace;
+  color: var(--yellow);
+  background: rgba(210, 153, 34, 0.15);
+  border: 1px solid rgba(210, 153, 34, 0.4);
+  padding: 1px 8px;
+  border-radius: 3px;
+}
+
+.spectral-bands {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 8px;
+  padding: 8px 12px;
+}
+.sp-band {
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  transition: all 0.15s;
+}
+.sp-band:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+.sp-band.selected {
+  border-color: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+}
+.sp-band-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 4px;
+}
+.sp-band-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.sp-band-name {
+  font-size: 11px;
+  font-weight: 600;
+}
+.sp-band-hz {
+  font-size: 9px;
+  color: var(--text-dim);
+  margin-left: auto;
+  font-family: monospace;
+}
+.sp-band-track {
+  height: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 2px;
+}
+.sp-band-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.2s ease;
+}
+.sp-band-val {
+  font-size: 9px;
+  font-family: monospace;
+  color: var(--text-dim);
+}
+
+.spectral-footer {
+  display: flex;
+  justify-content: space-between;
+  padding: 4px 12px 6px;
+  font-size: 10px;
+  font-family: monospace;
+  color: var(--text-dim);
+  border-top: 1px solid var(--border);
 }

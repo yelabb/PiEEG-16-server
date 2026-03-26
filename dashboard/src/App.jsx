@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useEEG } from "./hooks/useEEG";
 import AuthGate from "./components/AuthGate";
 import ChannelCanvas from "./components/ChannelCanvas";
+import SpectralPanel from "./components/SpectralPanel";
 
 const NUM_CHANNELS = 16;
 
@@ -21,6 +22,7 @@ const TIME_OPTIONS = [
 
 export default function App() {
   const [paused, setPaused] = useState(false);
+  const [showFFT, setShowFFT] = useState(false);
   const [filterEnabled, setFilterEnabled] = useState(false);
   const [lowcut, setLowcut] = useState(1);
   const [highcut, setHighcut] = useState(40);
@@ -92,6 +94,12 @@ export default function App() {
         >
           Filter: {filterEnabled ? "ON" : "OFF"}
         </button>
+        <button
+          className={`btn${showFFT ? " active" : ""}`}
+          onClick={() => setShowFFT((v) => !v)}
+        >
+          FFT {showFFT ? "ON" : "OFF"}
+        </button>
         <div className="sep" />
         <div className="control-group">
           <label>Low</label>
@@ -152,11 +160,14 @@ export default function App() {
         </div>
       </div>
 
-      {/* Channel grid */}
-      <div className="grid">
-        {Array.from({ length: NUM_CHANNELS }, (_, i) => (
-          <ChannelCanvas key={i} chIdx={i} eeg={eeg} yRange={yScale} />
-        ))}
+      {/* Main area */}
+      <div className={`main-area${showFFT ? " with-fft" : ""}`}>
+        <div className="grid">
+          {Array.from({ length: NUM_CHANNELS }, (_, i) => (
+            <ChannelCanvas key={i} chIdx={i} eeg={eeg} yRange={yScale} />
+          ))}
+        </div>
+        {showFFT && <SpectralPanel eeg={eeg} />}
       </div>
 
       {/* Footer */}

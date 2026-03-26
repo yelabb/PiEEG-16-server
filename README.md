@@ -74,6 +74,16 @@ The code changes every time the server restarts.
 The dashboard is served at `http://raspberrypi.local:1617` and requires the access code.
 Built with React + Vite, it provides a modern UI with per-channel canvases.
 
+**Features:**
+- 16-channel real-time EEG waveforms (4×4 grid)
+- Pause / resume, bandpass filter controls, adjustable time window & scale
+- **Spectral Analysis (FFT)** — toggle the **FFT** button to open the spectral panel:
+  - Pure-JS Cooley-Tukey radix-2 FFT (256-point, Hanning window)
+  - Power Spectral Density plot (0–60 Hz, log/linear scale)
+  - EEG frequency band power bars: Delta (δ 0.5–4 Hz), Theta (θ 4–8 Hz), Alpha (α 8–13 Hz), Beta (β 13–30 Hz), Gamma (γ 30–100 Hz)
+  - Per-channel or all-channel average analysis
+  - Dominant frequency detection
+
 <img height="400" alt="image" src="https://github.com/user-attachments/assets/3f33bfd4-c721-4b94-a672-2a0b744d127b" />
 
 ### Terminal
