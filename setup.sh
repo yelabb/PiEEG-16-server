@@ -194,7 +194,7 @@ pip install -e ".[rpi]" -q 2>&1 | tail -3 || die "Failed to install pieeg-server
 if [ -d "$INSTALL_DIR/pieeg_server/static/dashboard" ]; then
     ok "Dashboard: React (pre-built)"
 else
-    ok "Dashboard: legacy HTML (React build not found — this is normal for source installs)"
+    warn "Dashboard: React build not found — run 'cd dashboard && npm run build' to build it"
 fi
 
 ok "Installed to: $INSTALL_DIR/.venv"

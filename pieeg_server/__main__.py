@@ -129,10 +129,6 @@ def parse_args():
         help="Disable the web dashboard",
     )
     p.add_argument(
-        "--legacy-dashboard", action="store_true",
-        help="Use the legacy single-file HTML dashboard instead of React",
-    )
-    p.add_argument(
         "--gpio-chip", default="/dev/gpiochip4",
         help="GPIO chip device path (default: '/dev/gpiochip4' for Pi 5)",
     )
@@ -302,7 +298,6 @@ def main():
         dashboard = DashboardServer(
             host=args.host,
             port=args.dashboard_port,
-            legacy=args.legacy_dashboard,
             auth=auth,
         )
         dashboard.start()

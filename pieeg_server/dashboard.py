@@ -1,9 +1,8 @@
 """
 HTTP server serving the PiEEG-16 real-time dashboard.
 
-Serves either the React/Vite build (default) or the legacy single-file
-HTML dashboard on port 1617 (one above the WebSocket data port 1616).
-Uses only the standard library.
+Serves the React/Vite build on port 1617 (one above the WebSocket data
+port 1616).  Uses only the standard library.
 
 Includes a simple session-auth gate: every new browser session must enter
 the 6-digit code shown in the server console.
@@ -30,10 +29,7 @@ logger = logging.getLogger("pieeg.dashboard")
 _PKG_DIR = Path(__file__).parent
 
 # React build output (built via: cd dashboard && npm run build)
-REACT_STATIC_DIR = _PKG_DIR / "static" / "dashboard"
-
-# Legacy single-file HTML dashboard
-LEGACY_STATIC_DIR = _PKG_DIR / "static"
+STATIC_DIR = _PKG_DIR / "static" / "dashboard"
 
 DEFAULT_DASHBOARD_PORT = 1617
 
@@ -222,23 +218,16 @@ class DashboardServer:
         self,
         host: str = "0.0.0.0",
         port: int = DEFAULT_DASHBOARD_PORT,
-        legacy: bool = False,
         auth: AuthManager | None = None,
     ):
         self._host = host
         self._port = port
-        self._legacy = legacy
         self._auth = auth
         self._httpd = None
         self._thread = None
 
     def start(self):
-        if self._legacy or not REACT_STATIC_DIR.is_dir():
-            static_dir = LEGACY_STATIC_DIR
-            variant = "legacy"
-        else:
-            static_dir = REACT_STATIC_DIR
-            variant = "react"
+        static_dir = STATIC_DIR
 
         handler = _make_handler(static_dir, self._auth)
         self._httpd = _ReusableTCPServer(
@@ -251,8 +240,7 @@ class DashboardServer:
         )
         self._thread.start()
         logger.info(
-            "Dashboard (%s) running at http://%s:%d",
-            variant,
+            "Dashboard running at http://%s:%d",
             self._host if self._host != "0.0.0.0" else "raspberrypi.local",
             self._port,
         )

@@ -69,16 +69,10 @@ The first time you open the dashboard in your browser, you'll be asked for this 
 
 The code changes every time the server restarts.
 
-### Dashboards
+### Dashboard
 
-There are **two** dashboard options — the same data, different UIs:
-
-| Dashboard | Command | Description |
-|-----------|---------|-------------|
-| **React** (default) | `pieeg-server` | Modern UI with per-channel canvases, built with React + Vite |
-| **Legacy** | `pieeg-server --legacy-dashboard` | Single-file HTML, no build step, minimal dependencies |
-
-Both are served from the same URL (`http://raspberrypi.local:1617`) and both require the access code.
+The dashboard is served at `http://raspberrypi.local:1617` and requires the access code.
+Built with React + Vite, it provides a modern UI with per-channel canvases.
 
 <img height="400" alt="image" src="https://github.com/user-attachments/assets/3f33bfd4-c721-4b94-a672-2a0b744d127b" />
 
@@ -196,7 +190,6 @@ Server options:
   --port PORT            WebSocket port (default: 1616)
   --dashboard-port PORT  Dashboard HTTP port (default: 1617)
   --no-dashboard         Disable the web dashboard
-  --legacy-dashboard     Use the legacy single-file HTML dashboard
   --gpio-chip PATH       GPIO chip device path (default: /dev/gpiochip4)
   --filter               Enable 1–40 Hz bandpass filter server-side
   --lowcut HZ            Filter low cutoff (default: 1.0)
