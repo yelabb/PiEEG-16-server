@@ -40,7 +40,7 @@ pieeg-server              # start streaming
 pieeg-server --filter     # with 1–40 Hz bandpass filter
 pieeg-server --monitor    # with live terminal display
 pieeg-server --mock       # synthetic data, no hardware needed
-pieeg-server --no-auth    # disable authentication (no access code)
+pieeg-server --auth       # enable authentication (requires access code)
 pieeg-server doctor       # diagnose SPI, GPIO, deps, permissions
 ```
 
@@ -54,7 +54,15 @@ Open **http://raspberrypi.local:1617** in any browser on your network for the re
 
 ### Authentication
 
-When the server starts, a **6-digit access code** is printed in your terminal:
+By default, the dashboard is **open to anyone on your network** (no authentication required).
+
+To require an access code, start the server with `--auth`:
+
+```bash
+pieeg-server --auth
+```
+
+With authentication enabled, a **6-digit access code** is printed in your terminal at startup:
 
 ```
 ╔══════════════════════════════════════╗
@@ -70,17 +78,11 @@ The first time you open the dashboard in your browser, you'll be asked for this 
 
 The code changes every time the server restarts.
 
-To skip authentication entirely (e.g. for local development or trusted networks), start with:
-
-```bash
-pieeg-server --no-auth
-```
-
-> **Warning:** `--no-auth` exposes the dashboard and WebSocket to anyone on the network without a code.
+> **Security Note:** Without `--auth`, the dashboard and WebSocket are accessible to anyone on your network without a code.
 
 ### Dashboard
 
-The dashboard is served at `http://raspberrypi.local:1617` and requires the access code.
+The dashboard is served at `http://raspberrypi.local:1617`.
 Built with React + Vite, it provides a modern UI with per-channel canvases.
 
 **Features:**
@@ -222,7 +224,7 @@ Server options:
   --port PORT            WebSocket port (default: 1616)
   --dashboard-port PORT  Dashboard HTTP port (default: 1617)
   --no-dashboard         Disable the web dashboard
-  --no-auth              Disable authentication (no access code required)
+  --auth                 Enable authentication (requires 6-digit access code)
   --gpio-chip PATH       GPIO chip device path (default: /dev/gpiochip4)
   --filter               Enable 1–40 Hz bandpass filter server-side
   --lowcut HZ            Filter low cutoff (default: 1.0)

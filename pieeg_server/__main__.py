@@ -170,8 +170,8 @@ def parse_args():
         help="Enable debug logging",
     )
     p.add_argument(
-        "--no-auth", action="store_true",
-        help="Disable authentication (no access code required)",
+        "--auth", action="store_true",
+        help="Enable authentication (requires 6-digit access code)",
     )
     p.add_argument(
         "--mock", action="store_true",
@@ -302,9 +302,9 @@ def main():
     hw = _make_hardware(args, logger)
 
     # --- Auth ---
-    auth = None if args.no_auth else AuthManager()
-    if args.no_auth:
-        logger.warning("Authentication DISABLED (--no-auth)")
+    auth = AuthManager() if args.auth else None
+    if args.auth:
+        logger.info("Authentication ENABLED (--auth flag used)")
 
     # --- Acquisition ---
     loop = asyncio.new_event_loop()
@@ -348,18 +348,26 @@ def main():
         monitor = TerminalMonitor(acq)
 
     # --- Graceful shutdown ---
+    shutdown_event = None
+    
     def shutdown(*_):
+        nonlocal shutdown_event
         logger.info("Shutting down...")
-        if monitor_task:
-            monitor_task.cancel()
-        if recorder_task:
-            recorder_task.cancel()
-        if dashboard:
-            dashboard.stop()
-        acq.stop()
-        hw.close()
-        loop.stop()
-        sys.exit(0)
+        # Safely trigger cleanup through the event loop
+        def _cleanup():
+            # Cancel running tasks
+            for task in asyncio.all_tasks(loop):
+                task.cancel()
+            # Stop acquisition
+            try:
+                if dashboard:
+                    dashboard.stop()
+                acq.stop()
+                hw.close()
+            except Exception as e:
+                logger.debug(f"Cleanup error: {e}")
+        
+        loop.call_soon_threadsafe(_cleanup)
 
     signal.signal(signal.SIGINT, shutdown)
     signal.signal(signal.SIGTERM, shutdown)
@@ -399,7 +407,22 @@ def main():
             tasks.append(monitor_task)
         await asyncio.gather(*tasks)
 
-    loop.run_until_complete(_run_all())
+    try:
+        loop.run_until_complete(_run_all())
+    except (KeyboardInterrupt, asyncio.CancelledError):
+        pass
+    except Exception as e:
+        logger.error(f"Error during main loop: {e}", exc_info=True)
+    finally:
+        # Final cleanup
+        try:
+            if dashboard:
+                dashboard.stop()
+            acq.stop()
+            hw.close()
+        except Exception as e:
+            logger.debug(f"Final cleanup error: {e}")
+        loop.close()
 
 
 if __name__ == "__main__":
