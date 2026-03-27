@@ -107,6 +107,8 @@ def _make_handler(static_dir: Path, auth: AuthManager):
             return morsel.value if morsel else None
 
         def _is_authenticated(self):
+            if auth is None:
+                return True
             return auth.validate_session(self._get_session_token())
 
         # -- auth routes --
@@ -149,6 +151,8 @@ def _make_handler(static_dir: Path, auth: AuthManager):
 
             # Issue a short-lived, single-use WebSocket token
             if self.path == "/auth/ws-token":
+                if auth is None:
+                    return self._send_json({"token": "no-auth"})
                 if not self._is_authenticated():
                     return self._send_json({"error": "Not authenticated"}, 403)
                 ws_token = auth.create_ws_token()
@@ -207,6 +211,16 @@ def _make_handler(static_dir: Path, auth: AuthManager):
         def do_POST(self):
             if self.path != "/auth":
                 self.send_error(404)
+                return
+
+            # When auth is disabled, auto-authenticate
+            if auth is None:
+                content_type = self.headers.get("Content-Type", "")
+                if "application/json" in content_type:
+                    return self._send_json({"ok": True})
+                self.send_response(303)
+                self.send_header("Location", "/")
+                self.end_headers()
                 return
 
             # Rate limiting

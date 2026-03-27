@@ -40,6 +40,7 @@ pieeg-server              # start streaming
 pieeg-server --filter     # with 1–40 Hz bandpass filter
 pieeg-server --monitor    # with live terminal display
 pieeg-server --mock       # synthetic data, no hardware needed
+pieeg-server --no-auth    # disable authentication (no access code)
 pieeg-server doctor       # diagnose SPI, GPIO, deps, permissions
 ```
 
@@ -68,6 +69,14 @@ When the server starts, a **6-digit access code** is printed in your terminal:
 The first time you open the dashboard in your browser, you'll be asked for this code. After that, your session is remembered for 24 hours.
 
 The code changes every time the server restarts.
+
+To skip authentication entirely (e.g. for local development or trusted networks), start with:
+
+```bash
+pieeg-server --no-auth
+```
+
+> **Warning:** `--no-auth` exposes the dashboard and WebSocket to anyone on the network without a code.
 
 ### Dashboard
 
@@ -152,7 +161,8 @@ import asyncio, json, requests, websockets
 
 # Step 1: authenticate and get a WS token
 session = requests.Session()
-session.post("http://raspberrypi.local:1617/auth", json={"code": "847291"})
+ACCESS_CODE = "<ACCESS_CODE_PRINTED_BY_PIEEG_SERVER_ON_STARTUP>"
+session.post("http://raspberrypi.local:1617/auth", json={"code": ACCESS_CODE})
 token = session.get("http://raspberrypi.local:1617/auth/ws-token").json()["token"]
 
 # Step 2: connect with the token
@@ -212,6 +222,7 @@ Server options:
   --port PORT            WebSocket port (default: 1616)
   --dashboard-port PORT  Dashboard HTTP port (default: 1617)
   --no-dashboard         Disable the web dashboard
+  --no-auth              Disable authentication (no access code required)
   --gpio-chip PATH       GPIO chip device path (default: /dev/gpiochip4)
   --filter               Enable 1–40 Hz bandpass filter server-side
   --lowcut HZ            Filter low cutoff (default: 1.0)
