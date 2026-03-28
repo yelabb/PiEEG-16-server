@@ -1,10 +1,10 @@
 import { useRef, useEffect, useCallback } from "react";
 import * as THREE from "three";
+import type { EEGData } from "../types";
+import { NUM_CHANNELS } from "../types";
 
-const NUM_CHANNELS = 16;
-const MAX_POINTS = 400; // vertices per wave strip — balanced for Quest GPU
+const MAX_POINTS = 400;
 
-// Aurora/neon base hues (HSL 0..1) — one per channel
 const CHANNEL_HUES = [
   0.50, 0.80, 0.95, 0.60,
   0.38, 0.14, 0.05, 0.55,
@@ -12,34 +12,40 @@ const CHANNEL_HUES = [
   0.38, 0.14, 0.05, 0.55,
 ];
 
-// Arrange channels on a curved surface around the user
-const PANEL_RADIUS = 3.0;       // metres from user
-const PANEL_ARC = Math.PI * 0.75; // 135° arc
-const PANEL_HEIGHT = 2.6;        // total height of all channels
-const PANEL_Y_CENTER = 1.4;      // eye-level centre
-const WAVE_WIDTH = 1.8;          // width of each wave strip (metres)
+const PANEL_RADIUS = 3.0;
+const PANEL_ARC = Math.PI * 0.75;
+const PANEL_HEIGHT = 2.6;
+const PANEL_Y_CENTER = 1.4;
+const WAVE_WIDTH = 1.8;
 
-/**
- * XRWaveView — full-screen WebXR immersive view of EEG waves.
- * Reads from the same eeg.buffers ring buffers as the 2D canvases.
- *
- * Artistic mode: starfield + nebula clouds + aurora-coloured vertex waves
- * that breathe with amplitude — designed for a relaxing, meditative experience.
- * Oculus Quest compatible (no post-processing bloom, balanced geometry budget,
- * hand-tracking + local-floor optional features requested).
- */
-export default function XRWaveView({ eegData, yScale, onExit }) {
-  const containerRef = useRef(null);
-  const rendererRef = useRef(null);
-  const sceneRef = useRef(null);
-  const cameraRef = useRef(null);
-  const linesRef = useRef([]);
-  const sessionRef = useRef(null);
-  const rafRef = useRef(null);
+interface ChannelLine {
+  line: THREE.Line;
+  geometry: THREE.BufferGeometry;
+  positions: Float32Array;
+  colors: Float32Array;
+  angle: number;
+  yPos: number;
+  glowPlane: THREE.Mesh;
+  baseHue: number;
+}
+
+interface XRWaveViewProps {
+  eegData: EEGData;
+  yScale: number;
+  onExit: () => void;
+}
+
+export default function XRWaveView({ eegData, yScale, onExit }: XRWaveViewProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
+  const sceneRef = useRef<THREE.Scene | null>(null);
+  const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
+  const linesRef = useRef<ChannelLine[]>([]);
+  const sessionRef = useRef<XRSession | null>(null);
+  const rafRef = useRef<number | null>(null);
   const cleanedUpRef = useRef(false);
   const clockRef = useRef(new THREE.Clock());
 
-  // ── Keep props in refs so the effect never re-runs ────────────
   const eegRef = useRef(eegData);
   const yScaleRef = useRef(yScale);
   const onExitRef = useRef(onExit);
@@ -77,7 +83,7 @@ export default function XRWaveView({ eegData, yScale, onExit }) {
     const clock = clockRef.current;
     clock.start();
 
-    // ── Scene setup ─────────────────────────────────────────────
+    // Scene setup
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x03060f);
     scene.fog = new THREE.FogExp2(0x03060f, 0.07);
@@ -96,14 +102,14 @@ export default function XRWaveView({ eegData, yScale, onExit }) {
     container.appendChild(renderer.domElement);
     rendererRef.current = renderer;
 
-    // ── Lighting ─────────────────────────────────────────────────
+    // Lighting
     const ambientLight = new THREE.AmbientLight(0x112244, 0.8);
     scene.add(ambientLight);
     const pointLight = new THREE.PointLight(0x4488ff, 1.5, 25);
     pointLight.position.set(0, PANEL_Y_CENTER + 1, 0);
     scene.add(pointLight);
 
-    // ── Starfield ────────────────────────────────────────────────
+    // Starfield
     const starCount = 1500;
     const starPos = new Float32Array(starCount * 3);
     const starCol = new Float32Array(starCount * 3);
@@ -131,8 +137,14 @@ export default function XRWaveView({ eegData, yScale, onExit }) {
     const stars = new THREE.Points(starGeo, starMat);
     scene.add(stars);
 
-    // ── Nebula particle clouds ───────────────────────────────────
-    const nebulaDefs = [
+    // Nebula particle clouds
+    interface NebulaDef {
+      color: number;
+      center: [number, number, number];
+      count: number;
+      spread: number;
+    }
+    const nebulaDefs: NebulaDef[] = [
       { color: 0x4a1080, center: [ 5,  2, -10], count: 400, spread: 5 },
       { color: 0x0a2a60, center: [-6,  1,  -9], count: 350, spread: 4 },
       { color: 0x003a50, center: [ 1,  4, -12], count: 300, spread: 4 },
@@ -159,8 +171,8 @@ export default function XRWaveView({ eegData, yScale, onExit }) {
       return pts;
     });
 
-    // ── Channel wave strips ──────────────────────────────────────
-    const lines = [];
+    // Channel wave strips
+    const lines: ChannelLine[] = [];
     const tempColor = new THREE.Color();
     for (let ch = 0; ch < NUM_CHANNELS; ch++) {
       const t = NUM_CHANNELS > 1 ? ch / (NUM_CHANNELS - 1) : 0.5;
@@ -168,7 +180,6 @@ export default function XRWaveView({ eegData, yScale, onExit }) {
       const yPos = PANEL_Y_CENTER + PANEL_HEIGHT / 2 - t * PANEL_HEIGHT;
       const baseHue = CHANNEL_HUES[ch];
 
-      // Geometry with both position and per-vertex colour
       const positions = new Float32Array(MAX_POINTS * 3);
       const colors = new Float32Array(MAX_POINTS * 3);
       const geometry = new THREE.BufferGeometry();
@@ -190,7 +201,7 @@ export default function XRWaveView({ eegData, yScale, onExit }) {
       const labelCanvas = document.createElement("canvas");
       labelCanvas.width = 128;
       labelCanvas.height = 48;
-      const ctx2d = labelCanvas.getContext("2d");
+      const ctx2d = labelCanvas.getContext("2d")!;
       ctx2d.clearRect(0, 0, 128, 48);
       tempColor.setHSL(baseHue, 0.9, 0.7);
       ctx2d.font = "bold 28px monospace";
@@ -213,7 +224,7 @@ export default function XRWaveView({ eegData, yScale, onExit }) {
       );
       scene.add(sprite);
 
-      // Glow plane behind each wave — opacity will be animated with RMS
+      // Glow plane behind each wave
       const glowGeo = new THREE.PlaneGeometry(WAVE_WIDTH + 0.3, 0.14);
       const glowMat = new THREE.MeshBasicMaterial({
         color: new THREE.Color().setHSL(baseHue, 1.0, 0.55),
@@ -235,12 +246,12 @@ export default function XRWaveView({ eegData, yScale, onExit }) {
     }
     linesRef.current = lines;
 
-    // ── Subtle ground grid ──────────────────────────────────────
+    // Ground grid
     const gridHelper = new THREE.GridHelper(12, 24, 0x0a1530, 0x060e1e);
     scene.add(gridHelper);
 
-    // ── Update wave data + animate environment each frame ───────
-    function updateWaves(time) {
+    // Update wave data + animate environment each frame
+    function updateWaves(time: number) {
       const e = eegRef.current;
       const bufs = e.buffers.current;
       if (!bufs) return;
@@ -257,14 +268,11 @@ export default function XRWaveView({ eegData, yScale, onExit }) {
         const { positions, colors, geometry, angle, yPos, glowPlane, baseHue } = lines[ch];
         const buf = bufs[ch];
 
-        // Centre of the channel's arc position
         const cx = Math.sin(angle) * PANEL_RADIUS;
         const cz = -Math.cos(angle) * PANEL_RADIUS;
-        // Tangent along the wave
         const dx = -Math.cos(angle);
         const dz = -Math.sin(angle);
 
-        // Slowly cycle hue per channel — aurora drift effect
         const hue = (baseHue + Math.sin(time * 0.08 + ch * 0.4) * 0.08 + 1) % 1;
         const sat = 0.85 + Math.sin(time * 0.15 + ch) * 0.10;
 
@@ -272,7 +280,7 @@ export default function XRWaveView({ eegData, yScale, onExit }) {
         for (let i = 0; i < drawCount; i++) {
           const sampleI = i * skip;
           const idx = (writeIdx - count + sampleI + bufSize) % bufSize;
-          const tPos = i / Math.max(1, drawCount - 1); // 0..1 along width
+          const tPos = i / Math.max(1, drawCount - 1);
           const amplitude = buf[idx] / range;
           rmsSum += amplitude * amplitude;
 
@@ -280,9 +288,7 @@ export default function XRWaveView({ eegData, yScale, onExit }) {
           positions[i * 3 + 1] = yPos + amplitude * 0.14;
           positions[i * 3 + 2] = cz + dz * (tPos - 0.5) * WAVE_WIDTH;
 
-          // Vertex colour: hue-cycled base, brightened by amplitude,
-          // faded toward the edges for a "born-from-void" look
-          const edgeFade  = Math.sin(tPos * Math.PI);            // 0→1→0
+          const edgeFade  = Math.sin(tPos * Math.PI);
           const ampBright = 0.35 + Math.min(Math.abs(amplitude) * 3.0, 1.0) * 0.65;
           const lightness = Math.min(0.95, 0.5 * edgeFade + ampBright * 0.5);
           tempColor.setHSL(hue, sat, lightness);
@@ -295,32 +301,28 @@ export default function XRWaveView({ eegData, yScale, onExit }) {
         geometry.attributes.color.needsUpdate = true;
         geometry.setDrawRange(0, drawCount);
 
-        // Glow plane breathes with signal energy
         const rms = Math.sqrt(rmsSum / Math.max(1, drawCount));
-        glowPlane.material.opacity = Math.min(0.20, 0.03 + rms * 0.9);
+        (glowPlane.material as THREE.MeshBasicMaterial).opacity = Math.min(0.20, 0.03 + rms * 0.9);
       }
 
-      // Pulse ambient & point lights like a slow cosmic heartbeat
       ambientLight.intensity = 0.60 + Math.sin(time * 0.50) * 0.15;
       pointLight.intensity   = 1.20 + Math.sin(time * 0.30) * 0.40;
 
-      // Slowly rotate the starfield — living cosmos feel
       stars.rotation.y = time * 0.005;
       stars.rotation.x = Math.sin(time * 0.003) * 0.02;
 
-      // Gently pulse and drift nebula clouds
       nebulaClouds.forEach((cloud, i) => {
-        cloud.material.opacity = 0.10 + Math.sin(time * 0.20 + i * 2.1) * 0.06;
+        (cloud.material as THREE.PointsMaterial).opacity = 0.10 + Math.sin(time * 0.20 + i * 2.1) * 0.06;
         cloud.rotation.y = time * 0.003 * (i % 2 === 0 ? 1 : -1);
       });
     }
 
-    // ── Try immersive VR (Oculus), fallback to inline ────────────
-    let xrMode = null;
-
+    // Try immersive VR (Oculus), fallback to inline
     async function startXR() {
+      let xrMode: XRSessionMode | null = null;
+
       if (navigator.xr) {
-        for (const mode of ["immersive-vr", "immersive-ar", "inline"]) {
+        for (const mode of ["immersive-vr", "immersive-ar", "inline"] as XRSessionMode[]) {
           try {
             if (await navigator.xr.isSessionSupported(mode)) {
               xrMode = mode;
@@ -332,8 +334,7 @@ export default function XRWaveView({ eegData, yScale, onExit }) {
 
       if (xrMode && xrMode !== "inline") {
         try {
-          const session = await navigator.xr.requestSession(xrMode, {
-            // local-floor = correct height on Quest; hand-tracking = optional
+          const session = await navigator.xr!.requestSession(xrMode, {
             optionalFeatures: ["local-floor", "bounded-floor", "hand-tracking"],
           });
           sessionRef.current = session;
@@ -358,12 +359,12 @@ export default function XRWaveView({ eegData, yScale, onExit }) {
       let isDragging = false;
       let prevX = 0, prevY = 0;
       let rotY = 0, rotX = 0;
-      let autoRotate = true; // gentle auto-orbit until the user interacts
+      let autoRotate = true;
 
       const el = renderer.domElement;
-      const onPointerDown = (e) => { isDragging = true; autoRotate = false; prevX = e.clientX; prevY = e.clientY; };
-      const onPointerUp   = ()  => { isDragging = false; };
-      const onPointerMove = (e) => {
+      const onPointerDown = (e: PointerEvent) => { isDragging = true; autoRotate = false; prevX = e.clientX; prevY = e.clientY; };
+      const onPointerUp   = () => { isDragging = false; };
+      const onPointerMove = (e: PointerEvent) => {
         if (!isDragging) return;
         rotY -= (e.clientX - prevX) * 0.003;
         rotX -= (e.clientY - prevY) * 0.003;
@@ -376,7 +377,6 @@ export default function XRWaveView({ eegData, yScale, onExit }) {
 
       function fallbackLoop() {
         const t = clock.getElapsedTime();
-        // Very slow auto-orbit — 1 full rotation every ~2.6 minutes
         if (autoRotate) rotY = t * 0.04;
         camera.rotation.order = "YXZ";
         camera.rotation.y = rotY;
@@ -392,7 +392,7 @@ export default function XRWaveView({ eegData, yScale, onExit }) {
 
     startXR();
 
-    // ── Resize handler ───────────────────────────────────────────
+    // Resize handler
     function onResize() {
       if (!rendererRef.current) return;
       camera.aspect = window.innerWidth / window.innerHeight;

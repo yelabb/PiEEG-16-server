@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, type ChangeEvent } from "react";
 import { useEEG } from "./hooks/useEEG";
 import AuthGate from "./components/AuthGate";
 import ChannelCanvas from "./components/ChannelCanvas";
@@ -9,19 +9,22 @@ import SessionList from "./components/SessionList";
 import SessionViewer from "./components/SessionViewer";
 import XRWaveView from "./components/XRWaveView";
 import UpdateBanner from "./components/UpdateBanner";
+import { NUM_CHANNELS } from "./types";
+import type { SelectOption } from "./types";
 
-const NUM_CHANNELS = 16;
 const ALL_CHANNELS = new Set(Array.from({ length: NUM_CHANNELS }, (_, i) => i));
 const DEFAULT_MOBILE = new Set([0, 1, 2, 3]);
 
-const SCALE_OPTIONS = [
+type ViewState = "live" | "sessions" | "playback";
+
+const SCALE_OPTIONS: SelectOption<number>[] = [
   { value: 50, label: "±50 µV" },
   { value: 100, label: "±100 µV" },
   { value: 200, label: "±200 µV" },
   { value: 500, label: "±500 µV" },
 ];
 
-const TIME_OPTIONS = [
+const TIME_OPTIONS: SelectOption<number>[] = [
   { value: 2, label: "2s" },
   { value: 4, label: "4s" },
   { value: 8, label: "8s" },
@@ -29,18 +32,18 @@ const TIME_OPTIONS = [
 ];
 
 export default function App() {
-  const [view, setView] = useState("live"); // "live" | "sessions" | "playback"
-  const [selectedSession, setSelectedSession] = useState(null);
+  const [view, setView] = useState<ViewState>("live");
+  const [selectedSession, setSelectedSession] = useState<string | null>(null);
   const [paused, setPaused] = useState(false);
   const [showFFT, setShowFFT] = useState(true);
   const [filterEnabled, setFilterEnabled] = useState(false);
-  const [lowcut, setLowcut] = useState(1);
-  const [highcut, setHighcut] = useState(40);
+  const [lowcut, setLowcut] = useState<number | string>(1);
+  const [highcut, setHighcut] = useState<number | string>(40);
   const [timeWindow, setTimeWindow] = useState(4);
   const [yScale, setYScale] = useState(100);
-  const [expandedCh, setExpandedCh] = useState(null);
+  const [expandedCh, setExpandedCh] = useState<number | null>(null);
   const [xrActive, setXrActive] = useState(false);
-  const [activeChannels, setActiveChannels] = useState(() =>
+  const [activeChannels, setActiveChannels] = useState<Set<number>>(() =>
     window.innerWidth < 768 ? new Set(DEFAULT_MOBILE) : new Set(ALL_CHANNELS)
   );
 
@@ -50,7 +53,7 @@ export default function App() {
   const activeChRef = useRef(activeChannels);
   activeChRef.current = activeChannels;
 
-  const toggleChannel = useCallback((i) => {
+  const toggleChannel = useCallback((i: number) => {
     setActiveChannels((prev) => {
       const next = new Set(prev);
       if (next.has(i)) next.delete(i);
@@ -59,7 +62,7 @@ export default function App() {
     });
   }, []);
 
-  const setAllChannels = useCallback((on) => {
+  const setAllChannels = useCallback((on: boolean) => {
     setActiveChannels(on ? new Set(ALL_CHANNELS) : new Set());
   }, []);
 
@@ -75,8 +78,8 @@ export default function App() {
     eeg.sendCommand({
       cmd: "set_filter",
       enabled: next,
-      lowcut: parseFloat(lowcut) || 1,
-      highcut: parseFloat(highcut) || 40,
+      lowcut: parseFloat(String(lowcut)) || 1,
+      highcut: parseFloat(String(highcut)) || 40,
     });
   }
 
@@ -84,24 +87,23 @@ export default function App() {
     eeg.sendCommand({ cmd: eeg.recording ? "stop_record" : "start_record" });
   }
 
-  function formatElapsed(sec) {
+  function formatElapsed(sec: number): string {
     const m = Math.floor(sec / 60);
     const s = Math.floor(sec % 60);
     return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
   }
 
-  function updateFilter(low, high) {
+  function updateFilter(low: number | string, high: number | string) {
     if (!filterEnabled) return;
     eeg.sendCommand({
       cmd: "set_filter",
       enabled: true,
-      lowcut: parseFloat(low) || 1,
-      highcut: parseFloat(high) || 40,
+      lowcut: parseFloat(String(low)) || 1,
+      highcut: parseFloat(String(high)) || 40,
     });
   }
 
-  const toggleExpandCh = useCallback((i) => {
-    // Only expand active channels; toggle inactive ones on
+  const toggleExpandCh = useCallback((i: number) => {
     if (!activeChRef.current.has(i)) {
       setActiveChannels((prev) => {
         const next = new Set(prev);
@@ -115,10 +117,9 @@ export default function App() {
 
   // Keyboard shortcuts
   useEffect(() => {
-    function onKey(e) {
-      // Skip when user is typing in an input/select/textarea
-      if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT" || e.target.tagName === "TEXTAREA") return;
-      // Only handle shortcuts in live view
+    function onKey(e: KeyboardEvent) {
+      const tag = (e.target as HTMLElement).tagName;
+      if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
       if (view !== "live") {
         if (e.code === "Escape") {
           if (view === "playback") { setView("sessions"); setSelectedSession(null); }
@@ -254,7 +255,7 @@ export default function App() {
             min={0.1}
             max={50}
             step={0.5}
-            onChange={(e) => {
+            onChange={(e: ChangeEvent<HTMLInputElement>) => {
               setLowcut(e.target.value);
               updateFilter(e.target.value, highcut);
             }}
@@ -269,7 +270,7 @@ export default function App() {
             min={1}
             max={125}
             step={1}
-            onChange={(e) => {
+            onChange={(e: ChangeEvent<HTMLInputElement>) => {
               setHighcut(e.target.value);
               updateFilter(lowcut, e.target.value);
             }}
@@ -281,7 +282,7 @@ export default function App() {
           <label>Time window</label>
           <select
             value={timeWindow}
-            onChange={(e) => setTimeWindow(parseInt(e.target.value))}
+            onChange={(e: ChangeEvent<HTMLSelectElement>) => setTimeWindow(parseInt(e.target.value))}
           >
             {TIME_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>
@@ -294,7 +295,7 @@ export default function App() {
           <label>Scale</label>
           <select
             value={yScale}
-            onChange={(e) => setYScale(parseInt(e.target.value))}
+            onChange={(e: ChangeEvent<HTMLSelectElement>) => setYScale(parseInt(e.target.value))}
           >
             {SCALE_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>
@@ -383,7 +384,7 @@ export default function App() {
               <button
                 className="btn modal-btn-view"
                 onClick={() => {
-                  const fn = eeg.recordResult.filename;
+                  const fn = eeg.recordResult!.filename;
                   eeg.dismissRecordResult();
                   setSelectedSession(fn);
                   setView("playback");

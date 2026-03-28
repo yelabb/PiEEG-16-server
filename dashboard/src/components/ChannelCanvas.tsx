@@ -1,24 +1,26 @@
 import { useRef, useEffect, memo } from "react";
+import type { EEGData, CanvasSize } from "../types";
+import { TRACE_COLORS } from "../types";
 
 const GRID_COLOR = "rgba(48,54,61,0.4)";
 const ZERO_LINE_COLOR = "rgba(88,166,255,0.15)";
 
-const TRACE_COLORS = [
-  "#58a6ff", "#3fb950", "#d29922", "#f85149",
-  "#bc8cff", "#39d2c0", "#f0883e", "#db61a2",
-  "#58a6ff", "#3fb950", "#d29922", "#f85149",
-  "#bc8cff", "#39d2c0", "#f0883e", "#db61a2",
-];
+type Quality = "high" | "medium" | "low";
 
 // Adaptive quality: auto-downgrade when frames are slow
-const QUALITY_POINTS = { high: 1500, medium: 800, low: 400 };
+const QUALITY_POINTS: Record<Quality, number> = { high: 1500, medium: 800, low: 400 };
 const FRAME_BUDGET_MS = 14;
 const QUALITY_WINDOW = 20;
 
 // Grid channels render at 30fps; expanded gets 60fps
-const GRID_FRAME_INTERVAL = 2; // draw every 2nd RAF tick
+const GRID_FRAME_INTERVAL = 2;
 
-function drawChannel(ctx, w, h, buf, count, writeIndex, bufferSize, yRange, color, quality) {
+function drawChannel(
+  ctx: CanvasRenderingContext2D,
+  w: number, h: number,
+  buf: Float32Array, count: number, writeIndex: number, bufferSize: number,
+  yRange: number, color: string, quality: Quality
+): number | undefined {
   ctx.clearRect(0, 0, w, h);
 
   // Horizontal grid lines — batched into a single path
@@ -93,21 +95,29 @@ function drawChannel(ctx, w, h, buf, count, writeIndex, bufferSize, yRange, colo
   return Math.sqrt(sumSq / sampleCount);
 }
 
-const ChannelCanvas = memo(function ChannelCanvas({ chIdx, eegData, yRange, expanded, onToggleExpand, active = true }) {
-  const canvasRef = useRef(null);
+interface ChannelCanvasProps {
+  chIdx: number;
+  eegData: EEGData;
+  yRange: number;
+  expanded?: boolean;
+  onToggleExpand: () => void;
+  active?: boolean;
+}
+
+const ChannelCanvas = memo(function ChannelCanvas({ chIdx, eegData, yRange, expanded, onToggleExpand, active = true }: ChannelCanvasProps) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
   const rafRef = useRef(0);
   const rmsRef = useRef(0);
-  const labelRef = useRef(null);
-  const sizeRef = useRef({ w: 0, h: 0, pw: 0, ph: 0 });
+  const labelRef = useRef<HTMLDivElement>(null);
+  const sizeRef = useRef<CanvasSize>({ w: 0, h: 0, pw: 0, ph: 0, dpr: 1 });
   const needsResizeRef = useRef(true);
-  const qualityRef = useRef("high");
-  const frameTimesRef = useRef([]);
+  const qualityRef = useRef<Quality>("high");
+  const frameTimesRef = useRef<number[]>([]);
   const lastWriteIdxRef = useRef(-1);
   const rmsFrameRef = useRef(0);
   const tickCountRef = useRef(0);
 
   // ResizeObserver — no getBoundingClientRect per frame
-  // Grid channels cap DPR to 1 to halve pixel count on HiDPI
   useEffect(() => {
     if (!active) return;
     const canvas = canvasRef.current;
@@ -117,7 +127,6 @@ const ChannelCanvas = memo(function ChannelCanvas({ chIdx, eegData, yRange, expa
       if (!entry) return;
       const rawDpr = window.devicePixelRatio || 1;
       const { width: w, height: h } = entry.contentRect;
-      // Expanded gets full DPR; grid channels cap at 1 to save GPU fill
       const dpr = expanded ? Math.min(rawDpr, 2) : 1;
       sizeRef.current = { w, h, pw: Math.round(w * dpr), ph: Math.round(h * dpr), dpr };
       needsResizeRef.current = true;
@@ -131,36 +140,31 @@ const ChannelCanvas = memo(function ChannelCanvas({ chIdx, eegData, yRange, expa
     if (!active) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const ctx = canvas.getContext("2d", { alpha: false });
+    const ctx = canvas.getContext("2d", { alpha: false })!;
     lastWriteIdxRef.current = -1;
     tickCountRef.current = 0;
 
-    // Stagger: each channel offsets its draw frame to spread GPU load
     const staggerOffset = chIdx % GRID_FRAME_INTERVAL;
 
     const tick = () => {
       tickCountRef.current++;
       const { w, h, pw, ph, dpr } = sizeRef.current;
 
-      // Skip if canvas not laid out yet
       if (w === 0 || h === 0) {
         rafRef.current = requestAnimationFrame(tick);
         return;
       }
 
-      // Suspend grid draws while expanded overlay covers them
       if (!expanded && eegData.gridSuspended) {
         rafRef.current = requestAnimationFrame(tick);
         return;
       }
 
-      // Grid channels: draw every Nth frame (30fps), staggered across channels
       if (!expanded && (tickCountRef.current % GRID_FRAME_INTERVAL) !== staggerOffset) {
         rafRef.current = requestAnimationFrame(tick);
         return;
       }
 
-      // Skip draw if no new data since last frame
       const wi = eegData.writeIndex.current;
       if (wi === lastWriteIdxRef.current) {
         rafRef.current = requestAnimationFrame(tick);
@@ -170,7 +174,6 @@ const ChannelCanvas = memo(function ChannelCanvas({ chIdx, eegData, yRange, expa
 
       const frameStart = performance.now();
 
-      // Resize canvas backing store only when dimensions changed
       if (needsResizeRef.current) {
         needsResizeRef.current = false;
         canvas.width = pw;
@@ -178,7 +181,6 @@ const ChannelCanvas = memo(function ChannelCanvas({ chIdx, eegData, yRange, expa
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       }
 
-      // Background fill
       ctx.fillStyle = "#0d1117";
       ctx.fillRect(0, 0, w, h);
 
@@ -193,7 +195,6 @@ const ChannelCanvas = memo(function ChannelCanvas({ chIdx, eegData, yRange, expa
         qualityRef.current,
       );
 
-      // Update quality indicator (every 2nd frame to save work)
       rmsFrameRef.current++;
       if (rms !== undefined && (rmsFrameRef.current & 1) === 0) {
         rmsRef.current = rms;
@@ -204,7 +205,6 @@ const ChannelCanvas = memo(function ChannelCanvas({ chIdx, eegData, yRange, expa
         }
       }
 
-      // Adaptive quality: auto-adjust based on recent frame times
       const ft = performance.now() - frameStart;
       const times = frameTimesRef.current;
       times.push(ft);
@@ -226,7 +226,6 @@ const ChannelCanvas = memo(function ChannelCanvas({ chIdx, eegData, yRange, expa
     return () => cancelAnimationFrame(rafRef.current);
   }, [chIdx, eegData, yRange, active]);
 
-  // Inactive placeholder — no canvas, no RAF, minimal DOM
   if (!active) {
     return (
       <div className={`channel-cell inactive${expanded ? " expanded" : ""}`} onClick={onToggleExpand}>

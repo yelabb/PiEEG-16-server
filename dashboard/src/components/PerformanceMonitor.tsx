@@ -1,10 +1,5 @@
 import { useRef, useEffect, useState, memo } from "react";
 
-/**
- * Performance monitoring component for debugging and verification.
- * Shows FPS, frame time, and memory usage in real-time.
- * Toggle with `P` key.
- */
 const PerformanceMonitor = memo(function PerformanceMonitor() {
   const [visible, setVisible] = useState(false);
   const [fps, setFps] = useState(0);
@@ -15,7 +10,7 @@ const PerformanceMonitor = memo(function PerformanceMonitor() {
   const rafRef = useRef(0);
 
   useEffect(() => {
-    const handleKeyPress = (e) => {
+    const handleKeyPress = (e: KeyboardEvent) => {
       if (e.key === "p" || e.key === "P") {
         setVisible((v) => !v);
       }
@@ -37,8 +32,9 @@ const PerformanceMonitor = memo(function PerformanceMonitor() {
         setFps(Math.round(frameCountRef.current * (1000 / deltaTime)));
         setFrameTime(Math.round((deltaTime / frameCountRef.current) * 100) / 100);
 
-        if (performance.memory) {
-          setMemory(Math.round(performance.memory.usedJSHeapSize / 1048576));
+        const perfMemory = (performance as unknown as { memory?: { usedJSHeapSize: number } }).memory;
+        if (perfMemory) {
+          setMemory(Math.round(perfMemory.usedJSHeapSize / 1048576));
         }
 
         frameCountRef.current = 0;

@@ -1,50 +1,51 @@
-import { useState, useEffect, useRef, useCallback } from "react";
-
-const NUM_CHANNELS = 16;
-const SAMPLE_RATE = 250;
-
-const TRACE_COLORS = [
-  "#58a6ff", "#3fb950", "#d29922", "#f85149",
-  "#bc8cff", "#39d2c0", "#f0883e", "#db61a2",
-  "#58a6ff", "#3fb950", "#d29922", "#f85149",
-  "#bc8cff", "#39d2c0", "#f0883e", "#db61a2",
-];
+import { useState, useEffect, useRef, useCallback, type ChangeEvent, type KeyboardEvent } from "react";
+import { NUM_CHANNELS, SAMPLE_RATE, TRACE_COLORS } from "../types";
+import type { Annotation } from "../types";
 
 const GRID_COLOR = "rgba(48,54,61,0.4)";
 const ZERO_COLOR = "rgba(88,166,255,0.12)";
 const CURSOR_COLOR = "rgba(88,166,255,0.6)";
 const BG_COLOR = "#0d1117";
 
-const SCALE_OPTIONS = [
+interface SelectOption<T> {
+  value: T;
+  label: string;
+}
+
+const SCALE_OPTIONS: SelectOption<number>[] = [
   { value: 50, label: "±50 µV" },
   { value: 100, label: "±100 µV" },
   { value: 200, label: "±200 µV" },
   { value: 500, label: "±500 µV" },
 ];
 
-const WINDOW_OPTIONS = [
+const WINDOW_OPTIONS: SelectOption<number>[] = [
   { value: 2, label: "2s" },
   { value: 4, label: "4s" },
   { value: 8, label: "8s" },
 ];
 
-export default function SessionViewer({ filename, onBack }) {
+interface SessionViewerProps {
+  filename: string;
+  onBack: () => void;
+}
+
+export default function SessionViewer({ filename, onBack }: SessionViewerProps) {
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState<string | null>(null);
   const [playing, setPlaying] = useState(false);
   const [currentFrame, setCurrentFrame] = useState(0);
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
   const [yScale, setYScale] = useState(100);
   const [viewWindow, setViewWindow] = useState(4);
-  const [annotations, setAnnotations] = useState([]);
+  const [annotations, setAnnotations] = useState<Annotation[]>([]);
   const [annotationInput, setAnnotationInput] = useState("");
   const [showAnnotationForm, setShowAnnotationForm] = useState(false);
 
-  // Data stored in refs for canvas performance
-  const channelDataRef = useRef(null); // Float32Array[16] of all frames
+  const channelDataRef = useRef<Float32Array[] | null>(null);
   const totalFramesRef = useRef(0);
   const currentFrameRef = useRef(0);
-  const canvasRef = useRef(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
   const rafRef = useRef(0);
   const lastTimeRef = useRef(0);
   const playingRef = useRef(false);
@@ -54,7 +55,6 @@ export default function SessionViewer({ filename, onBack }) {
   const dprRef = useRef(window.devicePixelRatio || 1);
   const sizeRef = useRef({ w: 0, h: 0 });
 
-  // Keep refs in sync
   playingRef.current = playing;
   speedRef.current = playbackSpeed;
   yScaleRef.current = yScale;
@@ -76,8 +76,7 @@ export default function SessionViewer({ filename, onBack }) {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const json = await res.json();
         if (json.error) throw new Error(json.error);
-        const lines = json.data || [];
-        // Skip header, parse into typed arrays
+        const lines: string[] = json.data || [];
         const dataLines = lines.slice(1);
         const numFrames = dataLines.length;
         if (numFrames === 0) throw new Error("Empty recording");
@@ -94,9 +93,9 @@ export default function SessionViewer({ filename, onBack }) {
           setCurrentFrame(0);
           setLoading(false);
         }
-      } catch (err) {
+      } catch (err: unknown) {
         if (!cancelled) {
-          setError(err.message);
+          setError(err instanceof Error ? err.message : String(err));
           setLoading(false);
         }
       }
@@ -117,10 +116,9 @@ export default function SessionViewer({ filename, onBack }) {
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || loading || error) return;
-    const ctx = canvas.getContext("2d", { alpha: false });
+    const ctx = canvas.getContext("2d", { alpha: false })!;
 
-    const tick = (timestamp) => {
-      // Advance playhead
+    const tick = (timestamp: number) => {
       if (playingRef.current && lastTimeRef.current > 0) {
         const dt = (timestamp - lastTimeRef.current) / 1000;
         const advance = dt * SAMPLE_RATE * speedRef.current;
@@ -134,7 +132,6 @@ export default function SessionViewer({ filename, onBack }) {
       }
       lastTimeRef.current = timestamp;
 
-      // Sizing
       const dpr = dprRef.current;
       const rect = canvas.getBoundingClientRect();
       const w = rect.width;
@@ -157,7 +154,7 @@ export default function SessionViewer({ filename, onBack }) {
     return () => cancelAnimationFrame(rafRef.current);
   }, [loading, error]);
 
-  function drawAllChannels(ctx, w, h) {
+  function drawAllChannels(ctx: CanvasRenderingContext2D, w: number, h: number) {
     const data = channelDataRef.current;
     if (!data) return;
 
@@ -169,7 +166,6 @@ export default function SessionViewer({ filename, onBack }) {
     const windowSamples = viewWindowRef.current * SAMPLE_RATE;
     const yRange = yScaleRef.current;
 
-    // Window of samples to display: center on current frame
     const halfWin = Math.floor(windowSamples / 2);
     let startSample = Math.floor(frame) - halfWin;
     let endSample = startSample + windowSamples;
@@ -183,7 +179,6 @@ export default function SessionViewer({ filename, onBack }) {
       const yMid = yTop + rowHeight / 2;
       const halfH = rowHeight / 2;
 
-      // Separator line
       if (ch > 0) {
         ctx.strokeStyle = GRID_COLOR;
         ctx.lineWidth = 0.5;
@@ -193,7 +188,6 @@ export default function SessionViewer({ filename, onBack }) {
         ctx.stroke();
       }
 
-      // Zero line
       ctx.strokeStyle = ZERO_COLOR;
       ctx.lineWidth = 0.5;
       ctx.beginPath();
@@ -201,12 +195,10 @@ export default function SessionViewer({ filename, onBack }) {
       ctx.lineTo(w, yMid);
       ctx.stroke();
 
-      // Channel label
       ctx.fillStyle = "rgba(230,237,243,0.4)";
       ctx.font = "10px monospace";
       ctx.fillText(`Ch ${ch + 1}`, 4, yTop + 12);
 
-      // Draw trace
       const buf = data[ch];
       const count = endSample - startSample;
       if (count < 2) continue;
@@ -228,7 +220,6 @@ export default function SessionViewer({ filename, onBack }) {
       ctx.stroke();
     }
 
-    // Playhead cursor (vertical line at center)
     const cursorX = Math.floor(frame) >= startSample && Math.floor(frame) <= endSample
       ? ((Math.floor(frame) - startSample) / (endSample - startSample)) * w
       : w / 2;
@@ -241,7 +232,6 @@ export default function SessionViewer({ filename, onBack }) {
     ctx.stroke();
     ctx.setLineDash([]);
 
-    // Time scale at bottom
     ctx.fillStyle = "rgba(230,237,243,0.3)";
     ctx.font = "10px monospace";
     const startTime = startSample / SAMPLE_RATE;
@@ -254,21 +244,20 @@ export default function SessionViewer({ filename, onBack }) {
     }
   }
 
-  // Annotation helpers
-  const saveAnnotations = useCallback(async (updated) => {
+  const saveAnnotations = useCallback(async (updated: Annotation[]) => {
     try {
       await fetch(`/api/recordings/annotations/${encodeURIComponent(filename)}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ annotations: updated }),
       });
-    } catch {}
+    } catch { /* best effort */ }
   }, [filename]);
 
   function addAnnotation() {
     if (!annotationInput.trim()) return;
     const frameTime = Math.floor(currentFrame) / SAMPLE_RATE;
-    const anno = {
+    const anno: Annotation = {
       id: Date.now(),
       frame: Math.floor(currentFrame),
       time: frameTime,
@@ -282,19 +271,19 @@ export default function SessionViewer({ filename, onBack }) {
     setShowAnnotationForm(false);
   }
 
-  function deleteAnnotation(id) {
+  function deleteAnnotation(id: number) {
     const updated = annotations.filter((a) => a.id !== id);
     setAnnotations(updated);
     saveAnnotations(updated);
   }
 
-  function jumpToAnnotation(anno) {
+  function jumpToAnnotation(anno: Annotation) {
     setCurrentFrame(anno.frame);
     currentFrameRef.current = anno.frame;
     setPlaying(false);
   }
 
-  function formatTime(seconds) {
+  function formatTime(seconds: number): string {
     const m = Math.floor(seconds / 60);
     const s = Math.floor(seconds % 60);
     const ms = Math.floor((seconds % 1) * 100);
@@ -353,7 +342,7 @@ export default function SessionViewer({ filename, onBack }) {
           </button>
           <select
             value={playbackSpeed}
-            onChange={(e) => setPlaybackSpeed(parseFloat(e.target.value))}
+            onChange={(e: ChangeEvent<HTMLSelectElement>) => setPlaybackSpeed(parseFloat(e.target.value))}
             className="sv-select"
           >
             <option value={0.25}>0.25x</option>
@@ -367,7 +356,7 @@ export default function SessionViewer({ filename, onBack }) {
           <label className="sv-label">Window</label>
           <select
             value={viewWindow}
-            onChange={(e) => setViewWindow(parseInt(e.target.value))}
+            onChange={(e: ChangeEvent<HTMLSelectElement>) => setViewWindow(parseInt(e.target.value))}
             className="sv-select"
           >
             {WINDOW_OPTIONS.map((o) => (
@@ -377,7 +366,7 @@ export default function SessionViewer({ filename, onBack }) {
           <label className="sv-label">Scale</label>
           <select
             value={yScale}
-            onChange={(e) => setYScale(parseInt(e.target.value))}
+            onChange={(e: ChangeEvent<HTMLSelectElement>) => setYScale(parseInt(e.target.value))}
             className="sv-select"
           >
             {SCALE_OPTIONS.map((o) => (
@@ -395,7 +384,7 @@ export default function SessionViewer({ filename, onBack }) {
           min="0"
           max={totalFrames - 1}
           value={Math.floor(currentFrame)}
-          onChange={(e) => {
+          onChange={(e: ChangeEvent<HTMLInputElement>) => {
             const v = parseInt(e.target.value);
             setCurrentFrame(v);
             currentFrameRef.current = v;
@@ -432,9 +421,9 @@ export default function SessionViewer({ filename, onBack }) {
             <div className="sv-anno-form">
               <textarea
                 value={annotationInput}
-                onChange={(e) => setAnnotationInput(e.target.value)}
+                onChange={(e: ChangeEvent<HTMLTextAreaElement>) => setAnnotationInput(e.target.value)}
                 placeholder="Annotation at current position..."
-                onKeyDown={(e) => {
+                onKeyDown={(e: KeyboardEvent<HTMLTextAreaElement>) => {
                   if (e.key === "Enter" && e.ctrlKey) addAnnotation();
                 }}
               />

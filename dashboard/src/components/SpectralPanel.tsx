@@ -1,31 +1,35 @@
 import { useRef, useEffect, useState, memo, useMemo } from "react";
 import { FftEngine, FREQUENCY_BANDS } from "../lib/fftEngine";
+import type { EEGData, BandPowers, CanvasSize } from "../types";
+import { NUM_CHANNELS, SAMPLE_RATE } from "../types";
 
-const NUM_CHANNELS = 16;
 const FFT_SIZE = 256;
-const SAMPLE_RATE = 250;
 const MAX_DISPLAY_HZ = 60;
-const FFT_EVERY_FRAMES = 12; // recompute every ~200 ms
+const FFT_EVERY_FRAMES = 12;
 const SMOOTHING = 0.3;
 const UI_THROTTLE_MS = 350;
 
-// ── drawing helpers ─────────────────────────────────────────────────────
+// ── drawing helper ──────────────────────────────────────────────────────
 
-function drawSpectrum(ctx, w, h, psd, freqs, maxHz, logScale, selectedBand) {
+function drawSpectrum(
+  ctx: CanvasRenderingContext2D,
+  w: number, h: number,
+  psd: Float64Array, freqs: Float64Array,
+  maxHz: number, logScale: boolean, selectedBand: string | null
+) {
   const plotL = 48;
   const plotR = w - 16;
   const plotT = 24;
   const plotB = h - 24;
   const plotW = plotR - plotL;
   const plotH = plotB - plotT;
-  const df = freqs[1]; // Hz per bin
+  const df = freqs[1];
   const maxBin = Math.min(Math.ceil(maxHz / df), psd.length - 1);
 
-  // peak for normalisation
   let peak = 1e-30;
   for (let k = 1; k <= maxBin; k++) if (psd[k] > peak) peak = psd[k];
 
-  // ── band backgrounds ─────────────────────────────────────────────
+  // band backgrounds
   for (const band of FREQUENCY_BANDS) {
     if (band.low >= maxHz) continue;
     const x1 = plotL + (Math.max(band.low, 0) / maxHz) * plotW;
@@ -33,14 +37,13 @@ function drawSpectrum(ctx, w, h, psd, freqs, maxHz, logScale, selectedBand) {
     const highlight = selectedBand === band.name;
     ctx.fillStyle = band.color + (highlight ? "28" : "12");
     ctx.fillRect(x1, plotT, x2 - x1, plotH);
-    // band label at top
     ctx.fillStyle = band.color + (highlight ? "cc" : "66");
     ctx.font = "9px monospace";
     ctx.textAlign = "center";
     ctx.fillText(band.name, (x1 + x2) / 2, plotT + 10);
   }
 
-  // ── grid ──────────────────────────────────────────────────────────
+  // grid
   ctx.strokeStyle = "rgba(48,54,61,0.45)";
   ctx.lineWidth = 0.5;
   for (let i = 1; i < 5; i++) {
@@ -59,14 +62,14 @@ function drawSpectrum(ctx, w, h, psd, freqs, maxHz, logScale, selectedBand) {
     ctx.stroke();
   }
 
-  // ── PSD curve ─────────────────────────────────────────────────────
+  // PSD curve
   ctx.beginPath();
   for (let k = 1; k <= maxBin; k++) {
     const x = plotL + (freqs[k] / maxHz) * plotW;
-    let v;
+    let v: number;
     if (logScale) {
-      const dB = 10 * Math.log10((psd[k] || 1e-30) / peak); // 0 … -∞
-      v = Math.max(0, (dB + 60) / 60); // 0 … 1 (clamp at -60 dB)
+      const dB = 10 * Math.log10((psd[k] || 1e-30) / peak);
+      v = Math.max(0, (dB + 60) / 60);
     } else {
       v = psd[k] / peak;
     }
@@ -77,14 +80,13 @@ function drawSpectrum(ctx, w, h, psd, freqs, maxHz, logScale, selectedBand) {
   ctx.lineWidth = 1.5;
   ctx.stroke();
 
-  // fill under
   ctx.lineTo(plotL + (freqs[maxBin] / maxHz) * plotW, plotB);
   ctx.lineTo(plotL + (freqs[1] / maxHz) * plotW, plotB);
   ctx.closePath();
   ctx.fillStyle = "rgba(88,166,255,0.07)";
   ctx.fill();
 
-  // ── axis labels ───────────────────────────────────────────────────
+  // axis labels
   ctx.fillStyle = "#8b949e";
   ctx.font = "10px monospace";
   ctx.textAlign = "center";
@@ -93,7 +95,6 @@ function drawSpectrum(ctx, w, h, psd, freqs, maxHz, logScale, selectedBand) {
   }
   ctx.fillText("Hz", plotR + 2, plotB + 14);
 
-  // Y label
   ctx.save();
   ctx.translate(11, plotT + plotH / 2);
   ctx.rotate(-Math.PI / 2);
@@ -101,7 +102,6 @@ function drawSpectrum(ctx, w, h, psd, freqs, maxHz, logScale, selectedBand) {
   ctx.fillText(logScale ? "dB" : "µV²/Hz", 0, 0);
   ctx.restore();
 
-  // Scale markings
   ctx.textAlign = "right";
   ctx.font = "9px monospace";
   if (logScale) {
@@ -114,28 +114,31 @@ function drawSpectrum(ctx, w, h, psd, freqs, maxHz, logScale, selectedBand) {
 
 // ── component ───────────────────────────────────────────────────────────
 
-const SpectralPanel = memo(function SpectralPanel({ eegData }) {
-  const canvasRef = useRef(null);
+interface SpectralPanelProps {
+  eegData: EEGData;
+}
+
+const SpectralPanel = memo(function SpectralPanel({ eegData }: SpectralPanelProps) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
   const rafRef = useRef(0);
   const frameRef = useRef(0);
-  const smoothRef = useRef(null);
+  const smoothRef = useRef<Float64Array | null>(null);
   const uiTsRef = useRef(0);
-  const avgBufRef = useRef(null);
-  const bandPowersRef = useRef({});
+  const avgBufRef = useRef<Float64Array | null>(null);
+  const bandPowersRef = useRef<BandPowers>({});
   const dprRef = useRef(window.devicePixelRatio || 1);
-  const canvasSizeRef = useRef({ w: 0, h: 0, pw: 0, ph: 0 });
+  const canvasSizeRef = useRef<CanvasSize>({ w: 0, h: 0, pw: 0, ph: 0, dpr: 1 });
   const needsResizeRef = useRef(true);
 
-  const [channel, setChannel] = useState(0);
+  const [channel, setChannel] = useState(-1);
   const [logScale, setLogScale] = useState(true);
   const [paused, setPaused] = useState(false);
-  const [selectedBand, setSelectedBand] = useState(null);
-  const [bandPowers, setBandPowers] = useState({});
+  const [selectedBand, setSelectedBand] = useState<string | null>(null);
+  const [bandPowers, setBandPowers] = useState<BandPowers>({});
   const [dominant, setDominant] = useState({ band: "", freq: 0 });
 
   const fft = useMemo(() => new FftEngine(FFT_SIZE, SAMPLE_RATE), []);
 
-  // Initialize average buffer once
   if (!avgBufRef.current) {
     avgBufRef.current = new Float64Array(FFT_SIZE);
   }
@@ -143,16 +146,15 @@ const SpectralPanel = memo(function SpectralPanel({ eegData }) {
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const ctx = canvas.getContext("2d", { alpha: false });
+    const ctx = canvas.getContext("2d", { alpha: false })!;
 
-    // ResizeObserver — avoid getBoundingClientRect every frame
     const observer = new ResizeObserver((entries) => {
       const entry = entries[0];
       if (!entry) return;
       const dpr = window.devicePixelRatio || 1;
       dprRef.current = dpr;
       const { width: w, height: h } = entry.contentRect;
-      canvasSizeRef.current = { w, h, pw: Math.round(w * dpr), ph: Math.round(h * dpr) };
+      canvasSizeRef.current = { w, h, pw: Math.round(w * dpr), ph: Math.round(h * dpr), dpr };
       needsResizeRef.current = true;
     });
     observer.observe(canvas);
@@ -165,7 +167,6 @@ const SpectralPanel = memo(function SpectralPanel({ eegData }) {
         return;
       }
 
-      // Resize only when needed
       if (needsResizeRef.current) {
         needsResizeRef.current = false;
         canvas.width = pw;
@@ -173,13 +174,11 @@ const SpectralPanel = memo(function SpectralPanel({ eegData }) {
       }
       ctx.setTransform(dprRef.current, 0, 0, dprRef.current, 0, 0);
 
-      // background
       ctx.fillStyle = "#0d1117";
       ctx.fillRect(0, 0, w, h);
 
       frameRef.current++;
 
-      // compute FFT
       if (!paused && frameRef.current % FFT_EVERY_FRAMES === 0) {
         const bufs = eegData.buffers.current;
         const wi = eegData.writeIndex.current;
@@ -188,8 +187,7 @@ const SpectralPanel = memo(function SpectralPanel({ eegData }) {
         if (bufs && count >= FFT_SIZE) {
           let result;
           if (channel === -1) {
-            // average all channels — reuse avgBufRef
-            const tmp = avgBufRef.current;
+            const tmp = avgBufRef.current!;
             const bufLen = eegData.bufferSize;
             const start = (wi - FFT_SIZE + bufLen) % bufLen;
             for (let i = 0; i < FFT_SIZE; i++) {
@@ -204,11 +202,7 @@ const SpectralPanel = memo(function SpectralPanel({ eegData }) {
           }
 
           if (result) {
-            // exponential smoothing
-            if (
-              !smoothRef.current ||
-              smoothRef.current.length !== result.psd.length
-            ) {
+            if (!smoothRef.current || smoothRef.current.length !== result.psd.length) {
               smoothRef.current = new Float64Array(result.psd);
             } else {
               const s = smoothRef.current;
@@ -217,16 +211,12 @@ const SpectralPanel = memo(function SpectralPanel({ eegData }) {
                 s[k] = s[k] * (1 - SMOOTHING) + c[k] * SMOOTHING;
             }
 
-            // throttled React updates — reuse object references
             const now = performance.now();
             if (now - uiTsRef.current > UI_THROTTLE_MS) {
               uiTsRef.current = now;
-              
-              // Update bandPowers reference only if values changed significantly
               bandPowersRef.current = result.bandPowers;
               setBandPowers(result.bandPowers);
-              
-              // find dominant band
+
               let best = "";
               let bestPow = 0;
               for (const b of FREQUENCY_BANDS) {
@@ -235,7 +225,6 @@ const SpectralPanel = memo(function SpectralPanel({ eegData }) {
                   best = b.name;
                 }
               }
-              // Reuse object if values unchanged
               setDominant((prev) =>
                 prev.band === best && prev.freq === result.dominantFrequency
                   ? prev
@@ -246,7 +235,6 @@ const SpectralPanel = memo(function SpectralPanel({ eegData }) {
         }
       }
 
-      // draw
       const psd = smoothRef.current;
       if (!psd || psd.length === 0) {
         ctx.fillStyle = "#4b5563";
@@ -254,16 +242,7 @@ const SpectralPanel = memo(function SpectralPanel({ eegData }) {
         ctx.textAlign = "center";
         ctx.fillText("Collecting samples…", w / 2, h / 2);
       } else {
-        drawSpectrum(
-          ctx,
-          w,
-          h,
-          psd,
-          fft._frequencies,
-          MAX_DISPLAY_HZ,
-          logScale,
-          selectedBand,
-        );
+        drawSpectrum(ctx, w, h, psd, fft._frequencies, MAX_DISPLAY_HZ, logScale, selectedBand);
       }
 
       rafRef.current = requestAnimationFrame(tick);
@@ -276,7 +255,6 @@ const SpectralPanel = memo(function SpectralPanel({ eegData }) {
     };
   }, [eegData, channel, logScale, paused, selectedBand, fft]);
 
-  // ── derived values ────────────────────────────────────────────────
   const maxBandPow = Math.max(
     ...FREQUENCY_BANDS.map((b) => bandPowers[b.name] || 0),
     1e-6,
@@ -287,7 +265,6 @@ const SpectralPanel = memo(function SpectralPanel({ eegData }) {
 
   return (
     <div className="spectral-panel">
-      {/* toolbar */}
       <div className="spectral-toolbar">
         <span className="spectral-title">
           Spectral Analysis{" "}
@@ -328,7 +305,6 @@ const SpectralPanel = memo(function SpectralPanel({ eegData }) {
         </div>
       </div>
 
-      {/* canvas */}
       <div className="spectral-canvas-wrap">
         <canvas
           ref={canvasRef}
@@ -337,7 +313,6 @@ const SpectralPanel = memo(function SpectralPanel({ eegData }) {
         {paused && <div className="spectral-paused">PAUSED</div>}
       </div>
 
-      {/* band power bars */}
       <div className="spectral-bands">
         {FREQUENCY_BANDS.map((band) => {
           const power = bandPowers[band.name] || 0;
@@ -347,9 +322,7 @@ const SpectralPanel = memo(function SpectralPanel({ eegData }) {
             <div
               key={band.name}
               className={`sp-band${active ? " selected" : ""}`}
-              onClick={() =>
-                setSelectedBand(active ? null : band.name)
-              }
+              onClick={() => setSelectedBand(active ? null : band.name)}
             >
               <div className="sp-band-head">
                 <span className="sp-band-dot" style={{ background: band.color }} />
@@ -374,7 +347,6 @@ const SpectralPanel = memo(function SpectralPanel({ eegData }) {
         })}
       </div>
 
-      {/* footer stats */}
       <div className="spectral-footer">
         <span>
           Dominant:{" "}

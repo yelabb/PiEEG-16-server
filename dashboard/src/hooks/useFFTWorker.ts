@@ -1,39 +1,34 @@
 import { useEffect, useRef } from "react";
+import type { FftEngine } from "../lib/fftEngine";
+import type { FFTResult, WorkerOutMessage } from "../types";
 
 const FFT_SIZE = 256;
-const SAMPLE_RATE = 250;
 
-/**
- * Hook for offloading FFT computation to a WebWorker.
- * Keeps intensive FFT calculation off the main thread.
- * Falls back to main-thread computation if workers unavailable.
- */
-export function useFFTWorker(fallbackFFTEngine) {
-  const workerRef = useRef(null);
-  const pendingRef = useRef(new Map());
+export function useFFTWorker(fallbackFFTEngine: FftEngine) {
+  const workerRef = useRef<Worker | null>(null);
+  const pendingRef = useRef<Map<number, (result: FFTResult | null) => void>>(new Map());
   const requestIdRef = useRef(0);
   const readyRef = useRef(false);
 
   useEffect(() => {
-    // Check if WebWorkers are available
     if (typeof Worker === "undefined") {
-      return; // Fallback to main thread
+      return;
     }
 
     try {
       const worker = new Worker(
-        new URL("../workers/fftWorker.js", import.meta.url),
+        new URL("../workers/fftWorker.ts", import.meta.url),
         { type: "module" }
       );
 
-      worker.onmessage = (event) => {
-        const { type, result, id } = event.data;
-        if (type === "ready") {
+      worker.onmessage = (event: MessageEvent<WorkerOutMessage>) => {
+        const msg = event.data;
+        if (msg.type === "ready") {
           readyRef.current = true;
-        } else if (type === "analyseResult" && pendingRef.current.has(id)) {
-          const callback = pendingRef.current.get(id);
-          callback(result);
-          pendingRef.current.delete(id);
+        } else if (msg.type === "analyseResult" && pendingRef.current.has(msg.id)) {
+          const callback = pendingRef.current.get(msg.id)!;
+          callback(msg.result);
+          pendingRef.current.delete(msg.id);
         }
       };
 
@@ -43,6 +38,7 @@ export function useFFTWorker(fallbackFFTEngine) {
       };
 
       workerRef.current = worker;
+      worker.postMessage({ type: "init" });
     } catch (e) {
       console.warn("Could not create FFT worker:", e);
     }
@@ -54,9 +50,8 @@ export function useFFTWorker(fallbackFFTEngine) {
     };
   }, []);
 
-  const analyseAsync = (samples, callback) => {
+  const analyseAsync = (samples: Float32Array | Float64Array | number[], callback: (result: FFTResult | null) => void) => {
     if (!readyRef.current || !workerRef.current) {
-      // Fallback to main thread
       const result = fallbackFFTEngine.analyse(samples, 0);
       callback(result);
       return;
@@ -70,9 +65,8 @@ export function useFFTWorker(fallbackFFTEngine) {
     });
   };
 
-  const analyseRingAsync = (ringBuf, writeIndex, samplesInBuf, callback) => {
+  const analyseRingAsync = (ringBuf: Float32Array, writeIndex: number, samplesInBuf: number, callback: (result: FFTResult | null) => void) => {
     if (!readyRef.current || !workerRef.current) {
-      // Fallback to main thread
       const result = fallbackFFTEngine.analyseRing(ringBuf, writeIndex, samplesInBuf);
       callback(result);
       return;

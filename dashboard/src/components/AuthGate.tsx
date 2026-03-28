@@ -1,7 +1,13 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, type ReactNode, type FormEvent, type ChangeEvent } from "react";
 
-export default function AuthGate({ children }) {
-  const [state, setState] = useState("checking"); // checking | login | ok
+interface AuthGateProps {
+  children: ReactNode;
+}
+
+type AuthState = "checking" | "login" | "ok";
+
+export default function AuthGate({ children }: AuthGateProps) {
+  const [state, setState] = useState<AuthState>("checking");
   const [code, setCode] = useState("");
   const [error, setError] = useState("");
 
@@ -23,7 +29,7 @@ export default function AuthGate({ children }) {
     checkAuth();
   }, []);
 
-  async function handleSubmit(e) {
+  async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError("");
     try {
@@ -46,7 +52,7 @@ export default function AuthGate({ children }) {
   }
 
   if (state === "checking") return null;
-  if (state === "ok") return children;
+  if (state === "ok") return <>{children}</>;
 
   return (
     <div className="auth-overlay">
@@ -68,7 +74,7 @@ export default function AuthGate({ children }) {
             required
             placeholder="------"
             value={code}
-            onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
+            onChange={(e: ChangeEvent<HTMLInputElement>) => setCode(e.target.value.replace(/\D/g, ""))}
           />
           <br />
           <button className="auth-btn" type="submit">

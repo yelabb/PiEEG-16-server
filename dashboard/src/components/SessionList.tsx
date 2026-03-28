@@ -1,7 +1,13 @@
 import { useEffect, useState } from "react";
+import type { Recording } from "../types";
 
-export default function SessionList({ onSelect, onBack }) {
-  const [recordings, setRecordings] = useState([]);
+interface SessionListProps {
+  onSelect: (filename: string) => void;
+  onBack: () => void;
+}
+
+export default function SessionList({ onSelect, onBack }: SessionListProps) {
+  const [recordings, setRecordings] = useState<Recording[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -20,20 +26,15 @@ export default function SessionList({ onSelect, onBack }) {
     }
   }
 
-  function formatDate(mtime) {
+  function formatDate(mtime: number): string {
     const date = new Date(mtime * 1000);
     return date.toLocaleString();
   }
 
-  function formatSize(bytes) {
+  function formatSize(bytes: number): string {
     if (bytes < 1024) return `${bytes} B`;
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
     return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-  }
-
-  function getRecordingDuration(filename) {
-    // Parse duration from filename (not directly available, will be calculated in viewer)
-    return "—";
   }
 
   return (

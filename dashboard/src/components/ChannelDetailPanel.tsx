@@ -1,24 +1,22 @@
-import { useRef, useEffect, useState, memo, useMemo, useCallback } from "react";
+import { useRef, useEffect, useState, memo, useMemo } from "react";
 import { FftEngine, FREQUENCY_BANDS } from "../lib/fftEngine";
+import type { EEGData, BandPowers, CanvasSize, ChannelStats } from "../types";
+import { NUM_CHANNELS, TRACE_COLORS, SAMPLE_RATE } from "../types";
 
-const SAMPLE_RATE = 250;
 const FFT_SIZE = 256;
-const FFT_EVERY_FRAMES = 8; // ~130ms at 60fps
+const FFT_EVERY_FRAMES = 8;
 const SMOOTHING = 0.25;
-const STATS_EVERY_FRAMES = 15; // ~250ms
+const STATS_EVERY_FRAMES = 15;
 const MAX_DISPLAY_HZ = 60;
 const HISTOGRAM_BINS = 40;
 
-const TRACE_COLORS = [
-  "#58a6ff", "#3fb950", "#d29922", "#f85149",
-  "#bc8cff", "#39d2c0", "#f0883e", "#db61a2",
-  "#58a6ff", "#3fb950", "#d29922", "#f85149",
-  "#bc8cff", "#39d2c0", "#f0883e", "#db61a2",
-];
-
 // ── Drawing helpers ───────────────────────────────────────────────────
 
-function drawDetailTrace(ctx, w, h, buf, count, writeIndex, bufferSize, yRange, color) {
+function drawDetailTrace(
+  ctx: CanvasRenderingContext2D, w: number, h: number,
+  buf: Float32Array, count: number, writeIndex: number, bufferSize: number,
+  yRange: number, color: string
+): Partial<ChannelStats> {
   ctx.clearRect(0, 0, w, h);
 
   const pad = { l: 52, r: 12, t: 8, b: 28 };
@@ -26,11 +24,9 @@ function drawDetailTrace(ctx, w, h, buf, count, writeIndex, bufferSize, yRange, 
   const plotH = h - pad.t - pad.b;
   const mid = pad.t + plotH / 2;
 
-  // Background
   ctx.fillStyle = "#0d1117";
   ctx.fillRect(0, 0, w, h);
 
-  // Grid lines
   ctx.strokeStyle = "rgba(48,54,61,0.5)";
   ctx.lineWidth = 0.5;
   const ySteps = [-yRange, -yRange / 2, 0, yRange / 2, yRange];
@@ -46,7 +42,6 @@ function drawDetailTrace(ctx, w, h, buf, count, writeIndex, bufferSize, yRange, 
     ctx.fillText(`${uv > 0 ? "+" : ""}${uv}`, pad.l - 6, y + 3);
   }
 
-  // Time axis
   ctx.textAlign = "center";
   ctx.fillStyle = "#8b949e";
   const totalSec = bufferSize / SAMPLE_RATE;
@@ -60,7 +55,6 @@ function drawDetailTrace(ctx, w, h, buf, count, writeIndex, bufferSize, yRange, 
     ctx.fillText(`${t}s`, x, h - 6);
   }
 
-  // Zero line highlight
   ctx.beginPath();
   ctx.moveTo(pad.l, mid);
   ctx.lineTo(w - pad.r, mid);
@@ -74,7 +68,6 @@ function drawDetailTrace(ctx, w, h, buf, count, writeIndex, bufferSize, yRange, 
   const xScale = plotW / (bufferSize - 1);
   const yScaleFactor = halfH / yRange;
 
-  // Fill under trace
   ctx.beginPath();
   let firstX = pad.l;
   for (let i = 0; i < count; i++) {
@@ -90,7 +83,6 @@ function drawDetailTrace(ctx, w, h, buf, count, writeIndex, bufferSize, yRange, 
   ctx.fillStyle = color + "0a";
   ctx.fill();
 
-  // Trace line
   ctx.strokeStyle = color;
   ctx.lineWidth = 1.5;
   ctx.lineJoin = "round";
@@ -105,7 +97,6 @@ function drawDetailTrace(ctx, w, h, buf, count, writeIndex, bufferSize, yRange, 
   }
   ctx.stroke();
 
-  // Cursor line at latest sample
   const latestX = pad.l + (count - 1) * xScale;
   ctx.beginPath();
   ctx.moveTo(latestX, pad.t);
@@ -116,7 +107,6 @@ function drawDetailTrace(ctx, w, h, buf, count, writeIndex, bufferSize, yRange, 
   ctx.stroke();
   ctx.setLineDash([]);
 
-  // Latest value readout
   const latestIdx = (writeIndex - 1 + bufferSize) % bufferSize;
   const latestVal = buf[latestIdx];
   ctx.fillStyle = color;
@@ -124,7 +114,6 @@ function drawDetailTrace(ctx, w, h, buf, count, writeIndex, bufferSize, yRange, 
   ctx.textAlign = "left";
   ctx.fillText(`${latestVal.toFixed(1)} µV`, latestX + 6, pad.t + 14);
 
-  // Y-axis label
   ctx.save();
   ctx.translate(12, mid);
   ctx.rotate(-Math.PI / 2);
@@ -134,10 +123,9 @@ function drawDetailTrace(ctx, w, h, buf, count, writeIndex, bufferSize, yRange, 
   ctx.fillText("µV", 0, 0);
   ctx.restore();
 
-  // Compute quick stats for return
   let sum = 0, sumSq = 0, min = Infinity, max = -Infinity, zeroCross = 0;
-  let prev = null;
-  const statCount = Math.min(count, SAMPLE_RATE * 2); // last 2 seconds
+  let prev: number | null = null;
+  const statCount = Math.min(count, SAMPLE_RATE * 2);
   for (let i = count - statCount; i < count; i++) {
     const idx = (writeIndex - count + i + bufferSize) % bufferSize;
     const v = buf[idx];
@@ -155,7 +143,11 @@ function drawDetailTrace(ctx, w, h, buf, count, writeIndex, bufferSize, yRange, 
   return { mean, rms, pp, min, max, zeroCross, latestVal, statCount };
 }
 
-function drawSpectrum(ctx, w, h, psd, freqs, maxHz, bandPowers, selectedBand) {
+function drawSpectrum(
+  ctx: CanvasRenderingContext2D, w: number, h: number,
+  psd: Float64Array, freqs: Float64Array, maxHz: number,
+  bandPowers: BandPowers, selectedBand: string | null
+) {
   ctx.fillStyle = "#0d1117";
   ctx.fillRect(0, 0, w, h);
 
@@ -168,7 +160,6 @@ function drawSpectrum(ctx, w, h, psd, freqs, maxHz, bandPowers, selectedBand) {
   let peak = 1e-30;
   for (let k = 1; k <= maxBin; k++) if (psd[k] > peak) peak = psd[k];
 
-  // Band backgrounds
   for (const band of FREQUENCY_BANDS) {
     if (band.low >= maxHz) continue;
     const x1 = pad.l + (Math.max(band.low, 0) / maxHz) * plotW;
@@ -182,7 +173,6 @@ function drawSpectrum(ctx, w, h, psd, freqs, maxHz, bandPowers, selectedBand) {
     ctx.fillText(band.label.split(" ")[0], (x1 + x2) / 2, pad.t + 10);
   }
 
-  // Grid
   ctx.strokeStyle = "rgba(48,54,61,0.45)";
   ctx.lineWidth = 0.5;
   for (let i = 1; i < 4; i++) {
@@ -193,7 +183,6 @@ function drawSpectrum(ctx, w, h, psd, freqs, maxHz, bandPowers, selectedBand) {
     ctx.stroke();
   }
 
-  // PSD curve
   ctx.beginPath();
   for (let k = 1; k <= maxBin; k++) {
     const x = pad.l + (freqs[k] / maxHz) * plotW;
@@ -206,14 +195,12 @@ function drawSpectrum(ctx, w, h, psd, freqs, maxHz, bandPowers, selectedBand) {
   ctx.lineWidth = 1.5;
   ctx.stroke();
 
-  // Fill under
   ctx.lineTo(pad.l + (freqs[maxBin] / maxHz) * plotW, pad.t + plotH);
   ctx.lineTo(pad.l + (freqs[1] / maxHz) * plotW, pad.t + plotH);
   ctx.closePath();
   ctx.fillStyle = "rgba(88,166,255,0.08)";
   ctx.fill();
 
-  // X axis labels
   ctx.fillStyle = "#8b949e";
   ctx.font = "9px monospace";
   ctx.textAlign = "center";
@@ -222,7 +209,6 @@ function drawSpectrum(ctx, w, h, psd, freqs, maxHz, bandPowers, selectedBand) {
   }
   ctx.fillText("Hz", pad.l + plotW + 2, h - 6);
 
-  // Y label
   ctx.save();
   ctx.translate(10, pad.t + plotH / 2);
   ctx.rotate(-Math.PI / 2);
@@ -232,7 +218,6 @@ function drawSpectrum(ctx, w, h, psd, freqs, maxHz, bandPowers, selectedBand) {
   ctx.fillText("dB", 0, 0);
   ctx.restore();
 
-  // Y scale marks
   ctx.textAlign = "right";
   ctx.font = "8px monospace";
   ctx.fillStyle = "#6e7681";
@@ -242,7 +227,7 @@ function drawSpectrum(ctx, w, h, psd, freqs, maxHz, bandPowers, selectedBand) {
   }
 }
 
-function drawBandBars(ctx, w, h, bandPowers) {
+function drawBandBars(ctx: CanvasRenderingContext2D, w: number, h: number, bandPowers: BandPowers) {
   ctx.fillStyle = "#0d1117";
   ctx.fillRect(0, 0, w, h);
 
@@ -258,20 +243,17 @@ function drawBandBars(ctx, w, h, bandPowers) {
     const y = pad.t + i * (barH + 4);
     const barW = (w - pad.l - pad.r - 82);
 
-    // Label
     ctx.fillStyle = band.color;
     ctx.font = "bold 9px monospace";
     ctx.textAlign = "left";
     ctx.fillText(band.label.charAt(0), pad.l, y + barH - 3);
 
-    // Track
     const trackX = pad.l + 14;
     ctx.fillStyle = "rgba(48,54,61,0.5)";
     ctx.beginPath();
     ctx.roundRect(trackX, y, barW, barH, 3);
     ctx.fill();
 
-    // Fill
     if (pct > 0) {
       ctx.fillStyle = band.color + "cc";
       ctx.beginPath();
@@ -279,7 +261,6 @@ function drawBandBars(ctx, w, h, bandPowers) {
       ctx.fill();
     }
 
-    // Percentage
     ctx.fillStyle = "#e6edf3";
     ctx.font = "9px monospace";
     ctx.textAlign = "right";
@@ -287,7 +268,10 @@ function drawBandBars(ctx, w, h, bandPowers) {
   });
 }
 
-function drawHistogram(ctx, w, h, buf, count, writeIndex, bufferSize, yRange) {
+function drawHistogram(
+  ctx: CanvasRenderingContext2D, w: number, h: number,
+  buf: Float32Array, count: number, writeIndex: number, bufferSize: number, yRange: number
+) {
   ctx.fillStyle = "#0d1117";
   ctx.fillRect(0, 0, w, h);
 
@@ -297,7 +281,6 @@ function drawHistogram(ctx, w, h, buf, count, writeIndex, bufferSize, yRange) {
   const plotW = w - pad.l - pad.r;
   const plotH = h - pad.t - pad.b;
 
-  // Build histogram
   const bins = new Float32Array(HISTOGRAM_BINS);
   const binWidth = (2 * yRange) / HISTOGRAM_BINS;
   const statCount = Math.min(count, SAMPLE_RATE * 2);
@@ -318,7 +301,6 @@ function drawHistogram(ctx, w, h, buf, count, writeIndex, bufferSize, yRange) {
     const x = pad.l + i * barW;
     const y = pad.t + plotH - barH;
 
-    // Color based on position — center is green, edges are yellow/red
     const dist = Math.abs(i - HISTOGRAM_BINS / 2) / (HISTOGRAM_BINS / 2);
     const r = Math.floor(88 + dist * 160);
     const g = Math.floor(166 - dist * 120);
@@ -327,7 +309,6 @@ function drawHistogram(ctx, w, h, buf, count, writeIndex, bufferSize, yRange) {
     ctx.fillRect(x + 0.5, y, barW - 1, barH);
   }
 
-  // Axis labels
   ctx.fillStyle = "#6e7681";
   ctx.font = "8px monospace";
   ctx.textAlign = "center";
@@ -335,7 +316,6 @@ function drawHistogram(ctx, w, h, buf, count, writeIndex, bufferSize, yRange) {
   ctx.fillText("0", pad.l + plotW / 2, h - 4);
   ctx.fillText(`+${yRange}`, w - pad.r - barW, h - 4);
 
-  // Gaussian overlay hint
   ctx.strokeStyle = "rgba(88,166,255,0.3)";
   ctx.lineWidth = 1;
   ctx.beginPath();
@@ -351,47 +331,54 @@ function drawHistogram(ctx, w, h, buf, count, writeIndex, bufferSize, yRange) {
 
 // ── Component ────────────────────────────────────────────────────────────
 
-const ChannelDetailPanel = memo(function ChannelDetailPanel({ chIdx, eegData, yRange, onClose }) {
-  const traceCanvasRef = useRef(null);
-  const spectrumCanvasRef = useRef(null);
-  const bandCanvasRef = useRef(null);
-  const histCanvasRef = useRef(null);
+interface ChannelDetailPanelProps {
+  chIdx: number;
+  eegData: EEGData;
+  yRange: number;
+  onClose: () => void;
+}
+
+const ChannelDetailPanel = memo(function ChannelDetailPanel({ chIdx, eegData, yRange, onClose }: ChannelDetailPanelProps) {
+  const traceCanvasRef = useRef<HTMLCanvasElement>(null);
+  const spectrumCanvasRef = useRef<HTMLCanvasElement>(null);
+  const bandCanvasRef = useRef<HTMLCanvasElement>(null);
+  const histCanvasRef = useRef<HTMLCanvasElement>(null);
   const rafRef = useRef(0);
   const frameRef = useRef(0);
-  const smoothRef = useRef(null);
-  const [stats, setStats] = useState(null);
-  const [bandPowers, setBandPowers] = useState({});
+  const smoothRef = useRef<Float64Array | null>(null);
+  const [stats, setStats] = useState<Partial<ChannelStats> | null>(null);
+  const [bandPowers, setBandPowers] = useState<BandPowers>({});
   const [dominant, setDominant] = useState({ band: "", freq: 0 });
-  const [selectedBand, setSelectedBand] = useState(null);
+  const [selectedBand, setSelectedBand] = useState<string | null>(null);
 
   const fft = useMemo(() => new FftEngine(FFT_SIZE, SAMPLE_RATE), []);
   const color = TRACE_COLORS[chIdx];
 
-  // Size tracking for all canvases
-  const sizesRef = useRef({
-    trace: { w: 0, h: 0 },
-    spectrum: { w: 0, h: 0 },
-    band: { w: 0, h: 0 },
-    hist: { w: 0, h: 0 },
+  type CanvasKey = "trace" | "spectrum" | "band" | "hist";
+  const sizesRef = useRef<Record<CanvasKey, CanvasSize>>({
+    trace: { w: 0, h: 0, pw: 0, ph: 0, dpr: 1 },
+    spectrum: { w: 0, h: 0, pw: 0, ph: 0, dpr: 1 },
+    band: { w: 0, h: 0, pw: 0, ph: 0, dpr: 1 },
+    hist: { w: 0, h: 0, pw: 0, ph: 0, dpr: 1 },
   });
-  const dirtyRef = useRef({
+  const dirtyRef = useRef<Record<CanvasKey, boolean>>({
     trace: true, spectrum: true, band: true, hist: true,
   });
 
   useEffect(() => {
-    const canvases = {
+    const canvases: Record<CanvasKey, HTMLCanvasElement | null> = {
       trace: traceCanvasRef.current,
       spectrum: spectrumCanvasRef.current,
       band: bandCanvasRef.current,
       hist: histCanvasRef.current,
     };
 
-    const ctxs = {};
-    const observers = [];
+    const ctxs: Partial<Record<CanvasKey, CanvasRenderingContext2D>> = {};
+    const observers: ResizeObserver[] = [];
 
-    for (const [key, canvas] of Object.entries(canvases)) {
+    for (const [key, canvas] of Object.entries(canvases) as [CanvasKey, HTMLCanvasElement | null][]) {
       if (!canvas) continue;
-      ctxs[key] = canvas.getContext("2d", { alpha: false });
+      ctxs[key] = canvas.getContext("2d", { alpha: false })!;
       const observer = new ResizeObserver((entries) => {
         const entry = entries[0];
         if (!entry) return;
@@ -406,21 +393,20 @@ const ChannelDetailPanel = memo(function ChannelDetailPanel({ chIdx, eegData, yR
       observers.push(observer);
     }
 
-    let latestStats = null;
-    let latestBandPowers = {};
+    let latestStats: Partial<ChannelStats> | null = null;
+    let latestBandPowers: BandPowers = {};
     let latestDominant = { band: "", freq: 0 };
 
     const tick = () => {
       frameRef.current++;
 
-      // Resize canvases as needed
-      for (const [key, canvas] of Object.entries(canvases)) {
+      for (const [key, canvas] of Object.entries(canvases) as [CanvasKey, HTMLCanvasElement | null][]) {
         if (!canvas || !dirtyRef.current[key]) continue;
         const { pw, ph, dpr } = sizesRef.current[key];
         if (pw === 0 || ph === 0) continue;
         canvas.width = pw;
         canvas.height = ph;
-        ctxs[key].setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctxs[key]!.setTransform(dpr, 0, 0, dpr, 0, 0);
         dirtyRef.current[key] = false;
       }
 
@@ -429,21 +415,18 @@ const ChannelDetailPanel = memo(function ChannelDetailPanel({ chIdx, eegData, yR
       const count = eegData.samplesInBuffer.current;
       const bufferSize = eegData.bufferSize;
 
-      // ── Trace (every frame) ────────────────────────────────────
       if (ctxs.trace) {
         const { w, h } = sizesRef.current.trace;
         if (w > 0 && h > 0) {
           const result = drawDetailTrace(
             ctxs.trace, w, h, bufs[chIdx], count, wi, bufferSize, yRange, color
           );
-          // Stats update (throttled)
           if (result.rms !== undefined && frameRef.current % STATS_EVERY_FRAMES === 0) {
             latestStats = result;
           }
         }
       }
 
-      // ── FFT (throttled) ────────────────────────────────────────
       if (frameRef.current % FFT_EVERY_FRAMES === 0 && count >= FFT_SIZE) {
         const fftResult = fft.analyseRing(bufs[chIdx], wi, count);
         if (fftResult) {
@@ -468,7 +451,6 @@ const ChannelDetailPanel = memo(function ChannelDetailPanel({ chIdx, eegData, yR
         }
       }
 
-      // ── Spectrum canvas ────────────────────────────────────────
       if (ctxs.spectrum && smoothRef.current) {
         const { w, h } = sizesRef.current.spectrum;
         if (w > 0 && h > 0) {
@@ -476,7 +458,6 @@ const ChannelDetailPanel = memo(function ChannelDetailPanel({ chIdx, eegData, yR
         }
       }
 
-      // ── Band bars canvas ───────────────────────────────────────
       if (ctxs.band && frameRef.current % FFT_EVERY_FRAMES === 0) {
         const { w, h } = sizesRef.current.band;
         if (w > 0 && h > 0) {
@@ -484,7 +465,6 @@ const ChannelDetailPanel = memo(function ChannelDetailPanel({ chIdx, eegData, yR
         }
       }
 
-      // ── Histogram canvas ───────────────────────────────────────
       if (ctxs.hist && frameRef.current % STATS_EVERY_FRAMES === 0) {
         const { w, h } = sizesRef.current.hist;
         if (w > 0 && h > 0) {
@@ -492,7 +472,6 @@ const ChannelDetailPanel = memo(function ChannelDetailPanel({ chIdx, eegData, yR
         }
       }
 
-      // ── React state updates (heavily throttled) ────────────────
       if (frameRef.current % STATS_EVERY_FRAMES === 0) {
         if (latestStats) setStats(latestStats);
         if (latestBandPowers) setBandPowers(latestBandPowers);
@@ -540,7 +519,7 @@ const ChannelDetailPanel = memo(function ChannelDetailPanel({ chIdx, eegData, yR
             )}
             {stats && (
               <span className="detail-rms-badge">
-                RMS {stats.rms.toFixed(1)} µV
+                RMS {stats.rms?.toFixed(1)} µV
               </span>
             )}
           </div>
@@ -593,7 +572,7 @@ const ChannelDetailPanel = memo(function ChannelDetailPanel({ chIdx, eegData, yR
                   <button
                     key={b.name}
                     className={`detail-band-btn${selectedBand === b.name ? " active" : ""}`}
-                    style={{ "--band-color": b.color }}
+                    style={{ "--band-color": b.color } as React.CSSProperties}
                     onClick={() => setSelectedBand(prev => prev === b.name ? null : b.name)}
                   >
                     <span className="detail-band-dot" />
@@ -645,8 +624,16 @@ const ChannelDetailPanel = memo(function ChannelDetailPanel({ chIdx, eegData, yR
   );
 });
 
-function StatRow({ label, value, unit, precision = 2, highlight }) {
-  const text = value != null ? (precision === 0 ? Math.round(value) : value.toFixed(precision)) : "—";
+interface StatRowProps {
+  label: string;
+  value?: number;
+  unit: string;
+  precision?: number;
+  highlight?: boolean;
+}
+
+function StatRow({ label, value, unit, precision = 2, highlight }: StatRowProps) {
+  const text = value != null ? (precision === 0 ? String(Math.round(value)) : value.toFixed(precision)) : "—";
   return (
     <div className={`detail-stat-row${highlight ? " highlight" : ""}`}>
       <span className="detail-stat-label">{label}</span>

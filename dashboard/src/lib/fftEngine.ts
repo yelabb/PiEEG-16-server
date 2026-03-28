@@ -8,12 +8,13 @@
 //   • EEG frequency band extraction (Delta → Gamma)
 // ─────────────────────────────────────────────────────────────────────────────
 
-const { PI, cos, sin, log, abs } = Math;
+import type { FrequencyBand, FFTResult, BandPowers } from "../types";
+
+const { PI, cos, sin } = Math;
 const TWO_PI = 2 * PI;
-const LN10 = Math.LN10;
 
 /** Standard EEG frequency bands. */
-export const FREQUENCY_BANDS = [
+export const FREQUENCY_BANDS: readonly FrequencyBand[] = [
   { name: "Delta", label: "δ Delta", low: 0.5, high: 4, color: "#8b5cf6" },
   { name: "Theta", label: "θ Theta", low: 4, high: 8, color: "#06b6d4" },
   { name: "Alpha", label: "α Alpha", low: 8, high: 13, color: "#22c55e" },
@@ -22,11 +23,19 @@ export const FREQUENCY_BANDS = [
 ];
 
 export class FftEngine {
-  /**
-   * @param {number} n       FFT size — must be a power of 2
-   * @param {number} sampleRateHz
-   */
-  constructor(n, sampleRateHz) {
+  readonly n: number;
+  readonly sampleRateHz: number;
+
+  // Precomputed tables
+  _window!: Float64Array;
+  _frequencies!: Float64Array;
+  _df!: number;
+  _bitReversed!: Int32Array;
+  _twRe!: Float64Array;
+  _twIm!: Float64Array;
+  _norm!: number;
+
+  constructor(n: number, sampleRateHz: number) {
     if (n <= 0 || (n & (n - 1)) !== 0)
       throw new Error("n must be a power of 2");
     this.n = n;
@@ -34,7 +43,7 @@ export class FftEngine {
     this._precompute();
   }
 
-  _precompute() {
+  private _precompute(): void {
     const { n, sampleRateHz } = this;
 
     // ── Hanning window ────────────────────────────────────────────────
@@ -76,13 +85,7 @@ export class FftEngine {
 
   // ── Public API ──────────────────────────────────────────────────────
 
-  /**
-   * Run spectral analysis on a contiguous array of samples.
-   * @param {Float32Array|Float64Array|number[]} samples
-   * @param {number} [offset=samples.length - n]  start index
-   * @returns {{ frequencies, psd, bandPowers, dominantFrequency, totalPower }|null}
-   */
-  analyse(samples, offset) {
+  analyse(samples: Float32Array | Float64Array | number[], offset?: number): FFTResult | null {
     const { n, _window, _frequencies, _df, _norm } = this;
     if (offset === undefined) offset = samples.length - n;
     if (offset < 0 || samples.length - offset < n) return null;
@@ -97,9 +100,9 @@ export class FftEngine {
     // One-sided PSD  (µV²/Hz)
     const bins = (n >> 1) + 1;
     const psd = new Float64Array(bins);
-    let peakPower = 0,
-      totalPower = 0,
-      peakBin = 0;
+    let peakPower = 0;
+    let totalPower = 0;
+    let peakBin = 0;
 
     for (let k = 0; k < bins; k++) {
       const pw = re[k] * re[k] + im[k] * im[k];
@@ -113,7 +116,7 @@ export class FftEngine {
     }
 
     // Band powers
-    const bandPowers = {};
+    const bandPowers: BandPowers = {};
     for (const band of FREQUENCY_BANDS) {
       let bp = 0;
       for (let k = 0; k < bins; k++) {
@@ -133,14 +136,7 @@ export class FftEngine {
     };
   }
 
-  /**
-   * Analyse directly from a ring buffer (as used by useEEG).
-   * @param {Float32Array} ringBuf
-   * @param {number} writeIndex   next write position
-   * @param {number} samplesInBuf how many valid samples in the ring
-   * @returns {object|null}
-   */
-  analyseRing(ringBuf, writeIndex, samplesInBuf) {
+  analyseRing(ringBuf: Float32Array, writeIndex: number, samplesInBuf: number): FFTResult | null {
     const { n } = this;
     if (samplesInBuf < n) return null;
 
@@ -155,7 +151,7 @@ export class FftEngine {
 
   // ── Cooley-Tukey in-place radix-2 FFT ──────────────────────────────
 
-  _fft(re, im) {
+  private _fft(re: Float64Array, im: Float64Array): void {
     const { n, _bitReversed, _twRe, _twIm } = this;
 
     // Bit-reversal reorder
@@ -191,13 +187,13 @@ export class FftEngine {
 
   // ── Helpers ─────────────────────────────────────────────────────────
 
-  static _log2(v) {
+  private static _log2(v: number): number {
     let r = 0, x = v;
     while (x > 1) { x >>= 1; r++; }
     return r;
   }
 
-  static _reverseBits(x, bits) {
+  private static _reverseBits(x: number, bits: number): number {
     let r = 0, v = x;
     for (let i = 0; i < bits; i++) {
       r = (r << 1) | (v & 1);
