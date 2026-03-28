@@ -1,101 +1,68 @@
 import { useState, useEffect } from "react";
 import type { UpdateInfo } from "../types";
 
-type BannerStatus = "idle" | "checking" | "updating" | "done" | "error";
-
 export default function UpdateBanner() {
   const [info, setInfo] = useState<UpdateInfo | null>(null);
-  const [status, setStatus] = useState<BannerStatus>("idle");
-  const [message, setMessage] = useState("");
+  const [ready, setReady] = useState(false);
   const [dismissed, setDismissed] = useState(false);
+  const [showHowTo, setShowHowTo] = useState(false);
 
   useEffect(() => {
-    setStatus("checking");
     fetch("/api/update/check")
       .then((r) => r.json())
       .then((data) => {
-        if (data.error) {
-          setStatus("idle");
-          return;
-        }
-        setInfo(data);
-        setStatus("idle");
+        if (!data.error) setInfo(data);
+        setReady(true);
       })
-      .catch(() => setStatus("idle"));
+      .catch(() => setReady(true));
   }, []);
 
-  if (dismissed || !info?.update_available || status === "checking") return null;
+  if (dismissed || !ready || !info?.update_available) return null;
 
-  function handleUpdate() {
-    setStatus("updating");
-    setMessage("");
-    fetch("/api/update/apply", { method: "POST" })
-      .then((r) => r.json())
-      .then((data) => {
-        if (data.ok) {
-          setStatus("done");
-          setMessage(data.restart_required
-            ? "Update installed! Restart the server to use the new version."
-            : "Update installed!");
-        } else {
-          setStatus("error");
-          setMessage(data.message || "Update failed.");
-        }
-      })
-      .catch((err: Error) => {
-        setStatus("error");
-        setMessage("Network error: " + err.message);
-      });
-  }
+  const isGit = info.install_method === "git";
+  const isWin = /win/i.test(navigator.platform);
 
-  const methodLabel = info!.install_method === "git" ? "git pull" : "pip upgrade";
+  const updateCmd = isGit
+    ? `git pull origin main\npip install -e .`
+    : `pip install --upgrade pieeg-server`;
+
+  const restartCmd = isWin
+    ? `.\\pieeg-server.cmd`
+    : `pieeg-server`;
 
   return (
     <div className="update-banner">
       <div className="update-banner-content">
-        {status === "idle" && (
-          <>
-            <span className="update-banner-text">
-              Update available: <strong>{info!.current_version}</strong> → <strong>{info!.latest_version}</strong>
-              <span className="update-method">({methodLabel})</span>
-            </span>
-            <button className="btn update-btn" onClick={handleUpdate}>
-              Update Now
-            </button>
-            <button className="update-dismiss" onClick={() => setDismissed(true)} title="Dismiss">
-              ✕
-            </button>
-          </>
-        )}
-        {status === "updating" && (
-          <span className="update-banner-text">
-            <span className="update-spinner" /> Updating…
-          </span>
-        )}
-        {status === "done" && (
-          <>
-            <span className="update-banner-text update-success">
-              {message}
-            </span>
-            <button className="update-dismiss" onClick={() => setDismissed(true)} title="Dismiss">
-              ✕
-            </button>
-          </>
-        )}
-        {status === "error" && (
-          <>
-            <span className="update-banner-text update-error">
-              {message}
-            </span>
-            <button className="btn update-btn" onClick={handleUpdate}>
-              Retry
-            </button>
-            <button className="update-dismiss" onClick={() => setDismissed(true)} title="Dismiss">
-              ✕
-            </button>
-          </>
-        )}
+        <span className="update-banner-text">
+          Update available: <strong>{info.current_version}</strong> →{" "}
+          <strong>{info.latest_version}</strong>
+        </span>
+        <button
+          className="btn update-btn"
+          onClick={() => setShowHowTo((v) => !v)}
+        >
+          {showHowTo ? "Hide instructions" : "How to update"}
+        </button>
+        <button
+          className="update-dismiss"
+          onClick={() => setDismissed(true)}
+          title="Dismiss"
+        >
+          ✕
+        </button>
       </div>
+      {showHowTo && (
+        <div className="update-howto">
+          <p>
+            {isGit
+              ? "Run these commands in your project folder:"
+              : "Run this command:"}
+          </p>
+          <pre><code>{updateCmd}</code></pre>
+          <p>Then restart the server:</p>
+          <pre><code>{restartCmd}</code></pre>
+        </div>
+      )}
     </div>
   );
 }

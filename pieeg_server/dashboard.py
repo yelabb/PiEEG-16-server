@@ -25,7 +25,7 @@ import threading
 from urllib.parse import parse_qs, urlparse
 
 from .auth import AuthManager, COOKIE_NAME
-from .updater import check_update, apply_update
+from .updater import check_update
 
 logger = logging.getLogger("pieeg.dashboard")
 
@@ -320,25 +320,6 @@ def _make_handler(static_dir: Path, auth: AuthManager):
                 return self._send_json({"error": "Update check timed out"}, 504)
             return self._send_json(result)
 
-        def _api_update_apply(self):
-            """POST /api/update/apply — apply the available update."""
-            import threading
-            result = {}
-            error = [None]
-            def _apply():
-                try:
-                    result.update(apply_update())
-                except Exception as e:
-                    error[0] = str(e)
-            t = threading.Thread(target=_apply)
-            t.start()
-            t.join(timeout=180)
-            if error[0]:
-                return self._send_json({"ok": False, "message": error[0]}, 500)
-            if not result:
-                return self._send_json({"ok": False, "message": "Update timed out"}, 504)
-            return self._send_json(result)
-
         def _api_save_annotations(self):
             """POST /api/recordings/annotations/{filename} — save annotations."""
             filename = self._safe_recording_filename()
@@ -368,10 +349,6 @@ def _make_handler(static_dir: Path, auth: AuthManager):
                 # Annotation save route
                 if self.path.startswith("/api/recordings/annotations/"):
                     return self._api_save_annotations()
-
-                # Update apply route
-                if self.path == "/api/update/apply":
-                    return self._api_update_apply()
 
                 if self.path != "/auth":
                     self.send_error(404)
