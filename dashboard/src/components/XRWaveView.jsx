@@ -28,7 +28,7 @@ const WAVE_WIDTH = 1.8;          // width of each wave strip (metres)
  * Oculus Quest compatible (no post-processing bloom, balanced geometry budget,
  * hand-tracking + local-floor optional features requested).
  */
-export default function XRWaveView({ eeg, yScale, onExit }) {
+export default function XRWaveView({ eegData, yScale, onExit }) {
   const containerRef = useRef(null);
   const rendererRef = useRef(null);
   const sceneRef = useRef(null);
@@ -40,10 +40,10 @@ export default function XRWaveView({ eeg, yScale, onExit }) {
   const clockRef = useRef(new THREE.Clock());
 
   // ── Keep props in refs so the effect never re-runs ────────────
-  const eegRef = useRef(eeg);
+  const eegRef = useRef(eegData);
   const yScaleRef = useRef(yScale);
   const onExitRef = useRef(onExit);
-  eegRef.current = eeg;
+  eegRef.current = eegData;
   yScaleRef.current = yScale;
   onExitRef.current = onExit;
 

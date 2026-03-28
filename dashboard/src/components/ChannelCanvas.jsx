@@ -10,84 +10,82 @@ const TRACE_COLORS = [
   "#bc8cff", "#39d2c0", "#f0883e", "#db61a2",
 ];
 
-function drawChannel(ctx, w, h, buf, count, writeIndex, bufferSize, yRange, color) {
+// Adaptive quality: auto-downgrade when frames are slow
+const QUALITY_POINTS = { high: 1500, medium: 800, low: 400 };
+const FRAME_BUDGET_MS = 14;
+const QUALITY_WINDOW = 20;
+
+// Grid channels render at 30fps; expanded gets 60fps
+const GRID_FRAME_INTERVAL = 2; // draw every 2nd RAF tick
+
+function drawChannel(ctx, w, h, buf, count, writeIndex, bufferSize, yRange, color, quality) {
   ctx.clearRect(0, 0, w, h);
 
-  // Horizontal grid lines
-  ctx.strokeStyle = GRID_COLOR;
-  ctx.lineWidth = 0.5;
+  // Horizontal grid lines — batched into a single path
+  const mid = h / 2;
   const step = h / 4;
+  ctx.beginPath();
   for (let y = step; y < h; y += step) {
-    ctx.beginPath();
     ctx.moveTo(0, y);
     ctx.lineTo(w, y);
-    ctx.stroke();
   }
+  ctx.strokeStyle = GRID_COLOR;
+  ctx.lineWidth = 0.5;
+  ctx.stroke();
 
   // Zero line
-  ctx.strokeStyle = ZERO_LINE_COLOR;
-  ctx.lineWidth = 1;
-  const mid = h / 2;
   ctx.beginPath();
   ctx.moveTo(0, mid);
   ctx.lineTo(w, mid);
+  ctx.strokeStyle = ZERO_LINE_COLOR;
+  ctx.lineWidth = 1;
   ctx.stroke();
 
   if (count < 2) return;
 
-  // Trace — skip points for large buffers
-  const skip = count > 2000 ? Math.floor(count / 2000) : 1;
+  // Adaptive point skipping
+  const maxPts = QUALITY_POINTS[quality] || 1500;
+  const skip = count > maxPts ? Math.floor(count / maxPts) : 1;
   const halfH = h / 2;
   const xScale = w / (bufferSize - 1);
-  const yScale = halfH / yRange;
+  const yScaleFactor = halfH / yRange;
 
-  // Draw gradient fill under trace
-  ctx.beginPath();
-  let firstX = 0;
-  for (let i = 0; i < count; i += skip) {
-    const idx = (writeIndex - count + i + bufferSize) % bufferSize;
-    const x = i * xScale;
-    const y = mid - buf[idx] * yScale;
-    if (i === 0) {
-      ctx.moveTo(x, y);
-      firstX = x;
-    } else {
-      ctx.lineTo(x, y);
+  // Fill under trace — flat alpha fill (no per-frame gradient creation)
+  if (quality !== "low") {
+    ctx.beginPath();
+    let firstX = 0;
+    for (let i = 0; i < count; i += skip) {
+      const idx = (writeIndex - count + i + bufferSize) % bufferSize;
+      const x = i * xScale;
+      const y = mid - buf[idx] * yScaleFactor;
+      if (i === 0) { ctx.moveTo(x, y); firstX = x; }
+      else ctx.lineTo(x, y);
     }
+    ctx.lineTo((count - 1) * xScale, h);
+    ctx.lineTo(firstX, h);
+    ctx.closePath();
+    ctx.fillStyle = color + "10";
+    ctx.fill();
   }
-  const lastI = count - 1;
-  const lastX = lastI * xScale;
-  ctx.lineTo(lastX, h);
-  ctx.lineTo(firstX, h);
-  ctx.closePath();
-  
-  const grad = ctx.createLinearGradient(0, mid - halfH * 0.5, 0, h);
-  grad.addColorStop(0, color + "18");
-  grad.addColorStop(1, color + "00");
-  ctx.fillStyle = grad;
-  ctx.fill();
 
-  // Draw trace line (single pass, optimized styling)
+  // Trace line
   ctx.strokeStyle = color;
-  ctx.lineWidth = 1.3;
+  ctx.lineWidth = quality === "low" ? 1 : 1.3;
   ctx.lineJoin = "round";
   ctx.lineCap = "round";
   ctx.beginPath();
   for (let i = 0; i < count; i += skip) {
     const idx = (writeIndex - count + i + bufferSize) % bufferSize;
     const x = i * xScale;
-    const y = mid - buf[idx] * yScale;
-    if (i === 0) {
-      ctx.moveTo(x, y);
-    } else {
-      ctx.lineTo(x, y);
-    }
+    const y = mid - buf[idx] * yScaleFactor;
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
   }
   ctx.stroke();
 
-  // Return RMS for signal quality
+  // RMS for signal quality (every other frame via caller)
   let sumSq = 0;
-  const sampleCount = Math.min(count, 250); // last ~1s
+  const sampleCount = Math.min(count, 250);
   for (let i = count - sampleCount; i < count; i++) {
     const idx = (writeIndex - count + i + bufferSize) % bufferSize;
     sumSq += buf[idx] * buf[idx];
@@ -95,60 +93,130 @@ function drawChannel(ctx, w, h, buf, count, writeIndex, bufferSize, yRange, colo
   return Math.sqrt(sumSq / sampleCount);
 }
 
-const ChannelCanvas = memo(function ChannelCanvas({ chIdx, eeg, yRange, expanded, onToggleExpand }) {
+const ChannelCanvas = memo(function ChannelCanvas({ chIdx, eegData, yRange, expanded, onToggleExpand, active = true }) {
   const canvasRef = useRef(null);
   const rafRef = useRef(0);
   const rmsRef = useRef(0);
   const labelRef = useRef(null);
-  const dprRef = useRef(window.devicePixelRatio || 1);
   const sizeRef = useRef({ w: 0, h: 0, pw: 0, ph: 0 });
+  const needsResizeRef = useRef(true);
+  const qualityRef = useRef("high");
+  const frameTimesRef = useRef([]);
+  const lastWriteIdxRef = useRef(-1);
+  const rmsFrameRef = useRef(0);
+  const tickCountRef = useRef(0);
 
+  // ResizeObserver — no getBoundingClientRect per frame
+  // Grid channels cap DPR to 1 to halve pixel count on HiDPI
   useEffect(() => {
+    if (!active) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (!entry) return;
+      const rawDpr = window.devicePixelRatio || 1;
+      const { width: w, height: h } = entry.contentRect;
+      // Expanded gets full DPR; grid channels cap at 1 to save GPU fill
+      const dpr = expanded ? Math.min(rawDpr, 2) : 1;
+      sizeRef.current = { w, h, pw: Math.round(w * dpr), ph: Math.round(h * dpr), dpr };
+      needsResizeRef.current = true;
+    });
+    observer.observe(canvas);
+    return () => observer.disconnect();
+  }, [active, expanded]);
+
+  // RAF loop — only runs when active
+  useEffect(() => {
+    if (!active) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d", { alpha: false });
+    lastWriteIdxRef.current = -1;
+    tickCountRef.current = 0;
+
+    // Stagger: each channel offsets its draw frame to spread GPU load
+    const staggerOffset = chIdx % GRID_FRAME_INTERVAL;
 
     const tick = () => {
-      const dpr = dprRef.current;
-      const rect = canvas.getBoundingClientRect();
-      const w = rect.width;
-      const h = rect.height;
-      const pw = Math.round(w * dpr);
-      const ph = Math.round(h * dpr);
+      tickCountRef.current++;
+      const { w, h, pw, ph, dpr } = sizeRef.current;
 
-      // Only resize if dimensions changed
-      if (sizeRef.current.pw !== pw || sizeRef.current.ph !== ph) {
-        sizeRef.current = { w, h, pw, ph };
+      // Skip if canvas not laid out yet
+      if (w === 0 || h === 0) {
+        rafRef.current = requestAnimationFrame(tick);
+        return;
+      }
+
+      // Suspend grid draws while expanded overlay covers them
+      if (!expanded && eegData.gridSuspended) {
+        rafRef.current = requestAnimationFrame(tick);
+        return;
+      }
+
+      // Grid channels: draw every Nth frame (30fps), staggered across channels
+      if (!expanded && (tickCountRef.current % GRID_FRAME_INTERVAL) !== staggerOffset) {
+        rafRef.current = requestAnimationFrame(tick);
+        return;
+      }
+
+      // Skip draw if no new data since last frame
+      const wi = eegData.writeIndex.current;
+      if (wi === lastWriteIdxRef.current) {
+        rafRef.current = requestAnimationFrame(tick);
+        return;
+      }
+      lastWriteIdxRef.current = wi;
+
+      const frameStart = performance.now();
+
+      // Resize canvas backing store only when dimensions changed
+      if (needsResizeRef.current) {
+        needsResizeRef.current = false;
         canvas.width = pw;
         canvas.height = ph;
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       }
 
-      // Fill background (alpha:false needs explicit fill)
+      // Background fill
       ctx.fillStyle = "#0d1117";
       ctx.fillRect(0, 0, w, h);
 
       const rms = drawChannel(
         ctx, w, h,
-        eeg.buffers.current[chIdx],
-        eeg.samplesInBuffer.current,
-        eeg.writeIndex.current,
-        eeg.bufferSize,
+        eegData.buffers.current[chIdx],
+        eegData.samplesInBuffer.current,
+        wi,
+        eegData.bufferSize,
         yRange,
         TRACE_COLORS[chIdx],
+        qualityRef.current,
       );
 
-      // Update signal quality indicator
-      if (rms !== undefined) {
+      // Update quality indicator (every 2nd frame to save work)
+      rmsFrameRef.current++;
+      if (rms !== undefined && (rmsFrameRef.current & 1) === 0) {
         rmsRef.current = rms;
         if (labelRef.current) {
           const ratio = rms / yRange;
-          let qColor;
-          if (ratio > 0.8) qColor = "#f85149";       // clipping — red
-          else if (ratio > 0.4) qColor = "#d29922";   // noisy — yellow
-          else qColor = "#3fb950";                     // good — green
-          labelRef.current.style.borderLeftColor = qColor;
+          labelRef.current.style.borderLeftColor =
+            ratio > 0.8 ? "#f85149" : ratio > 0.4 ? "#d29922" : "#3fb950";
         }
+      }
+
+      // Adaptive quality: auto-adjust based on recent frame times
+      const ft = performance.now() - frameStart;
+      const times = frameTimesRef.current;
+      times.push(ft);
+      if (times.length > QUALITY_WINDOW) times.shift();
+      if (times.length === QUALITY_WINDOW) {
+        let sum = 0;
+        for (let i = 0; i < times.length; i++) sum += times[i];
+        const avg = sum / times.length;
+        if (avg > FRAME_BUDGET_MS && qualityRef.current !== "low")
+          qualityRef.current = qualityRef.current === "high" ? "medium" : "low";
+        else if (avg < FRAME_BUDGET_MS * 0.4 && qualityRef.current !== "high")
+          qualityRef.current = qualityRef.current === "low" ? "medium" : "high";
       }
 
       rafRef.current = requestAnimationFrame(tick);
@@ -156,7 +224,17 @@ const ChannelCanvas = memo(function ChannelCanvas({ chIdx, eeg, yRange, expanded
 
     rafRef.current = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(rafRef.current);
-  }, [chIdx, eeg, yRange]);
+  }, [chIdx, eegData, yRange, active]);
+
+  // Inactive placeholder — no canvas, no RAF, minimal DOM
+  if (!active) {
+    return (
+      <div className={`channel-cell inactive${expanded ? " expanded" : ""}`} onClick={onToggleExpand}>
+        <div className="channel-label">Ch {chIdx + 1}</div>
+        <div className="channel-off">OFF</div>
+      </div>
+    );
+  }
 
   return (
     <div className={`channel-cell${expanded ? " expanded" : ""}`} onClick={onToggleExpand}>

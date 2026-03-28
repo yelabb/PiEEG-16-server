@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useEEG } from "./hooks/useEEG";
 import AuthGate from "./components/AuthGate";
 import ChannelCanvas from "./components/ChannelCanvas";
@@ -9,6 +9,8 @@ import SessionViewer from "./components/SessionViewer";
 import XRWaveView from "./components/XRWaveView";
 
 const NUM_CHANNELS = 16;
+const ALL_CHANNELS = new Set(Array.from({ length: NUM_CHANNELS }, (_, i) => i));
+const DEFAULT_MOBILE = new Set([0, 1, 2, 3]);
 
 const SCALE_OPTIONS = [
   { value: 50, label: "±50 µV" },
@@ -36,8 +38,28 @@ export default function App() {
   const [yScale, setYScale] = useState(100);
   const [expandedCh, setExpandedCh] = useState(null);
   const [xrActive, setXrActive] = useState(false);
+  const [activeChannels, setActiveChannels] = useState(() =>
+    window.innerWidth < 768 ? new Set(DEFAULT_MOBILE) : new Set(ALL_CHANNELS)
+  );
 
   const eeg = useEEG(timeWindow);
+
+  // Keep active channels in a ref so toggleExpandCh stays stable
+  const activeChRef = useRef(activeChannels);
+  activeChRef.current = activeChannels;
+
+  const toggleChannel = useCallback((i) => {
+    setActiveChannels((prev) => {
+      const next = new Set(prev);
+      if (next.has(i)) next.delete(i);
+      else next.add(i);
+      return next;
+    });
+  }, []);
+
+  const setAllChannels = useCallback((on) => {
+    setActiveChannels(on ? new Set(ALL_CHANNELS) : new Set());
+  }, []);
 
   function togglePause() {
     const next = !paused;
@@ -77,6 +99,15 @@ export default function App() {
   }
 
   const toggleExpandCh = useCallback((i) => {
+    // Only expand active channels; toggle inactive ones on
+    if (!activeChRef.current.has(i)) {
+      setActiveChannels((prev) => {
+        const next = new Set(prev);
+        next.add(i);
+        return next;
+      });
+      return;
+    }
     setExpandedCh((prev) => (prev === i ? null : i));
   }, []);
 
@@ -141,6 +172,9 @@ export default function App() {
     );
   }
 
+  // Suspend grid RAF loops while expanded overlay covers them
+  eeg.data.gridSuspended = expandedCh !== null && activeChannels.has(expandedCh);
+
   return (
     <AuthGate>
       {/* Header */}
@@ -157,6 +191,9 @@ export default function App() {
               className={`status-dot${eeg.connected ? " connected" : ""}`}
             />
             {eeg.connected ? " Connected" : " Disconnected"}
+          </span>
+          <span className={`live-badge${paused ? " paused" : ""}`}>
+            {paused ? "⏸ PAUSED" : "● LIVE"}
           </span>
           <span>{eeg.hz ? `${eeg.hz} Hz` : "— Hz"}</span>
           <span>{eeg.sampleCount.toLocaleString()} samples</span>
@@ -265,16 +302,36 @@ export default function App() {
         </div>
       </div>
 
+      {/* Channel selector */}
+      <div className="channel-selector">
+        <span className="cs-label">Channels</span>
+        <button className="cs-toggle" onClick={() => setAllChannels(true)}>All</button>
+        <button className="cs-toggle" onClick={() => setAllChannels(false)}>None</button>
+        <div className="cs-grid">
+          {Array.from({ length: NUM_CHANNELS }, (_, i) => (
+            <button
+              key={i}
+              className={`cs-ch${activeChannels.has(i) ? " on" : ""}`}
+              onClick={() => toggleChannel(i)}
+            >
+              {i + 1}
+            </button>
+          ))}
+        </div>
+        <span className="cs-count">{activeChannels.size}/{NUM_CHANNELS}</span>
+      </div>
+
       {/* Main area */}
       <div className={`main-area${showFFT ? " with-fft" : ""}`}>
-        {expandedCh !== null && (
+        {expandedCh !== null && activeChannels.has(expandedCh) && (
           <div className="expanded-overlay" onClick={() => setExpandedCh(null)}>
             <div className="expanded-channel" onClick={(e) => e.stopPropagation()}>
               <ChannelCanvas
                 chIdx={expandedCh}
-                eeg={eeg}
+                eegData={eeg.data}
                 yRange={yScale}
                 expanded
+                active
                 onToggleExpand={() => setExpandedCh(null)}
               />
             </div>
@@ -285,13 +342,14 @@ export default function App() {
             <ChannelCanvas
               key={i}
               chIdx={i}
-              eeg={eeg}
+              eegData={eeg.data}
               yRange={yScale}
+              active={activeChannels.has(i)}
               onToggleExpand={() => toggleExpandCh(i)}
             />
           ))}
         </div>
-        {showFFT && <SpectralPanel eeg={eeg} />}
+        {showFFT && <SpectralPanel eegData={eeg.data} />}
       </div>
 
       {/* Recording result modal */}
@@ -349,7 +407,7 @@ export default function App() {
 
       {/* XR immersive view */}
       {xrActive && (
-        <XRWaveView eeg={eeg} yScale={yScale} onExit={() => setXrActive(false)} />
+        <XRWaveView eegData={eeg.data} yScale={yScale} onExit={() => setXrActive(false)} />
       )}
 
       {/* Performance Monitor (press P to toggle) */}
