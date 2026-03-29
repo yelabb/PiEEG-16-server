@@ -15,6 +15,7 @@ import StatsPanel from "./components/StatsPanel";
 import UpdateBanner from "./components/UpdateBanner";
 import ShortcutHelp from "./components/ShortcutHelp";
 import ChatPanel from "./components/ChatPanel";
+import TrainMode from "./components/train/TrainMode";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { NUM_CHANNELS } from "./types";
 import type { SelectOption } from "./types";
@@ -22,7 +23,7 @@ import type { SelectOption } from "./types";
 const ALL_CHANNELS = new Set(Array.from({ length: NUM_CHANNELS }, (_, i) => i));
 const DEFAULT_MOBILE = new Set([0, 1, 2, 3]);
 
-type ViewState = "live" | "sessions" | "playback";
+type ViewState = "live" | "sessions" | "playback" | "train";
 
 const SCALE_OPTIONS: SelectOption<number>[] = [
   { value: 50, label: "±50 µV" },
@@ -134,6 +135,7 @@ export default function App() {
         if (e.code === "Escape") {
           if (view === "playback") { setView("sessions"); setSelectedSession(null); }
           else if (view === "sessions") setView("live");
+          else if (view === "train") setView("live");
         }
         return;
       }
@@ -157,6 +159,9 @@ export default function App() {
         case "KeyC":
           setShowChat((v) => !v);
           break;
+        case "KeyT":
+          setView("train");
+          break;
         case "KeyG":
           setShowSpectrogram((v) => !v);
           break;
@@ -170,6 +175,21 @@ export default function App() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [expandedCh, eeg.recordResult, view]);
+
+  // --- Train mode ---
+  if (view === "train") {
+    return (
+      <AuthGate>
+        <ErrorBoundary>
+          <TrainMode
+            eegData={eeg.data}
+            connected={eeg.connected}
+            onBack={() => setView("live")}
+          />
+        </ErrorBoundary>
+      </AuthGate>
+    );
+  }
 
   // --- Sessions / Playback views ---
   if (view === "playback" && selectedSession) {
@@ -270,6 +290,12 @@ export default function App() {
           onClick={() => setShowStats((v) => !v)}
         >
           Stats {showStats ? "ON" : "OFF"}
+        </button>
+        <button
+          className="btn btn-train"
+          onClick={() => setView("train")}
+        >
+          Train
         </button>
         <button
           className="btn btn-sessions"
@@ -490,6 +516,7 @@ export default function App() {
           <kbd>F</kbd> FFT
           <kbd>G</kbd> Gram
           <kbd>S</kbd> Stats
+          <kbd>T</kbd> Train
           <kbd>V</kbd> XR
           <kbd>C</kbd> Chat
           <kbd>Esc</kbd> Close

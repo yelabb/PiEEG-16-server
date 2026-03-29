@@ -188,3 +188,42 @@ export interface SelectOption<T> {
   value: T;
   label: string;
 }
+
+// ── Train mode types ─────────────────────────────────────────────────────
+
+export interface TrainClass {
+  id: number;
+  name: string;
+  color: string;
+  epochs: Float32Array[];          // each epoch = flat [channels × epochLen]
+}
+
+export interface TrainDataset {
+  classes: TrainClass[];
+  channels: number[];              // which channels used
+  epochSamples: number;            // samples per epoch
+  sampleRate: number;
+}
+
+export type TrainTab = "capture" | "model" | "actions";
+
+export interface TrainMetrics {
+  epoch: number;
+  loss: number;
+  accuracy: number;
+}
+
+export type ActionKind = "log" | "key" | "websocket" | "osc";
+
+export interface TrainAction {
+  classId: number;
+  kind: ActionKind;
+  value: string;                   // key name, ws message, osc path, etc.
+  enabled: boolean;
+}
+
+export interface Prediction {
+  classId: number;
+  confidence: number;
+  allConfidences: number[];
+}
