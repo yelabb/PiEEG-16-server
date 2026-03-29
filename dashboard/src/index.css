@@ -348,6 +348,9 @@ body {
 .main-area.with-fft .grid {
   flex: 0 0 50%;
 }
+.main-area.with-fft.with-analysis .grid {
+  flex: 0 0 35%;
+}
 .fft-area {
   flex: 1;
   display: flex;
@@ -1430,4 +1433,214 @@ body {
   color: var(--text-dim);
   margin-bottom: 20px;
   word-break: break-word;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Spectrogram Panel
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.spectrogram-panel {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+}
+.spectrogram-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 5px 12px;
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+.spectrogram-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+}
+.spectrogram-channels {
+  display: flex;
+  gap: 2px;
+  flex-wrap: wrap;
+}
+.spectrogram-ctrls {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+}
+.spectrogram-canvas-wrap {
+  position: relative;
+  flex: 1;
+  min-height: 100px;
+  background: var(--bg);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Filter Preview Panel
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.filter-preview-panel {
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.filter-preview-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 5px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.filter-preview-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+}
+.filter-preview-meta {
+  font-size: 10px;
+  font-family: monospace;
+  color: var(--text-dim);
+}
+.filter-preview-canvas-wrap {
+  position: relative;
+  height: 160px;
+  background: var(--bg);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Statistics Panel
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.stats-panel {
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  max-height: 100%;
+  overflow: hidden;
+}
+.stats-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 5px 12px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.stats-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+}
+.stats-meta {
+  font-size: 10px;
+  font-family: monospace;
+  color: var(--text-dim);
+  flex: 1;
+}
+.stats-btn-export {
+  font-size: 11px;
+  padding: 3px 10px;
+  background: #1a7f37;
+  border-color: #238636;
+  color: #fff;
+}
+.stats-btn-export:hover {
+  background: #238636;
+}
+.stats-table-wrap {
+  flex: 1;
+  overflow: auto;
+}
+.stats-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+  font-family: monospace;
+}
+.stats-table thead {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+.stats-table th {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 4px 8px;
+  text-align: right;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-dim);
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+  transition: color 0.15s;
+}
+.stats-table th:first-child {
+  text-align: left;
+}
+.stats-table th:hover {
+  color: var(--accent);
+}
+.stats-table th.sorted {
+  color: var(--accent);
+}
+.sort-arrow {
+  font-size: 8px;
+  opacity: 0.7;
+}
+.stats-table td {
+  padding: 3px 8px;
+  text-align: right;
+  color: var(--text);
+  border-bottom: 1px solid rgba(48, 54, 61, 0.3);
+}
+.stats-table td:first-child {
+  text-align: left;
+}
+.stats-table tbody tr:hover {
+  background: rgba(88, 166, 255, 0.04);
+}
+.stats-ch-cell {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 600;
+  color: var(--accent);
+}
+.stats-ch-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Analysis area (below FFT) — Spectrogram + Filter + Stats
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.analysis-area {
+  display: flex;
+  border-top: 1px solid var(--border);
+  min-height: 0;
+  overflow: hidden;
+}
+.analysis-area .spectrogram-panel {
+  flex: 1 1 50%;
+  min-width: 0;
+  border-top: none;
+}
+.analysis-area .stats-panel {
+  flex: 1 1 50%;
+  min-width: 0;
+  border-top: none;
+  border-left: 1px solid var(--border);
 }

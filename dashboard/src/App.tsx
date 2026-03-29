@@ -9,6 +9,9 @@ import SessionList from "./components/SessionList";
 import SessionViewer from "./components/SessionViewer";
 import XRWaveView from "./components/XRWaveView";
 import TopoMap from "./components/TopoMap";
+import Spectrogram from "./components/Spectrogram";
+import FilterPreview from "./components/FilterPreview";
+import StatsPanel from "./components/StatsPanel";
 import UpdateBanner from "./components/UpdateBanner";
 import ShortcutHelp from "./components/ShortcutHelp";
 import ErrorBoundary from "./components/ErrorBoundary";
@@ -46,6 +49,8 @@ export default function App() {
   const [yScale, setYScale] = useState(100);
   const [expandedCh, setExpandedCh] = useState<number | null>(null);
   const [xrActive, setXrActive] = useState(false);
+  const [showSpectrogram, setShowSpectrogram] = useState(false);
+  const [showStats, setShowStats] = useState(false);
   const [activeChannels, setActiveChannels] = useState<Set<number>>(() =>
     window.innerWidth < 768 ? new Set(DEFAULT_MOBILE) : new Set(ALL_CHANNELS)
   );
@@ -143,6 +148,12 @@ export default function App() {
           break;
         case "KeyV":
           setXrActive((v) => !v);
+          break;
+        case "KeyS":
+          setShowStats((v) => !v);
+          break;
+        case "KeyG":
+          setShowSpectrogram((v) => !v);
           break;
         case "Escape":
           if (xrActive) setXrActive(false);
@@ -246,6 +257,18 @@ export default function App() {
           FFT {showFFT ? "ON" : "OFF"}
         </button>
         <button
+          className={`btn${showSpectrogram ? " active" : ""}`}
+          onClick={() => setShowSpectrogram((v) => !v)}
+        >
+          Spectrogram {showSpectrogram ? "ON" : "OFF"}
+        </button>
+        <button
+          className={`btn${showStats ? " active" : ""}`}
+          onClick={() => setShowStats((v) => !v)}
+        >
+          Stats {showStats ? "ON" : "OFF"}
+        </button>
+        <button
           className="btn btn-sessions"
           onClick={() => setView("sessions")}
         >
@@ -339,7 +362,7 @@ export default function App() {
 
       {/* Main area */}
       <ErrorBoundary>
-        <div className={`main-area${showFFT ? " with-fft" : ""}`}>
+        <div className={`main-area${showFFT ? " with-fft" : ""}${showSpectrogram || showStats || filterEnabled ? " with-analysis" : ""}`}>
         {expandedCh !== null && activeChannels.has(expandedCh) && (
           <ChannelDetailPanel
             chIdx={expandedCh}
@@ -364,6 +387,19 @@ export default function App() {
           <div className="fft-area">
             <SpectralPanel eegData={eeg.data} />
             <TopoMap eegData={eeg.data} />
+          </div>
+        )}
+        {filterEnabled && (
+          <FilterPreview
+            enabled={filterEnabled}
+            lowcut={parseFloat(String(lowcut)) || 1}
+            highcut={parseFloat(String(highcut)) || 40}
+          />
+        )}
+        {(showSpectrogram || showStats) && (
+          <div className="analysis-area">
+            {showSpectrogram && <Spectrogram eegData={eeg.data} />}
+            {showStats && <StatsPanel eegData={eeg.data} />}
           </div>
         )}
         </div>
@@ -440,6 +476,8 @@ export default function App() {
           <kbd>Space</kbd> Pause&ensp;
           <kbd>R</kbd> Record&ensp;
           <kbd>F</kbd> FFT&ensp;
+          <kbd>G</kbd> Gram&ensp;
+          <kbd>S</kbd> Stats&ensp;
           <kbd>V</kbd> XR&ensp;
           <kbd>Esc</kbd> Close&ensp;
           <kbd>P</kbd> Perf

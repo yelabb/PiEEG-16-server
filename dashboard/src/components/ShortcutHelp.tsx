@@ -4,6 +4,8 @@ const SHORTCUTS: { key: string; desc: string }[] = [
   { key: "Space", desc: "Pause / Resume" },
   { key: "R", desc: "Start / Stop recording" },
   { key: "F", desc: "Toggle FFT panel" },
+  { key: "G", desc: "Toggle Spectrogram" },
+  { key: "S", desc: "Toggle Statistics panel" },
   { key: "V", desc: "Toggle XR / VR view" },
   { key: "P", desc: "Toggle performance monitor" },
   { key: "?", desc: "Show this help" },

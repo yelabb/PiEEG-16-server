@@ -283,6 +283,66 @@ export default function SessionViewer({ filename, onBack }: SessionViewerProps) 
     setPlaying(false);
   }
 
+  function exportAnnotatedCSV() {
+    const data = channelDataRef.current;
+    if (!data) return;
+    const total = totalFramesRef.current;
+
+    // Build annotation lookup by frame
+    const annoByFrame = new Map<number, string>();
+    for (const a of annotations) {
+      annoByFrame.set(a.frame, a.text);
+    }
+
+    const header = ["frame", "time_s", ...Array.from({ length: NUM_CHANNELS }, (_, i) => `ch${i + 1}`), "annotation"];
+    const lines = [header.join(",")];
+
+    for (let i = 0; i < total; i++) {
+      const time = (i / SAMPLE_RATE).toFixed(6);
+      const chValues = Array.from({ length: NUM_CHANNELS }, (_, ch) => data[ch][i].toFixed(4));
+      const anno = annoByFrame.get(i) || "";
+      // Escape annotation text for CSV
+      const escaped = anno ? `"${anno.replace(/"/g, '""')}"` : "";
+      lines.push([i, time, ...chValues, escaped].join(","));
+    }
+
+    const blob = new Blob([lines.join("\n")], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename.replace(".csv", "_annotated.csv");
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function exportJSON() {
+    const data = channelDataRef.current;
+    if (!data) return;
+    const total = totalFramesRef.current;
+
+    const exportData = {
+      filename,
+      sampleRate: SAMPLE_RATE,
+      channels: NUM_CHANNELS,
+      totalFrames: total,
+      duration: total / SAMPLE_RATE,
+      annotations: annotations.map((a) => ({
+        frame: a.frame,
+        time: a.time,
+        text: a.text,
+        timestamp: a.timestamp,
+      })),
+    };
+
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename.replace(".csv", "_session.json");
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   function formatTime(seconds: number): string {
     const m = Math.floor(seconds / 60);
     const s = Math.floor(seconds % 60);
@@ -373,6 +433,13 @@ export default function SessionViewer({ filename, onBack }: SessionViewerProps) 
               <option key={o.value} value={o.value}>{o.label}</option>
             ))}
           </select>
+          <div className="sv-sep" />
+          <button className="sv-btn sv-btn-export" onClick={exportAnnotatedCSV} title="Export CSV with annotations column">
+            ⬇ CSV
+          </button>
+          <button className="sv-btn sv-btn-export" onClick={exportJSON} title="Export session metadata + annotations as JSON">
+            ⬇ JSON
+          </button>
         </div>
       </header>
 
@@ -538,6 +605,8 @@ const styles = `
   .sv-btn-sm { padding: 3px 8px; font-size: 11px; }
   .sv-btn-primary { background: #58a6ff; border-color: #58a6ff; color: #fff; }
   .sv-btn-primary:hover { opacity: 0.85; }
+  .sv-btn-export { background: #1a7f37; border-color: #238636; color: #fff; font-size: 11px; }
+  .sv-btn-export:hover { background: #238636; }
 
   .sv-select {
     padding: 5px 8px;

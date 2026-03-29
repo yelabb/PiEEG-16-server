@@ -28,64 +28,48 @@
 
 ### Tier 1 — High impact, low effort (1-2 sessions each)
 
-- [ ] **Keyboard Shortcut Help Overlay** (`?` key)
+- [x] **Keyboard Shortcut Help Overlay** (`?` key)
   - We already have Space/R/F/V/P/Esc — users just can't discover them
   - Simple modal with a grid of shortcuts. < 50 lines
 
-- [ ] **Connection Status Indicator + Latency Badge**
+- [x] **Connection Status Indicator + Latency Badge**
   - Show WS state (connected/reconnecting/disconnected) + round-trip latency in the header bar
   - Data is already flowing via `useEEG` — just derive connection state + timestamp delta
 
-- [ ] **WebSocket Reconnect with Exponential Backoff**
+- [x] **WebSocket Reconnect with Exponential Backoff**
   - Current: flat `setTimeout(connect, 2000)` — can hammer server
   - Fix: 1s → 2s → 4s → 8s → cap at 30s with jitter. ~15 lines in `useEEG.ts`
 
-- [ ] **Error Boundary**
+- [x] **Error Boundary**
   - One canvas crash = whole app white-screen. Wrap channel grid + panels in `<ErrorBoundary>` with retry button
   - React 19 native `ErrorBoundary` or a 20-line class component
 
-- [ ] **Signal Quality Indicator per Channel**
+- [x] **Signal Quality Indicator per Channel**
   - We already compute RMS and border-color it. Add a simple icon or badge: green/yellow/red based on RMS + flatline detection (zero-crossing rate already computed in detail panel)
   - Makes the grid instantly more informative for researchers
 
 ### Tier 2 — Medium effort, high differentiation
 
-- [ ] **Spectrogram (STFT Heatmap)**
+- [x] **Spectrogram (STFT Heatmap)**
   - The single biggest feature gap vs OpenBCI GUI and NeuroScope
   - We already have FFT engine + Web Worker. Compute overlapping STFT windows, render as `ImageData` (same pattern as TopoMap)
   - Time on X, frequency on Y, power as color — use same turbo gradient as topo
   - Perfect for seizure detection, sleep staging, alpha-block demos
 
-- [ ] **Filter Preview / Freq Response Visualization**
+- [x] **Filter Preview / Freq Response Visualization**
   - NeuroScope lets users preview filter effect before applying
   - Our server already has `set_filter` command. Add a small canvas showing Butterworth magnitude response curve when filter controls are open
   - Shows users exactly what 1-40 Hz bandpass looks like before enabling
 
-- [ ] **Statistics Panel**
+- [x] **Statistics Panel**
   - NeuroScope has sortable per-channel stats table (mean, std, variance, RMS, peak-peak, skewness, kurtosis, zero-crossings)
   - We compute 7 of these already in `ChannelDetailPanel` — extract to a shared utility and display as a collapsible table
   - Bonus: CSV download of the stats snapshot
 
-- [ ] **Export Annotated Recording as CSV/JSON**
+- [x] **Export Annotated Recording as CSV/JSON**
   - Annotations are stored server-side as JSON but never merged into CSV exports
   - Add "Export with annotations" button in SessionViewer that interleaves annotation markers into the CSV or produces a companion JSON
 
-### Tier 3 — Larger effort, strong product value
-
-- [ ] **Montage Selector** (Monopolar / Average Reference / Bipolar)
-  - NeuroScope has this. Critical for clinical EEG review
-  - Average reference: subtract mean of all channels from each channel
-  - Bipolar: successive channel differences (Fp1-F3, F3-C3, etc.)
-  - Mostly math in the rendering loop — no server changes needed
-
-- [ ] **PDF Session Report**
-  - NeuroScope exports multi-page PDF (recording info, stats table, screenshots)
-  - Use `jsPDF` or `html2canvas` to generate a report from SessionViewer
-  - Huge value for researchers sharing results
-
-- [ ] **Event Timeline / Annotation Bar on Live View**
-  - We already have annotations in playback mode. Bring a simplified version to the live view: clickable timeline bar below the channel grid showing markers (blinks, stimuli, user events)
-  - Ties into the `event-timeline` branch
 
 ---
 
