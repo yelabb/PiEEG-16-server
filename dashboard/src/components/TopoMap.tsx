@@ -422,7 +422,8 @@ const TopoMap = memo(function TopoMap({ eegData }: TopoMapProps) {
         if (bufs && count >= FFT_SIZE) {
           const slot = fftSlotRef.current;
           const start = slot * CHANNELS_PER_FRAME;
-          const end = Math.min(start + CHANNELS_PER_FRAME, NUM_CHANNELS);
+          const nCh = eegData.numChannels;
+          const end = Math.min(start + CHANNELS_PER_FRAME, nCh);
           const raw = rawValuesRef.current;
           const sm = smoothedRef.current;
           const avgBP = avgBPRef.current;
@@ -444,7 +445,7 @@ const TopoMap = memo(function TopoMap({ eegData }: TopoMapProps) {
             }
           }
 
-          fftSlotRef.current = (slot + 1) % Math.ceil(NUM_CHANNELS / CHANNELS_PER_FRAME);
+          fftSlotRef.current = (slot + 1) % Math.ceil(nCh / CHANNELS_PER_FRAME);
 
           // Update React state at most every 400ms
           const now = performance.now();
@@ -454,7 +455,7 @@ const TopoMap = memo(function TopoMap({ eegData }: TopoMapProps) {
             let bestBand = "";
             let bestPow = 0;
             for (const band of FREQUENCY_BANDS) {
-              displayBP[band.name] = (avgBP[band.name] || 0) / NUM_CHANNELS;
+              displayBP[band.name] = (avgBP[band.name] || 0) / nCh;
               if (displayBP[band.name] > bestPow) {
                 bestPow = displayBP[band.name];
                 bestBand = band.name;
@@ -473,7 +474,7 @@ const TopoMap = memo(function TopoMap({ eegData }: TopoMapProps) {
       const hasData = sm.some((v) => v !== 0);
       if (hasData) {
         const imgData = imgDataRef.current!;
-        renderHeatmapImage(imgData, IMG_RES, sm, grid, GRID_RES, NUM_CHANNELS);
+        renderHeatmapImage(imgData, IMG_RES, sm, grid, GRID_RES, eegData.numChannels);
 
         // Blit to offscreen canvas, then draw scaled to main canvas
         offCtx.putImageData(imgData, 0, 0);

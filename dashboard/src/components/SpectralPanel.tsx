@@ -1,7 +1,7 @@
 import { useRef, useEffect, useState, memo, useMemo } from "react";
 import { FftEngine, FREQUENCY_BANDS } from "../lib/fftEngine";
 import type { EEGData, BandPowers, CanvasSize } from "../types";
-import { NUM_CHANNELS, SAMPLE_RATE } from "../types";
+import { SAMPLE_RATE } from "../types";
 
 const FFT_SIZE = 256;
 const MAX_DISPLAY_HZ = 60;
@@ -186,6 +186,7 @@ const SpectralPanel = memo(function SpectralPanel({ eegData }: SpectralPanelProp
 
         if (bufs && count >= FFT_SIZE) {
           let result;
+          const nCh = eegData.numChannels;
           if (channel === -1) {
             const tmp = avgBufRef.current!;
             const bufLen = eegData.bufferSize;
@@ -193,11 +194,11 @@ const SpectralPanel = memo(function SpectralPanel({ eegData }: SpectralPanelProp
             for (let i = 0; i < FFT_SIZE; i++) {
               let sum = 0;
               const idx = (start + i) % bufLen;
-              for (let ch = 0; ch < NUM_CHANNELS; ch++) sum += bufs[ch][idx];
-              tmp[i] = sum / NUM_CHANNELS;
+              for (let ch = 0; ch < nCh; ch++) sum += bufs[ch][idx];
+              tmp[i] = sum / nCh;
             }
             result = fft.analyse(tmp, 0);
-          } else {
+          } else if (channel < nCh) {
             result = fft.analyseRing(bufs[channel], wi, count);
           }
 
@@ -279,7 +280,7 @@ const SpectralPanel = memo(function SpectralPanel({ eegData }: SpectralPanelProp
           >
             Avg
           </button>
-          {Array.from({ length: NUM_CHANNELS }, (_, i) => (
+          {Array.from({ length: eegData.numChannels }, (_, i) => (
             <button
               key={i}
               className={`sp-ch${channel === i ? " active" : ""}`}
