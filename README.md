@@ -43,7 +43,7 @@ pip install pieeg-server
 - **Self-update** — detects git or pip install; checks PyPI / remote branch for new versions; one-click update from dashboard
 - **Systemd service** — auto-starts on boot via the install script; standard `systemctl` management
 - **Zero-dependency GPIO** — direct Linux chardev v1 ioctl (no `gpiod` package); stable ABI since Linux 4.8
-- **Spike rejection** — auto-resets after sustained electrode contact changes
+- **Spike rejection** — configurable threshold (`--spike-threshold`, default 5000 raw ADC units); set to `0` to disable; auto-resets baseline after sustained electrode contact changes
 
 ### Dashboard
 
@@ -288,6 +288,7 @@ Server options:
   --no-dashboard         Disable the web dashboard
   --auth                 Enable authentication (requires 6-digit access code)
   --gpio-chip PATH       GPIO chip device path (default: /dev/gpiochip4)
+  --spike-threshold N    Spike filter threshold in raw ADC units (0 = disable, default: 5000)
   --filter               Enable 1–40 Hz bandpass filter server-side
   --lowcut HZ            Filter low cutoff (default: 1.0)
   --highcut HZ           Filter high cutoff (default: 40.0)
@@ -417,6 +418,34 @@ pieeg-server doctor
 ```
 
 Checks everything in one shot: Pi model, Python version, SPI devices, GPIO chips, file permissions, port availability, installed dependencies, systemd service. Returns exit code `0` (all good), `1` (warnings), or `2` (errors) — scriptable with `--quiet`.
+
+### Corrupted-data counter rapidly increasing when electrodes are on
+
+The server uses a spike filter to reject frames where the raw ADC value jumps by more than `SPIKE_THRESHOLD` (5000 units) between samples. Without electrodes, the ADC inputs float at a stable baseline so the filter rarely triggers. Once electrodes are placed on the scalp, real EEG signals plus electrode impedance changes cause larger voltage swings that exceed the default threshold — especially in the first seconds of contact.
+
+**Option 1 — disable the filter at the command line:**
+
+```bash
+pieeg-server --spike-threshold 0
+```
+
+**Option 2 — raise the threshold:**
+
+```bash
+pieeg-server --spike-threshold 50000
+```
+
+**Option 3 — edit the default** in [`pieeg_server/hardware.py`](pieeg_server/hardware.py) (line `SPIKE_THRESHOLD = 5000`).
+
+Also make sure you have good electrode contact (conductive gel, clean skin) and allow a few seconds for the signal to settle after placing electrodes.
+
+### Raspberry Pi 5: `gpiochip` error on startup
+
+The Pi 5 exposes GPIO through the RP1 chip. Depending on your kernel version the device may appear as `/dev/gpiochip0` instead of the default `/dev/gpiochip4`:
+
+```bash
+pieeg-server --gpio-chip /dev/gpiochip0
+```
 
 ### Windows: `Could not install packages due to an OSError`
 
