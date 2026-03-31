@@ -44,7 +44,7 @@ export default function XRWaveView({ eegData, yScale, onExit }: XRWaveViewProps)
   const sessionRef = useRef<XRSession | null>(null);
   const rafRef = useRef<number | null>(null);
   const cleanedUpRef = useRef(false);
-  const clockRef = useRef(new THREE.Clock());
+  const timerRef = useRef(new THREE.Timer());
 
   const eegRef = useRef(eegData);
   const yScaleRef = useRef(yScale);
@@ -80,8 +80,7 @@ export default function XRWaveView({ eegData, yScale, onExit }: XRWaveViewProps)
     if (!container) return;
 
     cleanedUpRef.current = false;
-    const clock = clockRef.current;
-    clock.start();
+    const timer = timerRef.current;
 
     // Scene setup
     const scene = new THREE.Scene();
@@ -260,6 +259,8 @@ export default function XRWaveView({ eegData, yScale, onExit }: XRWaveViewProps)
       const bufSize = e.bufferSize;
       if (count < 2) return;
 
+      timer.update();
+
       const skip = count > MAX_POINTS ? Math.floor(count / MAX_POINTS) : 1;
       const drawCount = Math.min(MAX_POINTS, Math.ceil(count / skip));
       const range = yScaleRef.current || 100;
@@ -267,6 +268,7 @@ export default function XRWaveView({ eegData, yScale, onExit }: XRWaveViewProps)
       for (let ch = 0; ch < NUM_CHANNELS; ch++) {
         const { positions, colors, geometry, angle, yPos, glowPlane, baseHue } = lines[ch];
         const buf = bufs[ch];
+        if (!buf) continue;
 
         const cx = Math.sin(angle) * PANEL_RADIUS;
         const cz = -Math.cos(angle) * PANEL_RADIUS;
@@ -345,7 +347,8 @@ export default function XRWaveView({ eegData, yScale, onExit }: XRWaveViewProps)
           });
 
           renderer.setAnimationLoop(() => {
-            updateWaves(clock.getElapsedTime());
+            timer.update();
+            updateWaves(timer.getElapsed());
             renderer.render(scene, camera);
           });
           return;
@@ -376,7 +379,8 @@ export default function XRWaveView({ eegData, yScale, onExit }: XRWaveViewProps)
       el.addEventListener("pointermove", onPointerMove);
 
       function fallbackLoop() {
-        const t = clock.getElapsedTime();
+        timer.update();
+        const t = timer.getElapsed();
         if (autoRotate) rotY = t * 0.04;
         camera.rotation.order = "YXZ";
         camera.rotation.y = rotY;
