@@ -56,6 +56,7 @@ class TestSpikeDetection:
         hw._last_valid_value = None
         hw._spike_count = 0
         hw._consecutive_rejects = 0
+        hw._spike_threshold = SPIKE_THRESHOLD
         return hw
 
     def _raw_with_last_3(self, b24, b25, b26):

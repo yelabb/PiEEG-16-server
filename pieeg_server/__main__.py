@@ -119,6 +119,10 @@ def parse_args():
         help="GPIO chip device path (default: '/dev/gpiochip4' for Pi 5)",
     )
     rec.add_argument(
+        "--spike-threshold", type=int, default=5000,
+        help="Spike filter threshold (0 = disable spike filter, default: 5000)",
+    )
+    rec.add_argument(
         "--verbose", "-v", action="store_true",
         help="Enable debug logging",
     )
@@ -138,6 +142,10 @@ def parse_args():
     mon.add_argument(
         "--gpio-chip", default="/dev/gpiochip4",
         help="GPIO chip device path (default: '/dev/gpiochip4' for Pi 5)",
+    )
+    mon.add_argument(
+        "--spike-threshold", type=int, default=5000,
+        help="Spike filter threshold (0 = disable spike filter, default: 5000)",
     )
     mon.add_argument(
         "--verbose", "-v", action="store_true",
@@ -167,6 +175,10 @@ def parse_args():
     p.add_argument(
         "--gpio-chip", default="/dev/gpiochip4",
         help="GPIO chip device path (default: '/dev/gpiochip4' for Pi 5)",
+    )
+    p.add_argument(
+        "--spike-threshold", type=int, default=5000,
+        help="Spike filter threshold (0 = disable spike filter, default: 5000)",
     )
     p.add_argument(
         "--filter", action="store_true",
@@ -215,6 +227,7 @@ def _num_channels_from_device(device: str) -> int:
 def _make_hardware(args, logger):
     """Create and open the hardware backend (real or mock)."""
     num_ch = _num_channels_from_device(getattr(args, "device", "pieeg16"))
+    spike_th = getattr(args, "spike_threshold", 5000)
     if args.mock:
         from .mock import MockHardware
         logger.info("Starting in MOCK mode (%d-channel synthetic EEG data)", num_ch)
@@ -223,7 +236,12 @@ def _make_hardware(args, logger):
         from .hardware import PiEEGHardware
         logger.info("Initializing PiEEG-%d hardware (GPIO chip: %s)...",
                     num_ch, args.gpio_chip)
-        hw = PiEEGHardware(gpio_chip=args.gpio_chip, num_channels=num_ch)
+        hw = PiEEGHardware(gpio_chip=args.gpio_chip, num_channels=num_ch,
+                           spike_threshold=spike_th)
+        if spike_th == 0:
+            logger.info("Spike filter DISABLED")
+        else:
+            logger.info("Spike filter threshold: %d", spike_th)
     hw.open()
     if not args.mock:
         logger.info("Hardware initialized - ADCs configured, LEDs should be ON")

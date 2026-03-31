@@ -104,11 +104,13 @@ class PiEEGHardware:
     """Hardware abstraction for PiEEG shields (8 or 16 channels)."""
 
     def __init__(self, gpio_chip: str = "/dev/gpiochip4",
-                 num_channels: int = 16):
+                 num_channels: int = 16,
+                 spike_threshold: int = SPIKE_THRESHOLD):
         if num_channels not in (8, 16):
             raise ValueError(f"num_channels must be 8 or 16, got {num_channels}")
         self._num_channels = num_channels
         self._gpio_chip_name = gpio_chip
+        self._spike_threshold = spike_threshold
         self._chip_fd = -1
         self._cs_fd = -1
         self._drdy_fd = -1
@@ -198,8 +200,13 @@ class PiEEGHardware:
 
         Checks the last 3 bytes (bytes 24-26) of the SPI read as a signed
         24-bit integer. If the jump from the previous valid value exceeds
-        SPIKE_THRESHOLD, the frame is considered corrupted.
+        the spike threshold, the frame is considered corrupted.
+
+        Set spike_threshold=0 to disable spike filtering entirely.
         """
+        if self._spike_threshold == 0:
+            return True
+
         combined = (raw[24] << 16) | (raw[25] << 8) | raw[26]
         if raw[24] & 0x80:
             combined -= 1 << 24
@@ -208,7 +215,7 @@ class PiEEGHardware:
             self._last_valid_value = combined
             return False  # first frame is always skipped, matching original
 
-        if abs(combined - self._last_valid_value) > SPIKE_THRESHOLD:
+        if abs(combined - self._last_valid_value) > self._spike_threshold:
             self._spike_count += 1
             self._consecutive_rejects += 1
             if self._consecutive_rejects >= SPIKE_RESET_AFTER:
