@@ -79,8 +79,10 @@ export function useEventEngine(
 
   // Pre-allocated extraction buffers — reused every eval tick to avoid GC
   const extractBufsRef = useRef<Float64Array[]>([]);
-  // Tracks how many total samples had been received at the last eval
-  const lastEvalSampleRef = useRef(0);
+  // Tracks the writeIndex at the time of last eval (to detect new data)
+  const lastWriteIdxRef = useRef(-1);
+  // Accumulates new-sample count between evaluations
+  const pendingSamplesRef = useRef(0);
 
   const scanResolveRef = useRef<((evts: EEGEvent[]) => void) | null>(null);
 
@@ -151,7 +153,8 @@ export function useEventEngine(
   useEffect(() => {
     if (!enabled || !eegData) return;
 
-    lastEvalSampleRef.current = eegData.samplesInBuffer.current;
+    lastWriteIdxRef.current = eegData.writeIndex.current;
+    pendingSamplesRef.current = 0;
     let rafId = 0;
 
     const tick = () => {
@@ -160,14 +163,24 @@ export function useEventEngine(
       const worker = workerRef.current;
       if (!worker) return;
 
-      const { buffers, writeIndex, samplesInBuffer, numChannels } = eegData;
-      const total = samplesInBuffer.current;
+      const { buffers, writeIndex, samplesInBuffer, numChannels, bufferSize } = eegData;
+      const wi = writeIndex.current;
+      const lastWi = lastWriteIdxRef.current;
+
+      // Compute how many new samples arrived since last check (handles wrap)
+      if (wi !== lastWi) {
+        const delta = wi >= lastWi
+          ? wi - lastWi
+          : bufferSize - lastWi + wi;
+        pendingSamplesRef.current += delta;
+        lastWriteIdxRef.current = wi;
+      }
 
       // Only evaluate when EVAL_STRIDE new samples have arrived
-      if (total - lastEvalSampleRef.current < EVAL_STRIDE) return;
-      if (total < FFT_SIZE) return;
+      if (pendingSamplesRef.current < EVAL_STRIDE) return;
+      if (samplesInBuffer.current < FFT_SIZE) return;
 
-      lastEvalSampleRef.current = total;
+      pendingSamplesRef.current = 0;
 
       // Lazily grow the pre-allocated buffer pool to match numChannels
       const pool = extractBufsRef.current;
@@ -178,16 +191,16 @@ export function useEventEngine(
       for (let ch = 0; ch < numChannels; ch++) {
         const buf = buffers.current[ch];
         const bLen = buf.length;
-        const wi = writeIndex.current;
+        const curWi = writeIndex.current;
         const tmp = pool[ch];
-        const start = (wi - FFT_SIZE + bLen) % bLen;
+        const start = (curWi - FFT_SIZE + bLen) % bLen;
         for (let i = 0; i < FFT_SIZE; i++) {
           tmp[i] = buf[(start + i) % bLen];
         }
         channelData.push(tmp);
       }
 
-      const startFrame = Math.max(0, total - FFT_SIZE);
+      const startFrame = Math.max(0, samplesInBuffer.current - FFT_SIZE);
 
       worker.postMessage({
         type: "analyse",
