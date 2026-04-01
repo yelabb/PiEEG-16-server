@@ -45,6 +45,7 @@ export default function XRWaveView({ eegData, yScale, onExit }: XRWaveViewProps)
   const cleanedUpRef = useRef(false);
   const timerRef = useRef(new THREE.Timer());
   const sceneReadyRef = useRef(false);
+  const tempColorRef = useRef(new THREE.Color());
 
   const [vrSupported, setVrSupported] = useState(false);
   const [inVR, setInVR] = useState(false);
@@ -317,7 +318,7 @@ export default function XRWaveView({ eegData, yScale, onExit }: XRWaveViewProps)
             const drawCount = Math.min(MAX_POINTS, Math.ceil(count / skip));
             const range = yScaleRef.current || 100;
             const lines = linesRef.current;
-            const tc = new THREE.Color();
+            const tc = tempColorRef.current;
 
             for (let ch = 0; ch < lines.length; ch++) {
               const { positions, colors, geometry, angle, yPos, baseHue } = lines[ch];
