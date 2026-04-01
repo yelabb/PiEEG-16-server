@@ -88,13 +88,10 @@ chmod +x setup.sh
 sudo reboot   # only needed first time, to enable SPI
 ```
 
-### Option C — pip install (development / mock mode)
-
-For development on a laptop or CI — no hardware setup, no systemd:
+### Option C — pip install
 
 ```bash
 pip install pieeg-server
-pieeg-server --mock
 ```
 
 ---
