@@ -2108,11 +2108,19 @@ body {
   border-bottom: 1px solid var(--border);
 }
 
-.webcam-video {
+.webcam-video-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.webcam-canvas {
   display: block;
   width: 100%;
   height: 160px;
-  object-fit: cover;
+  background: #0a0a0a;
   border-radius: 0;
 }
 
@@ -2257,6 +2265,11 @@ body {
 .hud-blink-active {
   background: rgba(255, 200, 0, 0.35);
   color: #ffd700;
+}
+
+.hud-wink {
+  font-size: 10px;
+  opacity: 0.8;
 }
 
 /* Chat Messages */

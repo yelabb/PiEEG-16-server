@@ -23,7 +23,15 @@ const MAX_EVENTS = Math.ceil((HISTORY_SECONDS * 1000) / ANALYSIS_INTERVAL_MS);
 // Eye Aspect Ratio threshold — below this = blink
 const EAR_BLINK_THRESHOLD = 0.21;
 // Minimum frames between blinks to avoid double-counting
-const BLINK_COOLDOWN_MS = 250;
+const BLINK_COOLDOWN_MS = 150;
+
+// Adaptive baseline — collect first N frames to calibrate per-user EAR
+const BASELINE_FRAMES = 30; // ~3s at 10fps
+// Blink = EAR drops to this fraction of baseline
+const BLINK_RATIO = 0.65;
+// Velocity-assisted detection: rapid closure + below this fraction
+const BLINK_VEL_THRESHOLD = 0.04;
+const BLINK_VEL_RATIO = 0.80;
 
 // Head movement threshold (normalised landmark delta per frame)
 const HEAD_MOVE_THRESHOLD = 0.008;
@@ -46,6 +54,7 @@ const LOWER_LIP = 14;
 
 interface BlinkEvent {
   type: "blink";
+  eye: "both" | "left" | "right";
   t: number; // Date.now()
 }
 
@@ -55,13 +64,18 @@ interface Snapshot {
   jawOpen: number; // normalised lip distance
   earLeft: number;
   earRight: number;
+  leftClosed: boolean;
+  rightClosed: boolean;
   noseX: number;
   noseY: number;
 }
 
+export type Landmark = { x: number; y: number; z: number };
+
 export interface VideoContextData {
   blinks: BlinkEvent[];
   snapshots: Snapshot[];
+  latestLandmarks: Landmark[] | null;
   ready: boolean;
 }
 
@@ -106,9 +120,16 @@ export function buildVideoContext(data: VideoContextData): string {
   const recentBlinks = data.blinks.filter((b) => now - b.t < HISTORY_SECONDS * 1000);
   if (recentBlinks.length > 0) {
     const times = recentBlinks
-      .map((b) => `t-${((now - b.t) / 1000).toFixed(1)}s`)
+      .map((b) => {
+        const tag = b.eye === "both" ? "" : ` [${b.eye}]`;
+        return `t-${((now - b.t) / 1000).toFixed(1)}s${tag}`;
+      })
       .join(", ");
+    const winkL = recentBlinks.filter((b) => b.eye === "left").length;
+    const winkR = recentBlinks.filter((b) => b.eye === "right").length;
+    const both = recentBlinks.filter((b) => b.eye === "both").length;
     lines.push(`Blinks: ${recentBlinks.length} detected at ${times}`);
+    lines.push(`  ↳ both: ${both}, left wink: ${winkL}, right wink: ${winkR}`);
   } else {
     lines.push("Blinks: none detected");
   }
@@ -133,16 +154,36 @@ export function buildVideoContext(data: VideoContextData): string {
   // Eye state (latest snapshot)
   const latest = recent[recent.length - 1];
   if (latest) {
-    const avgEar = (latest.earLeft + latest.earRight) / 2;
-    const eyeState = avgEar < EAR_BLINK_THRESHOLD ? "closed/blinking" : "open";
-    lines.push(`Eyes: ${eyeState}`);
+    const eyeState = latest.leftClosed && latest.rightClosed
+      ? "both closed/blinking"
+      : latest.leftClosed
+        ? "left closed (wink)"
+        : latest.rightClosed
+          ? "right closed (wink)"
+          : "open";
+    lines.push(`Eyes: ${eyeState} (EAR L:${latest.earLeft.toFixed(2)} R:${latest.earRight.toFixed(2)})`);
   }
 
   // Correlation hints for the LLM
   if (recentBlinks.length > 0) {
-    lines.push(
-      "\n⚠ Blinks correlate with sharp frontal spikes (Fp1/Fp2) — likely EOG artifact"
-    );
+    const winkL = recentBlinks.filter((b) => b.eye === "left").length;
+    const winkR = recentBlinks.filter((b) => b.eye === "right").length;
+    const both = recentBlinks.filter((b) => b.eye === "both").length;
+    if (both > 0) {
+      lines.push(
+        "\n⚠ Full blinks correlate with sharp frontal spikes (Fp1/Fp2) — likely EOG artifact"
+      );
+    }
+    if (winkL > 0) {
+      lines.push(
+        "⚠ Left-eye winks detected — asymmetric EOG artifact expected on Fp1 side"
+      );
+    }
+    if (winkR > 0) {
+      lines.push(
+        "⚠ Right-eye winks detected — asymmetric EOG artifact expected on Fp2 side"
+      );
+    }
   }
   if (avgMove > 0.02) {
     lines.push(
@@ -169,6 +210,11 @@ export function useVideoContext(
   const snapshotsRef = useRef<Snapshot[]>([]);
   const lastBlinkRef = useRef(0);
   const prevNoseRef = useRef<{ x: number; y: number } | null>(null);
+  const prevEarRef = useRef({ left: 0.3, right: 0.3 });
+  const earBaselineRef = useRef({
+    samples: [] as { l: number; r: number }[],
+    medianL: 0.28, medianR: 0.28, ready: false,
+  });
   const readyRef = useRef(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -176,6 +222,7 @@ export function useVideoContext(
   const dataRef = useRef<VideoContextData>({
     blinks: blinksRef.current,
     snapshots: snapshotsRef.current,
+    latestLandmarks: null,
     ready: false,
   });
 
@@ -222,6 +269,7 @@ export function useVideoContext(
       }
       readyRef.current = false;
       dataRef.current.ready = false;
+      dataRef.current.latestLandmarks = null;
     };
   }, [active]);
 
@@ -244,17 +292,54 @@ export function useVideoContext(
       const landmarks = result.faceLandmarks[0];
       const now = Date.now();
 
+      // Store landmarks for face-mesh canvas
+      dataRef.current.latestLandmarks = landmarks as Landmark[];
+
       // EAR for both eyes
       const earL = ear(landmarks, LEFT_EYE);
       const earR = ear(landmarks, RIGHT_EYE);
 
-      // Blink detection
-      const avgEar = (earL + earR) / 2;
+      // 2-frame smoothing to reduce headset vibration noise
+      const smoothL = (earL + prevEarRef.current.left) / 2;
+      const smoothR = (earR + prevEarRef.current.right) / 2;
+
+      // Adaptive baseline — calibrate to this user's eye shape
+      const bl = earBaselineRef.current;
+      if (!bl.ready) {
+        bl.samples.push({ l: earL, r: earR });
+        if (bl.samples.length >= BASELINE_FRAMES) {
+          const sortL = bl.samples.map((s) => s.l).sort((a, b) => a - b);
+          const sortR = bl.samples.map((s) => s.r).sort((a, b) => a - b);
+          bl.medianL = sortL[Math.floor(sortL.length / 2)];
+          bl.medianR = sortR[Math.floor(sortR.length / 2)];
+          bl.ready = true;
+        }
+      }
+
+      // EAR velocity (positive = closing)
+      const velL = prevEarRef.current.left - smoothL;
+      const velR = prevEarRef.current.right - smoothR;
+      prevEarRef.current = { left: smoothL, right: smoothR };
+
+      // Adaptive blink / wink detection
+      const leftClosed =
+        smoothL < bl.medianL * BLINK_RATIO ||
+        (velL > BLINK_VEL_THRESHOLD && smoothL < bl.medianL * BLINK_VEL_RATIO);
+      const rightClosed =
+        smoothR < bl.medianR * BLINK_RATIO ||
+        (velR > BLINK_VEL_THRESHOLD && smoothR < bl.medianR * BLINK_VEL_RATIO);
+
       if (
-        avgEar < EAR_BLINK_THRESHOLD &&
+        (leftClosed || rightClosed) &&
         now - lastBlinkRef.current > BLINK_COOLDOWN_MS
       ) {
-        blinksRef.current.push({ type: "blink", t: now });
+        const eye: BlinkEvent["eye"] =
+          leftClosed && rightClosed
+            ? "both"
+            : leftClosed
+              ? "left"
+              : "right";
+        blinksRef.current.push({ type: "blink", eye, t: now });
         lastBlinkRef.current = now;
         // Trim old blinks
         while (
@@ -283,8 +368,10 @@ export function useVideoContext(
         t: now,
         headDelta,
         jawOpen,
-        earLeft: earL,
-        earRight: earR,
+        earLeft: smoothL,
+        earRight: smoothR,
+        leftClosed,
+        rightClosed,
         noseX: nose.x,
         noseY: nose.y,
       });
@@ -300,6 +387,11 @@ export function useVideoContext(
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
       intervalRef.current = null;
+      // Reset adaptive baseline for recalibration on re-enable
+      earBaselineRef.current = {
+        samples: [], medianL: 0.28, medianR: 0.28, ready: false,
+      };
+      prevEarRef.current = { left: 0.3, right: 0.3 };
     };
   }, [active, videoRef]);
 
