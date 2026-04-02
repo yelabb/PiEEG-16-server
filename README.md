@@ -56,11 +56,12 @@ curl -sSL https://raw.githubusercontent.com/pieeg-club/PiEEG-server/main/install
 - **Topographic map** — IDW-interpolated scalp heatmap over the 10-20 montage; selectable band metric; head outline with nose/ears
 - **Statistics panel** — 10 metrics per channel (Mean, RMS, Std, Variance, P-P, Min, Max, Skewness, Kurtosis, Zero-Crossings); sortable columns; CSV export
 - **Filter preview** — live Butterworth magnitude response curve with passband highlight and –3 dB reference as you adjust cutoffs
-- **3D immersive view** — Three.js arc of 16 wave strips with amplitude-responsive color, glow planes, starfield, and nebula particles; WebXR-ready
+- **Experiences gallery** — community-driven collection of immersive EEG visualizations; card-based launcher page; each experience lazy-loaded as a separate chunk; simple registry pattern for contributors (add a component + one entry)
+- **3D immersive view** — Three.js arc of 16 wave strips with amplitude-responsive color, starfield, and cosmic environment; WebXR-ready with hand tracking support; available as the first experience in the gallery
 - **AI chat assistant** — bring-your-own-provider side panel (OpenAI, Anthropic, Ollama, Groq, LM Studio, or any OpenAI-compatible endpoint); system prompt auto-includes live band powers and channel context; SSE streaming responses
 - **Session library** — browse, open, and replay saved recordings with play/pause, seek, and speed control (0.5×–2×); add/delete annotations during playback
 - **Performance monitor** — toggle overlay showing FPS, frame time, and JS heap usage
-- **Keyboard shortcuts** — Space (pause), R (record), F (FFT), G (spectrogram), S (stats), V (3D view), C (chat), W (webhooks), P (perf monitor), ? (shortcut help)
+- **Keyboard shortcuts** — Space (pause), R (record), F (FFT), G (spectrogram), S (stats), V (experiences), C (chat), W (webhooks), P (perf monitor), ? (shortcut help)
 - **Update banner** — notifies when a newer version is available with platform-appropriate upgrade instructions
 - **Responsive auth gate** — 6-digit code entry screen when `--auth` is enabled; 24-hour session persistence
 - **Webhook panel** — create rules that fire HTTP requests when EEG conditions are met (e.g. alpha power above threshold); browser-side FFT evaluation (no extra load on the Pi); supports POST/PUT/PATCH/GET methods, Authorization headers, and per-rule cooldown; enable/disable toggle works even when the panel is closed; active indicator dot on the toolbar; contextual `?` tooltips on every field

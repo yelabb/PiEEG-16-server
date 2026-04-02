@@ -29,8 +29,11 @@ dashboard/
 │   │   ├── PerformanceMonitor.jsx  # FPS/frame-time overlay (press P)
 │   │   ├── SessionList.jsx      # Browse saved CSV recordings
 │   │   ├── SessionViewer.jsx    # Playback recorded sessions
+│   │   ├── ExperiencesPage.tsx  # Gallery launcher for experiences
 │   │   ├── UpdateBanner.jsx     # Server update notification
 │   │   └── XRWaveView.jsx       # Immersive WebXR wave visualization
+│   ├── experiences/
+│   │   └── registry.ts         # Experience definitions + types
 │   ├── hooks/
 │   │   ├── useEEG.js            # WebSocket connection + ring buffers
 │   │   └── useFFTWorker.js      # Web Worker bridge for FFT
@@ -41,6 +44,32 @@ dashboard/
 ├── package.json
 ├── vite.config.js
 └── README.md
+```
+
+## Experiences
+
+The **Experiences** page is a gallery of immersive EEG visualizations — community-driven, like the [three.js examples](https://threejs.org/examples/). Each experience is a standalone component that receives live EEG data and renders full-screen.
+
+### Adding an experience
+
+1. Create a component in `src/experiences/` (or `src/components/`). It must accept `{ eegData, yScale, onExit }` props.
+2. Add a `lazy()` import and an entry to the `EXPERIENCES` array in `src/experiences/registry.ts`.
+3. Each experience is automatically code-split into its own JS chunk — no impact on initial load.
+
+```ts
+// src/experiences/registry.ts
+const MyExperience = lazy(() => import("./MyExperience"));
+
+// Add to the EXPERIENCES array:
+{
+  id: "my-experience",
+  name: "My Experience",
+  description: "What it does",
+  tag: "3D",
+  gradient: ["#ff6b6b", "#feca57"],
+  component: MyExperience,
+  author: "Your Name",
+}
 ```
 
 ## Development

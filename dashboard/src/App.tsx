@@ -7,7 +7,6 @@ import SpectralPanel from "./components/SpectralPanel";
 import PerformanceMonitor from "./components/PerformanceMonitor";
 import SessionList from "./components/SessionList";
 import SessionViewer from "./components/SessionViewer";
-import XRWaveView from "./components/XRWaveView";
 import TopoMap from "./components/TopoMap";
 import Spectrogram from "./components/Spectrogram";
 import FilterPreview from "./components/FilterPreview";
@@ -16,6 +15,7 @@ import UpdateBanner from "./components/UpdateBanner";
 import ShortcutHelp from "./components/ShortcutHelp";
 import ChatPanel from "./components/ChatPanel";
 import WebhookPanel from "./components/WebhookPanel";
+import ExperiencesPage from "./components/ExperiencesPage";
 import { useWebhooks } from "./hooks/useWebhooks";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { NUM_CHANNELS } from "./types";
@@ -24,7 +24,7 @@ import type { SelectOption, GuidedPreset } from "./types";
 
 const DEFAULT_MOBILE = new Set([0, 1, 2, 3]);
 
-type ViewState = "live" | "sessions" | "playback";
+type ViewState = "live" | "sessions" | "playback" | "experiences";
 
 const SCALE_OPTIONS: SelectOption<number>[] = [
   { value: 50, label: "±50 µV" },
@@ -51,7 +51,6 @@ export default function App() {
   const [timeWindow, setTimeWindow] = useState(4);
   const [yScale, setYScale] = useState(100);
   const [expandedCh, setExpandedCh] = useState<number | null>(null);
-  const [xrActive, setXrActive] = useState(false);
   const [showSpectrogram, setShowSpectrogram] = useState(false);
   const [showStats, setShowStats] = useState(false);
   const [showChat, setShowChat] = useState(false);
@@ -205,6 +204,7 @@ export default function App() {
         if (e.code === "Escape") {
           if (view === "playback") { setView("sessions"); setSelectedSession(null); }
           else if (view === "sessions") setView("live");
+          else if (view === "experiences") setView("live");
         }
         return;
       }
@@ -220,7 +220,7 @@ export default function App() {
           setShowFFT((v) => !v);
           break;
         case "KeyV":
-          setXrActive((v) => !v);
+          setView("experiences");
           break;
         case "KeyS":
           setShowStats((v) => !v);
@@ -236,7 +236,6 @@ export default function App() {
           break;
         case "Escape":
           if (activePreset) applyPreset(null);
-          else if (xrActive) setXrActive(false);
           else if (expandedCh !== null) setExpandedCh(null);
           else if (eeg.recordResult) eeg.dismissRecordResult();
           break;
@@ -266,6 +265,20 @@ export default function App() {
         <ErrorBoundary>
           <SessionList
             onSelect={(filename) => { setSelectedSession(filename); setView("playback"); }}
+            onBack={() => setView("live")}
+          />
+        </ErrorBoundary>
+      </AuthGate>
+    );
+  }
+
+  if (view === "experiences") {
+    return (
+      <AuthGate>
+        <ErrorBoundary>
+          <ExperiencesPage
+            eegData={eeg.data}
+            yScale={yScale}
             onBack={() => setView("live")}
           />
         </ErrorBoundary>
@@ -366,10 +379,10 @@ export default function App() {
         </button>
         <button
           className="btn btn-xr"
-          onClick={() => setXrActive(true)}
-          title="Open EEG waves in immersive 3D / VR"
+          onClick={() => setView("experiences")}
+          title="Open immersive EEG experiences"
         >
-          XR View
+          Experiences
         </button>
         <div className="sep" />
         <div className="control-group">
@@ -610,10 +623,7 @@ export default function App() {
         </div>
       )}
 
-      {/* XR immersive view */}
-      {xrActive && (
-        <XRWaveView eegData={eeg.data} yScale={yScale} onExit={() => setXrActive(false)} />
-      )}
+
 
       {/* Performance Monitor (press P to toggle) */}
       <PerformanceMonitor />
@@ -643,7 +653,7 @@ export default function App() {
           <kbd>F</kbd> FFT
           <kbd>G</kbd> Gram
           <kbd>S</kbd> Stats
-          <kbd>V</kbd> XR
+          <kbd>V</kbd> Exp
           <kbd>C</kbd> Chat
           <kbd>W</kbd> Hooks
           <kbd>Esc</kbd> Close
