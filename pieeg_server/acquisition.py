@@ -17,10 +17,12 @@ SAMPLE_INTERVAL = 1.0 / SAMPLE_RATE  # 4 ms
 class AcquisitionLoop:
     """Runs the SPI read loop in a background thread, feeds async queues."""
 
-    def __init__(self, hardware, loop: asyncio.AbstractEventLoop, mock: bool = False):
+    def __init__(self, hardware, loop: asyncio.AbstractEventLoop,
+                 mock: bool = False, ble: bool = False):
         self._hw = hardware
         self._loop = loop
         self._mock = mock
+        self._ble = ble
         self._subscribers: list[asyncio.Queue] = []
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
@@ -70,6 +72,8 @@ class AcquisitionLoop:
     def _run(self):
         if self._mock:
             self._run_mock()
+        elif self._ble:
+            self._run_ble()
         else:
             self._run_hardware()
 
@@ -147,3 +151,40 @@ class AcquisitionLoop:
                     q.put_nowait(frame)
                 except asyncio.QueueFull:
                     pass
+
+    def _run_ble(self):
+        """BLE acquisition: connect, then poll the notification buffer at 250 Hz.
+
+        The IronBCIHardware receives data via BLE notification callbacks which
+        fill an internal buffer. This loop drains that buffer at the sample rate
+        and pushes frames into the async queues, matching the same timing
+        contract as _run_hardware() and _run_mock().
+        """
+        import asyncio as _aio
+
+        # Run scan_and_connect on the main event loop
+        future = _aio.run_coroutine_threadsafe(
+            self._hw.scan_and_connect(self._loop), self._loop
+        )
+        try:
+            future.result(timeout=30.0)
+        except Exception as e:
+            import logging
+            logging.getLogger("pieeg.acquisition").error(
+                "BLE connection failed: %s", e
+            )
+            return
+
+        while not self._stop_event.is_set():
+            sample = self._hw.read_sample()
+            if sample is None:
+                time.sleep(SAMPLE_INTERVAL)
+                continue
+
+            self._sample_count += 1
+            frame = {
+                "t": round(time.time(), 6),
+                "n": self._sample_count,
+                "channels": sample,
+            }
+            self._loop.call_soon_threadsafe(self._enqueue, frame)
