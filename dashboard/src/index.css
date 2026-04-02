@@ -1088,6 +1088,220 @@ body {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
+   Experiences Page
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.exp-page {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 0 48px;
+  background: var(--bg);
+}
+
+.exp-header {
+  padding: 24px 32px 0;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.exp-back {
+  margin-bottom: 16px;
+  background: transparent;
+  border-color: var(--border);
+  color: var(--text-secondary);
+}
+
+.exp-back:hover {
+  color: var(--text);
+  border-color: var(--border-hover);
+}
+
+.exp-title-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.exp-title {
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  color: var(--text);
+}
+
+.exp-count {
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 1px 8px;
+  color: var(--text-secondary);
+  font-family: var(--mono);
+}
+
+.exp-subtitle {
+  font-size: 13px;
+  color: var(--text-dim);
+  margin-bottom: 24px;
+}
+
+.exp-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+  padding: 0 32px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.exp-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
+  display: flex;
+  flex-direction: column;
+  text-align: left;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+}
+
+.exp-card:hover {
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+}
+
+.exp-card-thumb {
+  height: 160px;
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  padding: 10px;
+}
+
+.exp-card-tags {
+  display: flex;
+  gap: 6px;
+}
+
+.exp-tag {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(8px);
+  color: #fff;
+  padding: 2px 8px;
+  border-radius: var(--radius-xs);
+}
+
+.exp-tag--vr {
+  background: rgba(124, 58, 237, 0.75);
+}
+
+.exp-tag--hand {
+  background: rgba(16, 185, 129, 0.75);
+}
+
+.exp-card-body {
+  padding: 14px 16px 16px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.exp-card-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.exp-card-desc {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.exp-card-author {
+  font-size: 11px;
+  color: var(--text-dim);
+  font-family: var(--mono);
+  margin-top: auto;
+  padding-top: 8px;
+}
+
+/* Add-your-own card */
+.exp-card--add {
+  cursor: default;
+  border-style: dashed;
+}
+
+.exp-card--add:hover {
+  transform: none;
+  box-shadow: none;
+}
+
+.exp-card-thumb--add {
+  background: var(--surface-raised);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.exp-add-icon {
+  font-size: 48px;
+  font-weight: 200;
+  color: var(--text-dim);
+  line-height: 1;
+}
+
+/* Loading state for lazy-loaded experiences */
+.exp-loading {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.exp-loading-spinner {
+  width: 32px;
+  height: 32px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: exp-spin 0.8s linear infinite;
+}
+
+@keyframes exp-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (max-width: 640px) {
+  .exp-header { padding: 16px 16px 0; }
+  .exp-grid { padding: 0 16px; grid-template-columns: 1fr; }
+  .exp-title { font-size: 20px; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
    Update Banner
    ═══════════════════════════════════════════════════════════════════════ */
 
