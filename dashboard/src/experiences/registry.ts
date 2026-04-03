@@ -50,6 +50,9 @@ const NeuralSonificationExperience = lazy(
 const VRChatOSCExperience = lazy(
   () => import("./vrchat-osc/VRChatOSC"),
 );
+const SpoonBendExperience = lazy(
+  () => import("./spoon-bend/SpoonBend"),
+);
 
 export const EXPERIENCES: ExperienceEntry[] = [
   {
@@ -92,6 +95,16 @@ export const EXPERIENCES: ExperienceEntry[] = [
     tag: "VRChat",
     gradient: ["#1565c0", "#6a1b9a"],
     component: VRChatOSCExperience,
+    author: "PiEEG community",
+  },
+  {
+    id: "spoon-bend",
+    name: "Spoon Bend",
+    description:
+      "Channel your focus to bend a virtual spoon — Matrix style. Beta and Gamma brainwaves drive the bend while digital rain cascades around you. Includes baseline calibration for personalised sensitivity.",
+    tag: "Focus",
+    gradient: ["#059669", "#0a0a0a"],
+    component: SpoonBendExperience,
     author: "PiEEG community",
   },
 ];
