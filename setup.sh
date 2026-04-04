@@ -130,8 +130,8 @@ PY_VERSION=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.versi
 PY_MAJOR=$(echo "$PY_VERSION" | cut -d. -f1)
 PY_MINOR=$(echo "$PY_VERSION" | cut -d. -f2)
 
-if [ "$PY_MAJOR" -lt 3 ] || { [ "$PY_MAJOR" -eq 3 ] && [ "$PY_MINOR" -lt 11 ]; }; then
-    die "Python 3.11+ is required, but found Python $PY_VERSION. Upgrade your OS or install a newer Python."
+if [ "$PY_MAJOR" -lt 3 ] || { [ "$PY_MAJOR" -eq 3 ] && [ "$PY_MINOR" -lt 10 ]; }; then
+    die "Python 3.10+ is required, but found Python $PY_VERSION. Upgrade your OS or install a newer Python."
 fi
 
 ok "Python $PY_VERSION"

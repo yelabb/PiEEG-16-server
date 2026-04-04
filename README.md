@@ -561,7 +561,7 @@ pytest -v                 # verbose output
 ./scripts/build_release.sh --upload   # also uploads to PyPI
 ```
 
-Requires Node.js >= 18 and Python >= 3.11 on your **dev machine** (not on the Pi).
+Requires Node.js >= 18 and Python >= 3.10 on your **dev machine** (not on the Pi).
 
 #### Release workflow
 

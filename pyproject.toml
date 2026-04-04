@@ -7,7 +7,7 @@ name = "pieeg-server"
 version = "0.21.0"
 description = "One-command local streaming server for PiEEG (8/16-channel EEG shield for Raspberry Pi)"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.10"
 license = {file = "LICENSE"}
 authors = [
     {name = "PiEEG Community"},
@@ -18,6 +18,7 @@ classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Science/Research",
     "Topic :: Scientific/Engineering :: Medical Science Apps.",
+    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",

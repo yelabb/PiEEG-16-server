@@ -73,10 +73,10 @@ def run_doctor(quiet: bool = False) -> int:
     ok(f"Python {platform.python_version()} ({sys.executable})")
 
     py = sys.version_info
-    if py.major < 3 or (py.major == 3 and py.minor < 11):
-        fail(f"Python 3.11+ required (found {py.major}.{py.minor})")
+    if py.major < 3 or (py.major == 3 and py.minor < 10):
+        fail(f"Python 3.10+ required (found {py.major}.{py.minor})")
     else:
-        ok(f"Python version OK (3.11+ required)")
+        ok(f"Python version OK (3.10+ required)")
 
     if platform.system() == "Linux":
         ok("Running on Linux")

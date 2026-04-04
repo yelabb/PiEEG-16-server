@@ -9,7 +9,7 @@
 #
 # Requirements (on your dev machine, NOT on the Pi):
 #   - Node.js >= 18  (for Vite build)
-#   - Python >= 3.11 (build + twine)
+#   - Python >= 3.10 (build + twine)
 # ============================================================
 set -euo pipefail
 
