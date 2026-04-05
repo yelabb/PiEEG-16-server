@@ -77,17 +77,22 @@ export default function ExperiencesPage({ eegData, yScale, onBack, sendCommand }
         ))}
 
         {/* Placeholder card encouraging contributions */}
-        <div className="exp-card exp-card--add">
+        <a
+          className="exp-card exp-card--add"
+          href="https://github.com/pieeg-club/PiEEG-server/blob/main/dashboard/src/experiences/README.md"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
           <div className="exp-card-thumb exp-card-thumb--add">
             <span className="exp-add-icon">+</span>
           </div>
           <div className="exp-card-body">
             <h3 className="exp-card-name">Add yours</h3>
             <p className="exp-card-desc">
-              Create an experience component, add it to the registry, and open a PR.
+              Follow the step-by-step guide to create your own brain-powered mini-game and open a PR.
             </p>
           </div>
-        </div>
+        </a>
       </div>
     </div>
   );

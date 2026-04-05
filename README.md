@@ -580,7 +580,7 @@ This project was built with guidance from [Ildar Rakhmatulin, PhD](https://schol
 
 ## Security
 
-PiEEG server is designed for **trusted local networks** (home lab, research bench). It is **not hardened for the public internet**. Here's an honest breakdown of what's protected and what isn't.
+PiEEG server is designed for **trusted local networks** (home lab, research bench). It is **not hardened for the public internet**. Here's a breakdown of what's protected and what isn't.
 
 ### What's secured
 

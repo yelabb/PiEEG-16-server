@@ -1244,13 +1244,16 @@ body {
 
 /* Add-your-own card */
 .exp-card--add {
-  cursor: default;
   border-style: dashed;
+  text-decoration: none;
+  color: inherit;
 }
 
 .exp-card--add:hover {
   transform: none;
   box-shadow: none;
+  text-decoration: none;
+  color: inherit;
 }
 
 .exp-card-thumb--add {
