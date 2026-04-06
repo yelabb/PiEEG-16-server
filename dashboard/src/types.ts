@@ -94,6 +94,9 @@ export type TriggerType = (typeof TRIGGER_TYPES)[number];
 export const BANDS = ["delta", "theta", "alpha", "beta", "gamma"] as const;
 export type Band = (typeof BANDS)[number];
 
+export const SERVICE_TYPES = ["generic", "ifttt", "zapier"] as const;
+export type ServiceType = (typeof SERVICE_TYPES)[number];
+
 export interface WebhookRule {
   id: string;
   name: string;
@@ -107,6 +110,7 @@ export interface WebhookRule {
   cooldown: number;
   last_fired: number;
   fire_count: number;
+  service: ServiceType;
 }
 
 export interface WebhookEvent {

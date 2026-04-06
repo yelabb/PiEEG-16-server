@@ -26,6 +26,8 @@ TRIGGER_TYPES = [
     "band_ratio_below",
 ]
 
+SERVICE_TYPES = ["generic", "ifttt", "zapier"]
+
 DEFAULT_RULES_PATH = Path("webhooks.json")
 
 
@@ -35,7 +37,7 @@ class WebhookRule:
     __slots__ = (
         "id", "name", "enabled", "trigger_type", "params",
         "url", "method", "headers", "body_template",
-        "cooldown", "last_fired", "fire_count",
+        "cooldown", "last_fired", "fire_count", "service",
     )
 
     def __init__(self, *, id: str | None = None, name: str = "",
@@ -44,7 +46,7 @@ class WebhookRule:
                  url: str = "", method: str = "POST",
                  headers: dict | None = None, body_template: str = "",
                  cooldown: float = 10.0, last_fired: float = 0.0,
-                 fire_count: int = 0):
+                 fire_count: int = 0, service: str = "generic"):
         self.id = id or str(uuid.uuid4())[:8]
         self.name = name
         self.enabled = enabled
@@ -57,6 +59,7 @@ class WebhookRule:
         self.cooldown = cooldown
         self.last_fired = last_fired
         self.fire_count = fire_count
+        self.service = service if service in SERVICE_TYPES else "generic"
 
     def to_dict(self) -> dict:
         return {
@@ -72,6 +75,7 @@ class WebhookRule:
             "cooldown": self.cooldown,
             "last_fired": self.last_fired,
             "fire_count": self.fire_count,
+            "service": self.service,
         }
 
     @classmethod
@@ -121,7 +125,7 @@ class WebhookStore:
             if r.id == rule_id:
                 for key in ("name", "enabled", "trigger_type", "params",
                             "url", "method", "headers", "body_template",
-                            "cooldown"):
+                            "cooldown", "service"):
                     if key in data:
                         setattr(r, key, data[key])
                 self._save_rules()
@@ -199,17 +203,41 @@ class WebhookStore:
                 return {"ok": True, "rule_id": rule_id}
         return {"ok": False, "error": "rule_not_found"}
 
+    def _build_payload(self, rule: WebhookRule, value: float) -> dict:
+        """Build the JSON payload based on the rule's service type."""
+        base = {
+            "event": rule.trigger_type,
+            "rule": rule.name,
+            "value": round(value, 4),
+            "threshold": rule.params.get("threshold", 0),
+            "channel": rule.params.get("channel", 0),
+            "timestamp": time.time(),
+        }
+
+        if rule.service == "ifttt":
+            # IFTTT Webhooks expects value1, value2, value3
+            return {
+                "value1": str(round(value, 4)),
+                "value2": rule.trigger_type,
+                "value3": json.dumps(base),
+            }
+
+        if rule.service == "zapier":
+            # Zapier accepts any JSON — use flat keys for easy mapping
+            return {
+                **base,
+                "band": rule.params.get("band", ""),
+                "numerator": rule.params.get("numerator", ""),
+                "denominator": rule.params.get("denominator", ""),
+                "source": "pieeg",
+            }
+
+        return base
+
     def _send_http(self, rule: WebhookRule, value: float):
         """Send webhook HTTP request (runs in thread pool)."""
         try:
-            body = json.dumps({
-                "event": rule.trigger_type,
-                "rule": rule.name,
-                "value": round(value, 4),
-                "threshold": rule.params.get("threshold", 0),
-                "channel": rule.params.get("channel", 0),
-                "timestamp": time.time(),
-            })
+            body = json.dumps(self._build_payload(rule, value))
             req = Request(
                 rule.url,
                 data=body.encode("utf-8"),

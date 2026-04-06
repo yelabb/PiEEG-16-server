@@ -3208,6 +3208,92 @@ body {
   margin-top: 8px;
 }
 
+/* ── Service picker ── */
+.wh-service-picker {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 4px;
+}
+.wh-service-btn {
+  flex: 1;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.wh-service-btn:hover { border-color: var(--border-hover); color: var(--text); }
+.wh-service-btn.active { border-color: var(--accent); color: var(--accent-light); background: var(--accent-soft); }
+.wh-service-btn.wh-service-ifttt.active { border-color: #33ccff; color: #33ccff; background: rgba(51,204,255,0.08); }
+.wh-service-btn.wh-service-zapier.active { border-color: #ff4a00; color: #ff4a00; background: rgba(255,74,0,0.08); }
+
+.wh-service-help {
+  font-size: 10px;
+  color: var(--text-dim);
+  margin-bottom: 8px;
+  line-height: 1.4;
+}
+
+/* ── Service badges on rule cards ── */
+.wh-service-ifttt { color: #33ccff !important; border-color: rgba(51,204,255,0.3) !important; background: rgba(51,204,255,0.08) !important; }
+.wh-service-zapier { color: #ff4a00 !important; border-color: rgba(255,74,0,0.3) !important; background: rgba(255,74,0,0.08) !important; }
+
+/* ── IFTTT / Zapier setup sections ── */
+.wh-ifttt-setup,
+.wh-zapier-setup {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.wh-key-input {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: -0.02em;
+}
+.wh-url-preview {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  margin: 2px 0;
+}
+.wh-url-preview-label { font-size: 10px; color: var(--text-dim); white-space: nowrap; }
+.wh-url-preview code {
+  font-size: 9px;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wh-setup-steps {
+  margin: 6px 0 4px;
+  padding: 8px 10px;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 10px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+.wh-setup-steps strong { color: var(--text); font-size: 10px; }
+.wh-setup-steps ol { margin: 4px 0 0 16px; padding: 0; }
+.wh-setup-steps li { margin-bottom: 2px; }
+.wh-setup-steps code { font-size: 9px; color: var(--accent-light); background: var(--accent-soft); padding: 1px 3px; border-radius: 2px; }
+.wh-setup-hint {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
 .btn-muted {
   background: transparent !important;
   border: 1px solid var(--border) !important;

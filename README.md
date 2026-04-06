@@ -46,7 +46,7 @@ curl -sSL https://raw.githubusercontent.com/pieeg-club/PiEEG-server/main/install
 - **Systemd service** — auto-starts on boot via the install script; standard `systemctl` management
 - **Zero-dependency GPIO** — direct Linux chardev v1 ioctl (no `gpiod` package); stable ABI since Linux 4.8
 - **Spike rejection** — auto-resets after sustained electrode contact changes
-- **Webhooks** — configurable HTTP callbacks triggered by EEG events (band power thresholds, amplitude, band ratios); rules persisted to JSON on disk; server relays HTTP requests with custom method, headers, and cooldown; disable with `--no-webhooks`
+- **Webhooks** — configurable HTTP callbacks triggered by EEG events (band power thresholds, amplitude, band ratios); rules persisted to JSON on disk; server relays HTTP requests with custom method, headers, and cooldown; built-in IFTTT and Zapier payload formats; disable with `--no-webhooks`
 
 ### Dashboard
 
@@ -66,7 +66,7 @@ curl -sSL https://raw.githubusercontent.com/pieeg-club/PiEEG-server/main/install
 - **Keyboard shortcuts** — Space (pause), R (record), F (FFT), G (spectrogram), S (stats), V (experiences), C (chat), W (webhooks), P (perf monitor), ? (shortcut help)
 - **Update banner** — notifies when a newer version is available with platform-appropriate upgrade instructions
 - **Responsive auth gate** — 6-digit code entry screen when `--auth` is enabled; 24-hour session persistence
-- **Webhook panel** — create rules that fire HTTP requests when EEG conditions are met (e.g. alpha power above threshold); browser-side FFT evaluation (no extra load on the Pi); supports POST/PUT/PATCH/GET methods, Authorization headers, and per-rule cooldown; enable/disable toggle works even when the panel is closed; active indicator dot on the toolbar; contextual `?` tooltips on every field
+- **Webhook panel** — create rules that fire HTTP requests when EEG conditions are met (e.g. alpha power above threshold); browser-side FFT evaluation (no extra load on the Pi); supports POST/PUT/PATCH/GET methods, Authorization headers, and per-rule cooldown; IFTTT and Zapier presets auto-format payloads; enable/disable toggle works even when the panel is closed; active indicator dot on the toolbar; contextual `?` tooltips on every field
 
 ## Install
 
@@ -347,6 +347,57 @@ Webhook rules are managed via WebSocket commands. The dashboard handles this aut
 ```
 
 Trigger types: `band_power_above`, `band_power_below`, `amplitude_above`, `amplitude_below`, `band_ratio_above`, `band_ratio_below`.
+
+### IFTTT & Zapier
+
+Webhook rules support three service modes — **Generic**, **IFTTT**, and **Zapier** — selectable per rule in the dashboard. Each mode formats the outgoing payload to match what the service expects.
+
+#### IFTTT
+
+1. Go to [ifttt.com/maker_webhooks](https://ifttt.com/maker_webhooks) and click **Documentation** to find your key.
+2. In the PiEEG dashboard webhook panel, create a rule and select **IFTTT** as the service.
+3. Set the URL to:
+   ```
+   https://maker.ifttt.com/trigger/{event_name}/with/key/{your_key}
+   ```
+4. The server sends a JSON body with `value1` (the measured value), `value2` (the trigger type), and `value3` (full event detail as JSON) — matching IFTTT's Webhooks format.
+
+#### Zapier
+
+1. Create a Zap with the **Webhooks by Zapier** trigger (Catch Hook).
+2. Copy the webhook URL Zapier gives you.
+3. In the PiEEG dashboard, create a rule, select **Zapier**, and paste the URL.
+4. The server sends a flat JSON object with `event`, `rule`, `value`, `threshold`, `channel`, `band`, `timestamp`, and `source` — all available as separate fields in the Zapier editor.
+
+#### Generic
+
+The default mode sends a JSON body with `event`, `rule`, `value`, `threshold`, `channel`, and `timestamp`. Use this for custom endpoints, n8n, Home Assistant, Node-RED, or any service that accepts a POST with JSON.
+
+#### Example payloads
+
+<details>
+<summary>IFTTT</summary>
+
+```json
+{"value1": "23.45", "value2": "band_power_above", "value3": "{\"event\":\"band_power_above\",\"rule\":\"Alpha alert\",\"value\":23.45,\"threshold\":20,\"channel\":0,\"timestamp\":1711234567.12}"}
+```
+</details>
+
+<details>
+<summary>Zapier</summary>
+
+```json
+{"event": "band_power_above", "rule": "Alpha alert", "value": 23.45, "threshold": 20, "channel": 0, "timestamp": 1711234567.12, "band": "alpha", "numerator": "", "denominator": "", "source": "pieeg"}
+```
+</details>
+
+<details>
+<summary>Generic</summary>
+
+```json
+{"event": "band_power_above", "rule": "Alpha alert", "value": 23.45, "threshold": 20, "channel": 0, "timestamp": 1711234567.12}
+```
+</details>
 
 ## Architecture
 

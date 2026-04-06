@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from pieeg_server.webhooks import WebhookStore, WebhookRule
+from pieeg_server.webhooks import WebhookStore, WebhookRule, SERVICE_TYPES
 
 
 # ── Fixtures ───────────────────────────────────────────────────────────────
@@ -201,6 +201,99 @@ class TestFireRule:
         result = await store.fire_rule(r["id"], 1.0)
         assert result["ok"] is False
         assert result["error"] == "no_url"
+
+
+# ── Service types ──────────────────────────────────────────────────────────
+
+class TestServiceTypes:
+    def test_service_field_default(self):
+        r = WebhookRule(name="test")
+        assert r.service == "generic"
+
+    def test_service_field_roundtrip(self):
+        r = WebhookRule(name="ifttt rule", service="ifttt")
+        d = r.to_dict()
+        assert d["service"] == "ifttt"
+        r2 = WebhookRule.from_dict(d)
+        assert r2.service == "ifttt"
+
+    def test_invalid_service_defaults_to_generic(self):
+        r = WebhookRule(name="bad", service="unknown_service")
+        assert r.service == "generic"
+
+    def test_create_rule_with_service(self, store):
+        r = store.create_rule({
+            "name": "Zapier",
+            "service": "zapier",
+            "url": "https://hooks.zapier.com/hooks/catch/123/abc/",
+        })
+        assert r["service"] == "zapier"
+
+    def test_update_rule_service(self, store):
+        r = store.create_rule({"name": "Rule", "url": "https://a.com"})
+        updated = store.update_rule(r["id"], {"service": "ifttt"})
+        assert updated["service"] == "ifttt"
+
+
+# ── Payload formatting ────────────────────────────────────────────────────
+
+class TestPayloadFormatting:
+    def test_generic_payload(self, store):
+        rule = WebhookRule(name="Test", service="generic",
+                           trigger_type="band_power_above",
+                           params={"threshold": 10, "channel": 0})
+        payload = store._build_payload(rule, 15.0)
+        assert payload["event"] == "band_power_above"
+        assert payload["value"] == 15.0
+        assert payload["threshold"] == 10
+        assert "value1" not in payload
+
+    def test_ifttt_payload(self, store):
+        rule = WebhookRule(name="IFTTT Test", service="ifttt",
+                           trigger_type="band_power_above",
+                           params={"threshold": 10})
+        payload = store._build_payload(rule, 12.5)
+        assert payload["value1"] == "12.5"
+        assert payload["value2"] == "band_power_above"
+        assert "value3" in payload
+        # value3 should be valid JSON
+        import json
+        parsed = json.loads(payload["value3"])
+        assert parsed["value"] == 12.5
+
+    def test_zapier_payload(self, store):
+        rule = WebhookRule(name="Zapier Test", service="zapier",
+                           trigger_type="band_ratio_above",
+                           params={"threshold": 1.5, "numerator": "alpha",
+                                   "denominator": "theta", "channel": 2})
+        payload = store._build_payload(rule, 2.1)
+        assert payload["event"] == "band_ratio_above"
+        assert payload["value"] == 2.1
+        assert payload["source"] == "pieeg"
+        assert payload["band"] == ""
+        assert payload["numerator"] == "alpha"
+        assert payload["denominator"] == "theta"
+
+    @patch("pieeg_server.webhooks.urlopen")
+    def test_ifttt_http_sends_value_keys(self, mock_urlopen, store):
+        mock_resp = MagicMock()
+        mock_resp.status = 200
+        mock_resp.__enter__ = MagicMock(return_value=mock_resp)
+        mock_resp.__exit__ = MagicMock(return_value=False)
+        mock_urlopen.return_value = mock_resp
+
+        rule = WebhookRule(
+            name="IFTTT", service="ifttt",
+            url="https://maker.ifttt.com/trigger/test/json/with/key/abc123",
+            trigger_type="amplitude_above",
+            params={"threshold": 100},
+        )
+        store._send_http(rule, 150.0)
+        req = mock_urlopen.call_args[0][0]
+        body = json.loads(req.data.decode())
+        assert "value1" in body
+        assert "value2" in body
+        assert "value3" in body
 
 
 # ── Cleanup ────────────────────────────────────────────────────────────────
