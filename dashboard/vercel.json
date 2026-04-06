@@ -1,0 +1,6 @@
+{
+  "buildCommand": "npm run build",
+  "outputDirectory": "../pieeg_server/static/dashboard",
+  "framework": "vite",
+  "installCommand": "npm install"
+}
