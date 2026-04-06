@@ -88,14 +88,26 @@ export function useEEG(timeWindowSec = 4): UseEEGReturn {
   }, []);
 
   useEffect(() => {
-    const wsHost = location.hostname || "localhost";
-    const wsPort = import.meta.env.DEV ? 1616 : parseInt(location.port || "1617") - 1;
-    const wsScheme = location.protocol === "https:" ? "wss" : "ws";
-    const httpScheme = location.protocol === "https:" ? "https" : "http";
-    const wsBase = `${wsScheme}://${wsHost}:${wsPort}`;
-    const tokenUrl = import.meta.env.DEV
-      ? `${httpScheme}://${wsHost}:1617/auth/ws-token`
-      : `/auth/ws-token`;
+    const serverUrl = import.meta.env.VITE_SERVER_URL as string | undefined;
+    let wsBase: string;
+    let tokenUrl: string;
+
+    if (serverUrl) {
+      // Explicit server URL provided via VITE_SERVER_URL env variable
+      const url = new URL(serverUrl);
+      const wsScheme = url.protocol === "https:" ? "wss" : "ws";
+      wsBase = `${wsScheme}://${url.host}`;
+      tokenUrl = `${url.protocol}//${url.host}/auth/ws-token`;
+    } else {
+      const wsHost = location.hostname || "localhost";
+      const wsPort = import.meta.env.DEV ? 1616 : parseInt(location.port || "1617") - 1;
+      const wsScheme = location.protocol === "https:" ? "wss" : "ws";
+      const httpScheme = location.protocol === "https:" ? "https" : "http";
+      wsBase = `${wsScheme}://${wsHost}:${wsPort}`;
+      tokenUrl = import.meta.env.DEV
+        ? `${httpScheme}://${wsHost}:1617/auth/ws-token`
+        : `/auth/ws-token`;
+    }
 
     async function fetchWsToken(): Promise<string | null> {
       try {
