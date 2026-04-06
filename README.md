@@ -1,5 +1,7 @@
 # PiEEG-server
 
+> **Try it now** — no hardware needed: [pieeg.vercel.app](https://pieeg.vercel.app) runs in demo mode with synthetic EEG data.
+
 [![PyPI](https://img.shields.io/pypi/v/pieeg-server?color=blue)](https://pypi.org/project/pieeg-server/)
 [![Python](https://img.shields.io/pypi/pyversions/pieeg-server)](https://pypi.org/project/pieeg-server/)
 [![CI](https://github.com/pieeg-club/PiEEG-server/actions/workflows/ci.yml/badge.svg)](https://github.com/pieeg-club/PiEEG-server/actions/workflows/ci.yml)

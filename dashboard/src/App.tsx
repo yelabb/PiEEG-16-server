@@ -23,6 +23,7 @@ import { GUIDED_PRESETS } from "./types";
 import type { SelectOption, GuidedPreset } from "./types";
 
 const DEFAULT_MOBILE = new Set([0, 1, 2, 3]);
+const isDemo = !!import.meta.env.VITE_SERVER_URL;
 
 type ViewState = "live" | "sessions" | "playback" | "experiences";
 
@@ -298,6 +299,7 @@ export default function App() {
         <h1>
           Pi<span>EEG</span>
           <small>{numCh}ch Dashboard</small>
+          {isDemo && <span className="demo-badge">DEMO</span>}
         </h1>
         <div className="status-bar">
           <span>
