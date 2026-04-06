@@ -1,0 +1,13 @@
+.venv
+.git
+__pycache__
+*.pyc
+*.egg-info
+recordings/
+notebooks/
+tests/
+dashboard/node_modules
+dashboard/dist
+scripts/
+experiences/
+.pytest_cache

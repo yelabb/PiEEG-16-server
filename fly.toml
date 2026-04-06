@@ -1,0 +1,30 @@
+# fly.toml app configuration file generated for pieeg-server--mock on 2026-04-06T13:16:22-04:00
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'pieeg-server--mock'
+primary_region = 'lhr'
+
+[build]
+
+[http_service]
+  internal_port = 1616
+  force_https = true
+  auto_stop_machines = 'stop'
+  auto_start_machines = true
+  min_machines_running = 0
+
+[[services]]
+  protocol = 'tcp'
+  internal_port = 1616
+
+  [[services.ports]]
+    port = 1616
+    handlers = ['tls']
+
+[[vm]]
+  memory = '256mb'
+  cpu_kind = 'shared'
+  cpus = 1
+  memory_mb = 256
