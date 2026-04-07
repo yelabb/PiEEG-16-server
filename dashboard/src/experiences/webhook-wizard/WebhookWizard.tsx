@@ -16,6 +16,11 @@ const SAMPLE_RATE = 250;
 const FFT_SIZE = 256;
 const FFT_ENGINE = new FftEngine(FFT_SIZE, SAMPLE_RATE);
 
+/** Map lowercase band names (from recipe params) → title-case (from FftEngine). */
+const BAND_MAP: Record<string, string> = {
+  delta: "Delta", theta: "Theta", alpha: "Alpha", beta: "Beta", gamma: "Gamma",
+};
+
 // ── Steps ────────────────────────────────────────────────────────────────────
 
 type Step = "choose" | "connect" | "configure" | "test" | "done";
@@ -48,6 +53,8 @@ export default function WebhookWizard({ eegData, onExit, sendCommand }: Experien
   const [bandPowers, setBandPowers] = useState<BandPowers | null>(null);
   const [triggerHit, setTriggerHit] = useState(false);
   const [hitCount, setHitCount] = useState(0);
+  const [amplitude, setAmplitude] = useState(0);
+  const prevHitRef = useRef(false);
   const rafRef = useRef(0);
   const frameRef = useRef(0);
 
@@ -65,6 +72,14 @@ export default function WebhookWizard({ eegData, onExit, sendCommand }: Experien
         }
         const result = FFT_ENGINE.analyse(samples);
         if (result) setBandPowers(result.bandPowers);
+
+        // Peak amplitude for amplitude triggers
+        let peak = 0;
+        for (let i = 0; i < FFT_SIZE; i++) {
+          const v = Math.abs(samples[i]);
+          if (v > peak) peak = v;
+        }
+        setAmplitude(peak);
       }
       rafRef.current = requestAnimationFrame(tick);
     }
@@ -72,24 +87,31 @@ export default function WebhookWizard({ eegData, onExit, sendCommand }: Experien
     return () => cancelAnimationFrame(rafRef.current);
   }, [eegData]);
 
-  // ── Check trigger ──
+  // ── Check trigger (rising-edge only, matching useWebhookEvaluator logic) ──
   useEffect(() => {
     if (!recipe || !bandPowers || step !== "test") return;
     const p = recipe.params;
     let value = 0;
     if (recipe.trigger_type.startsWith("band_power") && p.band) {
-      value = bandPowers[p.band as string] ?? 0;
+      const key = BAND_MAP[String(p.band)] ?? "Alpha";
+      value = bandPowers[key] ?? 0;
     } else if (recipe.trigger_type.startsWith("band_ratio") && p.numerator && p.denominator) {
-      const num = bandPowers[p.numerator as string] ?? 0;
-      const den = bandPowers[p.denominator as string] ?? 1;
-      value = num / (den || 1);
+      const numKey = BAND_MAP[String(p.numerator)] ?? "Alpha";
+      const denKey = BAND_MAP[String(p.denominator)] ?? "Theta";
+      const num = bandPowers[numKey] ?? 0;
+      const den = bandPowers[denKey] ?? 0;
+      value = den < 1e-9 ? 0 : num / den;
+    } else if (recipe.trigger_type.startsWith("amplitude")) {
+      value = amplitude;
     }
     const threshold = (p.threshold as number) ?? 10;
     const above = recipe.trigger_type.includes("above");
     const hit = above ? value >= threshold : value <= threshold;
     setTriggerHit(hit);
-    if (hit) setHitCount((c) => c + 1);
-  }, [bandPowers, recipe, step]);
+    // Count only rising edges (false → true) to match real webhook cooldown behavior
+    if (hit && !prevHitRef.current) setHitCount((c) => c + 1);
+    prevHitRef.current = hit;
+  }, [bandPowers, recipe, step, amplitude]);
 
   const nextStep = useCallback(() => {
     const idx = STEP_ORDER.indexOf(step);
@@ -157,11 +179,11 @@ export default function WebhookWizard({ eegData, onExit, sendCommand }: Experien
       {/* Live band meter (always visible) */}
       {bandPowers && (
         <div className="wiz-meter">
-          {Object.entries(FREQUENCY_BANDS).map(([key, band]) => {
-            const val = bandPowers[key] ?? 0;
+          {FREQUENCY_BANDS.map((band) => {
+            const val = bandPowers[band.name] ?? 0;
             const pct = Math.min(val / 30, 1) * 100;
             return (
-              <div key={key} className="wiz-meter-bar">
+              <div key={band.name} className="wiz-meter-bar">
                 <span className="wiz-meter-label">{band.label}</span>
                 <div className="wiz-meter-track">
                   <div
