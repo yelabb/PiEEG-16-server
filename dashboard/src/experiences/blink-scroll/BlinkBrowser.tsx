@@ -21,12 +21,16 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import type { EEGData } from "../../types";
 import {
   type BlinkCalibration,
+  type CalibrationError,
   type TimedReading,
   loadCalibration,
   saveCalibration,
   readAmplitude,
   findPeaks,
   computeCalibration,
+  isCalibration,
+  checkSignalQuality,
+  type SignalQuality,
 } from "./blinkDetect";
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -502,7 +506,7 @@ const S = {
 // Calibration Wizard
 // ═════════════════════════════════════════════════════════════════════════════
 
-type CalStep = "intro" | "baseline" | "blink" | "done" | "error";
+type CalStep = "intro" | "signal-check" | "baseline" | "blink" | "done" | "error";
 
 interface CalibrationWizardProps {
   eegData: EEGData;
@@ -521,21 +525,70 @@ function CalibrationWizard({
 }: CalibrationWizardProps) {
   const [step, setStep] = useState<CalStep>("intro");
   const [progress, setProgress] = useState(0);
-  const [blinkCount, setBlinkCount] = useState(0);
+  const [detectedBlinks, setDetectedBlinks] = useState(0);
   const [amp, setAmp] = useState(0);
   const [result, setResult] = useState<BlinkCalibration | null>(null);
   const [errorMsg, setErrorMsg] = useState("");
+  const [signalInfo, setSignalInfo] = useState<
+    { ch: number; quality: SignalQuality; p2p: number }[]
+  >([]);
+  const [blinkPromptActive, setBlinkPromptActive] = useState(false);
 
   const baselineRef = useRef<number[]>([]);
   const blinkRef = useRef<TimedReading[]>([]);
   const channels = [0, 1]; // Fp1, Fp2
 
-  // ── Baseline collection (3 seconds) ──
+  // ── Signal quality check (1.5 seconds) ──
+  useEffect(() => {
+    if (step !== "signal-check") return;
+    const start = performance.now();
+    const dur = 1500;
+
+    const iv = setInterval(() => {
+      const elapsed = performance.now() - start;
+      setProgress(Math.min(1, elapsed / dur));
+
+      const a = readAmplitude(eegData, channels);
+      setAmp(a);
+
+      if (elapsed >= dur) {
+        clearInterval(iv);
+        const { perChannel } = checkSignalQuality(eegData, channels);
+        setSignalInfo(perChannel);
+
+        const anyGood = perChannel.some((c) => c.quality === "good");
+        const anyFlat = perChannel.every((c) => c.quality === "flat");
+
+        if (anyFlat) {
+          setErrorMsg(
+            "No signal detected on Fp1 or Fp2. Check that electrodes are " +
+              "connected and have good skin contact.",
+          );
+          setStep("error");
+        } else if (!anyGood) {
+          // Weak/noisy but not flat — warn but allow proceeding
+          setErrorMsg(
+            "Signal quality is poor on both Fp channels. " +
+              "Calibration may still work, but results will be better with " +
+              "improved electrode contact.",
+          );
+          setStep("error");
+        } else {
+          setStep("baseline");
+          setProgress(0);
+        }
+      }
+    }, 100);
+
+    return () => clearInterval(iv);
+  }, [step, eegData]);
+
+  // ── Baseline collection (4 seconds, with outlier-robust collection) ──
   useEffect(() => {
     if (step !== "baseline") return;
     baselineRef.current = [];
     const start = performance.now();
-    const dur = 3000;
+    const dur = 4000;
 
     const iv = setInterval(() => {
       const a = readAmplitude(eegData, channels);
@@ -547,21 +600,29 @@ function CalibrationWizard({
         clearInterval(iv);
         setStep("blink");
         setProgress(0);
-        setBlinkCount(0);
+        setDetectedBlinks(0);
       }
-    }, 100);
+    }, 80); // ~50 readings over 4s
 
     return () => clearInterval(iv);
   }, [step, eegData]);
 
-  // ── Blink collection (~12 seconds, 5 prompts) ──
+  // ── Blink collection (~15 seconds, 5 prompts with real-time detection) ──
   useEffect(() => {
     if (step !== "blink") return;
     blinkRef.current = [];
     const start = performance.now();
-    const dur = 12000;
-    const promptInterval = 2400;
-    let nextPrompt = start + 400; // small initial delay
+    const dur = 15000;
+    const promptInterval = 2800;
+    const promptDuration = 1200; // green dot visible for 1.2s
+    let nextPromptOn = start + 800;
+    let nextPromptOff = nextPromptOn + promptDuration;
+    let promptsShown = 0;
+
+    // Live blink detection during calibration for feedback
+    // Use a simple threshold from baseline so far
+    let lastBlinkTime = 0;
+    const REFRACTORY = 400;
 
     const iv = setInterval(() => {
       const now = performance.now();
@@ -569,10 +630,27 @@ function CalibrationWizard({
       blinkRef.current.push({ time: now, amp: a });
       setAmp(a);
 
-      // Count prompts
-      if (now >= nextPrompt) {
-        setBlinkCount((c) => Math.min(c + 1, 5));
-        nextPrompt += promptInterval;
+      // Prompt timing
+      if (now >= nextPromptOn && promptsShown < 5) {
+        if (!blinkPromptActive) setBlinkPromptActive(true);
+      }
+      if (now >= nextPromptOff && blinkPromptActive) {
+        setBlinkPromptActive(false);
+        promptsShown++;
+        nextPromptOn = now + (promptInterval - promptDuration);
+        nextPromptOff = nextPromptOn + promptDuration;
+      }
+
+      // Live blink count: use a rough threshold from baseline
+      // (just for UI feedback — real calibration uses computeCalibration)
+      if (baselineRef.current.length > 10) {
+        const blSorted = [...baselineRef.current].sort((a, b) => a - b);
+        const p80 = blSorted[Math.floor(blSorted.length * 0.8)];
+        const roughThresh = Math.max(p80 * 2, 60);
+        if (a > roughThresh && now - lastBlinkTime > REFRACTORY) {
+          lastBlinkTime = now;
+          setDetectedBlinks((c) => c + 1);
+        }
       }
 
       const elapsed = now - start;
@@ -580,26 +658,26 @@ function CalibrationWizard({
 
       if (elapsed >= dur) {
         clearInterval(iv);
-        // Compute calibration
+        setBlinkPromptActive(false);
         const cal = computeCalibration(
           baselineRef.current,
           blinkRef.current,
           channels,
         );
-        if (cal) {
+        if (isCalibration(cal)) {
           setResult(cal);
           setStep("done");
         } else {
-          setErrorMsg(
-            "Could not detect enough distinct blinks above baseline. " +
-              "Try blinking more forcefully or check electrode contact on Fp1/Fp2 channels.",
-          );
+          setErrorMsg((cal as CalibrationError).message);
           setStep("error");
         }
       }
-    }, 50);
+    }, 40); // 25 Hz polling
 
-    return () => clearInterval(iv);
+    return () => {
+      clearInterval(iv);
+      setBlinkPromptActive(false);
+    };
   }, [step, eegData]);
 
   // ── Keyboard: Esc to exit ──
@@ -615,6 +693,11 @@ function CalibrationWizard({
   const ampPct = Math.min(100, (amp / 400) * 100);
   const ampColor = amp > 150 ? "#00c853" : amp > 80 ? "#eab308" : "#333";
 
+  const qualityColor = (q: SignalQuality) =>
+    q === "good" ? "#00c853" : q === "weak" ? "#eab308" : q === "noisy" ? "#f85149" : "#666";
+  const qualityLabel = (q: SignalQuality) =>
+    q === "good" ? "Good" : q === "weak" ? "Weak" : q === "noisy" ? "Noisy" : "No signal";
+
   return (
     <div style={S.root}>
       <div style={S.wizardWrap}>
@@ -629,7 +712,7 @@ function CalibrationWizard({
                 amplitude to create a personalized detection profile.
                 <br />
                 <br />
-                You'll need about 15 seconds. Make sure electrodes on{" "}
+                You'll need about 20 seconds. Make sure electrodes on{" "}
                 <strong>Fp1</strong> and <strong>Fp2</strong> (channels 0 &amp;
                 1) have good contact.
               </p>
@@ -644,7 +727,10 @@ function CalibrationWizard({
                 )}
                 <button
                   style={S.btnPrimary}
-                  onClick={() => setStep("baseline")}
+                  onClick={() => {
+                    setStep("signal-check");
+                    setProgress(0);
+                  }}
                 >
                   Start Calibration
                 </button>
@@ -652,15 +738,13 @@ function CalibrationWizard({
             </>
           )}
 
-          {/* ── BASELINE ── */}
-          {step === "baseline" && (
+          {/* ── SIGNAL CHECK ── */}
+          {step === "signal-check" && (
             <>
-              <div style={S.wizardStep}>Step 1 of 2 — Baseline</div>
-              <h2 style={S.wizardTitle}>Keep still, eyes open</h2>
+              <div style={S.wizardStep}>Checking signal…</div>
+              <h2 style={S.wizardTitle}>Verifying electrode contact</h2>
               <p style={S.wizardSub}>
-                Relax and look at the screen. Don't blink if you can help it.
-                <br />
-                Recording your baseline brain activity…
+                Checking Fp1 and Fp2 signal quality…
               </p>
               <div style={S.progressBar}>
                 <div
@@ -679,8 +763,52 @@ function CalibrationWizard({
                   }}
                 />
               </div>
+            </>
+          )}
+
+          {/* ── BASELINE ── */}
+          {step === "baseline" && (
+            <>
+              <div style={S.wizardStep}>Step 1 of 2 — Baseline</div>
+              <h2 style={S.wizardTitle}>Relax, eyes open</h2>
+              <p style={S.wizardSub}>
+                Look at the screen and relax. Try to minimize blinking.
+                <br />
+                <span style={{ fontSize: 12, color: "#555" }}>
+                  (It's OK if you blink a few times — the algorithm handles it.)
+                </span>
+              </p>
+              {signalInfo.length > 0 && (
+                <div style={{ display: "flex", justifyContent: "center", gap: 16, marginBottom: 12 }}>
+                  {signalInfo.map((s) => (
+                    <div key={s.ch} style={{ fontSize: 12 }}>
+                      <span style={{ color: "#666" }}>Ch{s.ch}: </span>
+                      <span style={{ color: qualityColor(s.quality), fontWeight: 600 }}>
+                        {qualityLabel(s.quality)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div style={S.progressBar}>
+                <div
+                  style={{
+                    ...S.progressFill,
+                    width: `${progress * 100}%`,
+                  }}
+                />
+              </div>
+              <div style={S.ampMeter}>
+                <div
+                  style={{
+                    ...S.ampFill,
+                    width: `${ampPct}%`,
+                    background: ampColor,
+                  }}
+                />
+              </div>
               <div style={{ fontSize: 12, color: "#666" }}>
-                {(progress * 3).toFixed(1)}s / 3.0s
+                {(progress * 4).toFixed(1)}s / 4.0s
               </div>
             </>
           )}
@@ -691,25 +819,25 @@ function CalibrationWizard({
               <div style={S.wizardStep}>Step 2 of 2 — Blink Detection</div>
               <h2 style={S.wizardTitle}>Blink when you see the green dot</h2>
               <p style={S.wizardSub}>
-                Blink clearly and deliberately each time the dot appears.
+                Blink clearly and deliberately each time the dot turns green.
               </p>
               <div
                 style={{
                   ...S.blinkDot,
-                  background:
-                    blinkCount > 0 && progress < 0.98
-                      ? blinkCount % 2 === 0
-                        ? "#00c853"
-                        : "#0a3d1a"
-                      : "#222",
-                  boxShadow:
-                    blinkCount > 0 && blinkCount % 2 === 0
-                      ? "0 0 30px rgba(0,200,83,0.4)"
-                      : "none",
+                  background: blinkPromptActive ? "#00c853" : "#222",
+                  boxShadow: blinkPromptActive
+                    ? "0 0 30px rgba(0,200,83,0.4)"
+                    : "none",
                 }}
               />
               <div style={{ fontSize: 14, fontFamily: "'Geist Mono',monospace" }}>
-                Blink {blinkCount} / 5
+                {detectedBlinks > 0 ? (
+                  <span style={{ color: "#00c853" }}>
+                    {detectedBlinks} blink{detectedBlinks !== 1 ? "s" : ""} detected
+                  </span>
+                ) : (
+                  <span style={{ color: "#666" }}>Waiting for blinks…</span>
+                )}
               </div>
               <div style={{ ...S.progressBar, marginTop: 16 }}>
                 <div
@@ -743,7 +871,7 @@ function CalibrationWizard({
               </p>
               <div style={S.resultGrid}>
                 <div style={S.resultItem}>
-                  <div style={S.resultLabel}>Baseline p95</div>
+                  <div style={S.resultLabel}>Baseline</div>
                   <div style={S.resultValue}>
                     {result.baselineCeiling.toFixed(0)} µV
                   </div>
@@ -761,9 +889,12 @@ function CalibrationWizard({
                   </div>
                 </div>
                 <div style={S.resultItem}>
-                  <div style={S.resultLabel}>Channels</div>
-                  <div style={S.resultValue}>
-                    Fp1, Fp2
+                  <div style={S.resultLabel}>SNR</div>
+                  <div style={{
+                    ...S.resultValue,
+                    color: result.snr > 3 ? "#00c853" : result.snr > 2 ? "#eab308" : "#f85149",
+                  }}>
+                    {result.snr.toFixed(1)}×
                   </div>
                 </div>
               </div>
@@ -773,6 +904,8 @@ function CalibrationWizard({
                   onClick={() => {
                     setStep("intro");
                     setProgress(0);
+                    setResult(null);
+                    setDetectedBlinks(0);
                   }}
                 >
                   Redo
@@ -791,8 +924,20 @@ function CalibrationWizard({
           {step === "error" && (
             <>
               <div style={{ fontSize: 40, marginBottom: 12 }}>⚠️</div>
-              <h2 style={S.wizardTitle}>Calibration Failed</h2>
+              <h2 style={S.wizardTitle}>Calibration Issue</h2>
               <p style={S.wizardSub}>{errorMsg}</p>
+              {signalInfo.length > 0 && (
+                <div style={{ display: "flex", justifyContent: "center", gap: 16, marginBottom: 16 }}>
+                  {signalInfo.map((s) => (
+                    <div key={s.ch} style={{ fontSize: 12 }}>
+                      <span style={{ color: "#666" }}>Ch{s.ch}: </span>
+                      <span style={{ color: qualityColor(s.quality), fontWeight: 600 }}>
+                        {qualityLabel(s.quality)} ({s.p2p.toFixed(0)} µV)
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
               <div style={S.btnRow}>
                 <button style={S.btn} onClick={onExit}>
                   Exit
@@ -803,6 +948,8 @@ function CalibrationWizard({
                     setStep("intro");
                     setProgress(0);
                     setErrorMsg("");
+                    setDetectedBlinks(0);
+                    setSignalInfo([]);
                   }}
                 >
                   Try Again
@@ -855,6 +1002,7 @@ function BrowseMode({
   const flashTimeoutRef = useRef(0);
   const ampRef = useRef(0);
   const lastAmpUpdate = useRef(0);
+  const doScrollRef = useRef<() => void>(() => {});
 
   // ── Scroll action ──
   const doScroll = useCallback(() => {
@@ -875,6 +1023,9 @@ function BrowseMode({
     }
   }, [scrollDir, scrollAmount, mode]);
 
+  // Keep doScrollRef in sync so the RAF loop always calls the latest version
+  doScrollRef.current = doScroll;
+
   // ── Blink detection loop (RAF) ──
   useEffect(() => {
     if (!enabled) return;
@@ -882,13 +1033,11 @@ function BrowseMode({
     const WINDOW = 25; // 100ms
     const REFRACTORY_MS = 400;
     const MAX_BLINK_MS = 600;
+    const MIN_BLINK_MS = 30;
     const CHECK_MS = 20;
 
     let lastCheck = 0;
     let raf: number;
-
-    // Stable refs for current values
-    const scrollFn = doScroll;
 
     function check() {
       const now = performance.now();
@@ -918,10 +1067,10 @@ function BrowseMode({
       } else if (state === "in-blink") {
         if (!above) {
           const dur = now - blinkStartRef.current;
-          if (dur >= 30 && dur <= MAX_BLINK_MS) {
+          if (dur >= MIN_BLINK_MS && dur <= MAX_BLINK_MS) {
             lastBlinkRef.current = now;
             stateRef.current = "idle";
-            scrollFn();
+            doScrollRef.current();
           } else {
             stateRef.current = "idle";
           }
@@ -935,7 +1084,7 @@ function BrowseMode({
 
     raf = requestAnimationFrame(check);
     return () => cancelAnimationFrame(raf);
-  }, [enabled, eegData, calibration, threshold, doScroll]);
+  }, [enabled, eegData, calibration, threshold]);
 
   // ── Keyboard shortcuts ──
   useEffect(() => {
