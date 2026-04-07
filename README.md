@@ -8,6 +8,8 @@
 [![License: MIT](https://img.shields.io/github/license/pieeg-club/PiEEG-server)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Raspberry%20Pi-c51a4a)](https://www.raspberrypi.com/)
 [![Downloads](https://img.shields.io/pypi/dm/pieeg-server)](https://pypi.org/project/pieeg-server/)
+[![IFTTT](https://img.shields.io/badge/IFTTT-compatible-black?logo=ifttt&logoColor=white)](https://ifttt.com/maker_webhooks)
+[![Zapier](https://img.shields.io/badge/Zapier-compatible-FF4A00?logo=zapier&logoColor=white)](https://zapier.com/apps/webhooks)
 
 A lightweight server for the [PiEEG](https://github.com/pieeg-club/PiEEG-16) shields (8 or 16 channels) that initializes the hardware, reads EEG at 250 Hz, streams live data over WebSocket, and serves a real-time dashboard — all on your local network.
 
@@ -348,11 +350,14 @@ Webhook rules are managed via WebSocket commands. The dashboard handles this aut
 
 Trigger types: `band_power_above`, `band_power_below`, `amplitude_above`, `amplitude_below`, `band_ratio_above`, `band_ratio_below`.
 
+<details>
+<summary><strong>IFTTT & Zapier Integration</strong></summary>
+
 ### IFTTT & Zapier
 
 Webhook rules support three service modes — **Generic**, **IFTTT**, and **Zapier** — selectable per rule in the dashboard. Each mode formats the outgoing payload to match what the service expects.
 
-#### IFTTT
+#### <img src="https://cdn.simpleicons.org/ifttt/black" width="18" height="18" alt="IFTTT"> IFTTT
 
 1. Go to [ifttt.com/maker_webhooks](https://ifttt.com/maker_webhooks) and click **Documentation** to find your key.
 2. In the PiEEG dashboard webhook panel, create a rule and select **IFTTT** as the service.
@@ -362,7 +367,7 @@ Webhook rules support three service modes — **Generic**, **IFTTT**, and **Zapi
    ```
 4. The server sends a JSON body with `value1` (the measured value), `value2` (the trigger type), and `value3` (full event detail as JSON) — matching IFTTT's Webhooks format.
 
-#### Zapier
+#### <img src="https://cdn.simpleicons.org/zapier/FF4A00" width="18" height="18" alt="Zapier"> Zapier
 
 1. Create a Zap with the **Webhooks by Zapier** trigger (Catch Hook).
 2. Copy the webhook URL Zapier gives you.
@@ -397,6 +402,8 @@ The default mode sends a JSON body with `event`, `rule`, `value`, `threshold`, `
 ```json
 {"event": "band_power_above", "rule": "Alpha alert", "value": 23.45, "threshold": 20, "channel": 0, "timestamp": 1711234567.12}
 ```
+</details>
+
 </details>
 
 ## Architecture
