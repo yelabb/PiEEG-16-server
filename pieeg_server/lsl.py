@@ -45,7 +45,13 @@ class LSLBridge:
 
     def _create_outlet(self):
         """Lazily import pylsl and create the StreamOutlet."""
-        from pylsl import StreamInfo, StreamOutlet
+        try:
+            from pylsl import StreamInfo, StreamOutlet
+        except ImportError:
+            raise ImportError(
+                "pylsl is required for LSL streaming but is not installed. "
+                "Install it with:  pip install pieeg-server[lsl]"
+            ) from None
 
         num_ch = self._acq.num_channels
         info = StreamInfo(

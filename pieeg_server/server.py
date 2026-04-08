@@ -31,7 +31,7 @@ from .filters import MultichannelFilter
 from .recorder import Recorder
 from .webhooks import WebhookStore
 from .osc_vrchat import VRChatOSCBridge, OSCConfig
-from .lsl import LSLBridge, LSLConfig
+from .lsl import LSLBridge, LSLConfig  # LSLBridge defers pylsl import to run()
 
 logger = logging.getLogger("pieeg.server")
 

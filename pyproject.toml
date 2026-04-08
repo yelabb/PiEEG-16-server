@@ -31,10 +31,12 @@ dependencies = [
     "websockets>=12.0",
     "scipy>=1.10",
     "rich>=13.0",
-    "pylsl>=1.16",
 ]
 
 [project.optional-dependencies]
+lsl = [
+    "pylsl>=1.16",
+]
 rpi = [
     "spidev>=3.6",
 ]

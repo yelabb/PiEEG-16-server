@@ -401,6 +401,14 @@ def main():
     # --- LSL outlet (optional, auto-starts with --lsl) ---
     if getattr(args, 'lsl', False):
         from .lsl import LSLConfig
+        try:
+            import pylsl as _pylsl  # noqa: F401 – verify availability early
+        except ImportError:
+            logger.error(
+                "--lsl flag requires pylsl, which is not installed. "
+                "Install it with:  pip install pieeg-server[lsl]"
+            )
+            raise SystemExit(1)
         lsl_cfg = LSLConfig(stream_name=args.lsl_name)
         server.enable_lsl(lsl_cfg)
         logger.info("LSL outlet configured: stream=%s", args.lsl_name)
