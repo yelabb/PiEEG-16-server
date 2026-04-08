@@ -97,6 +97,11 @@ curl -sSL https://raw.githubusercontent.com/pieeg-club/PiEEG-server/main/install
 | **B) Clone & setup** | `git clone https://github.com/pieeg-club/PiEEG-server.git && cd PiEEG-server && ./setup.sh` | Same reboot note |
 | **C) pip** | `pip install pieeg-server` | Requires Python 3.10+ |
 
+> **IronBCI users:** experimental IronBCI board support is available on the [`add-ironbci`](https://github.com/pieeg-club/PiEEG-server/tree/add-ironbci) branch. To test it now:
+> ```bash
+> git clone -b add-ironbci https://github.com/pieeg-club/PiEEG-server.git && cd PiEEG-server && ./setup.sh
+> ```
+
 <sup>[↑ Navigation](#nav)</sup>
 
 ---
