@@ -11,7 +11,7 @@
 [![IFTTT](https://img.shields.io/badge/IFTTT-compatible-black?logo=ifttt&logoColor=white)](https://ifttt.com/maker_webhooks)
 [![Zapier](https://img.shields.io/badge/Zapier-compatible-FF4A00?logo=zapier&logoColor=white)](https://zapier.com/apps/webhooks)
 
-A real-time EEG streaming platform for [PiEEG](https://github.com/pieeg-club/PiEEG-16) shields (8/16 ch). Reads at 250 Hz, streams over WebSocket, serves a live dashboard with spectral analysis, topographic maps, an experiences gallery, VRChat OSC bridge, webhook automation — all from your Raspberry Pi.
+A real-time EEG streaming platform for [PiEEG](https://github.com/pieeg-club/PiEEG-16) shields (8/16 ch). Reads at 250 Hz, streams over WebSocket, serves a live dashboard with spectral analysis, topographic maps, an experiences gallery, VRChat OSC bridge, Lab Streaming Layer (LSL) output, webhook automation — all from your Raspberry Pi.
 
 ```bash
 curl -sSL https://raw.githubusercontent.com/pieeg-club/PiEEG-server/main/install.sh | bash
@@ -60,6 +60,7 @@ pieeg-server --monitor              # terminal sparklines
 pieeg-server --mock                 # synthetic data, no hardware
 pieeg-server --auth                 # require 6-digit access code
 pieeg-server --osc                  # VRChat OSC bridge
+pieeg-server --lsl                  # Lab Streaming Layer outlet
 pieeg-server doctor                 # diagnose everything
 ```
 
@@ -83,6 +84,7 @@ Open **http://raspberrypi.local:1617** in any browser on your network.
 - **Mock mode** — realistic synthetic EEG (alpha rhythm, drift, noise, blink artifacts) for dev without hardware
 - **Authentication** — optional 6-digit code, rate limiting, HMAC timing-safe verify, HttpOnly cookies, single-use WS tokens
 - **VRChat OSC bridge** — stream band powers to VRChat via UDP OSC; chatbox text, avatar parameters, or both; rolling normalization; zero dependencies
+- **Lab Streaming Layer (LSL)** — push raw EEG samples to the LSL network; discoverable by OpenViBE, MNE-LSL, BCI2000, NeuroPype, LabRecorder; toggle from dashboard or `--lsl` flag
 - **Webhooks** — HTTP callbacks on EEG events (band power, amplitude, ratios); IFTTT & Zapier presets; per-rule cooldown; JSON persistence
 - **Self-diagnostics** — `pieeg-server doctor` checks Pi model, SPI/GPIO, ports, deps, systemd in one shot
 - **Self-update** — detects pip/git install; checks PyPI or remote branch; one-click upgrade from dashboard
@@ -263,6 +265,8 @@ Server options:
   --osc-port PORT        VRChat OSC port (default: 9000)
   --osc-mode MODE        chatbox, parameters, or both (default: both)
   --osc-interval SEC     OSC update rate (default: 0.25)
+  --lsl                  Enable Lab Streaming Layer outlet
+  --lsl-name NAME        LSL stream name (default: PiEEG)
   -v, --verbose          Debug logging
 ```
 
@@ -293,6 +297,21 @@ Trigger types: `band_power_above`, `band_power_below`, `amplitude_above`, `ampli
 {"cmd": "osc_stop"}
 {"cmd": "osc_configure", "host": "127.0.0.1", "port": 9000, "mode": "both", "interval": 0.25}
 {"cmd": "osc_status"}
+```
+
+**Lab Streaming Layer (LSL)**
+```json
+{"cmd": "lsl_start"}
+{"cmd": "lsl_stop"}
+{"cmd": "lsl_status"}
+```
+
+Receive in any LSL client:
+```python
+from pylsl import StreamInlet, resolve_stream
+streams = resolve_stream('name', 'PiEEG')
+inlet = StreamInlet(streams[0])
+sample, timestamp = inlet.pull_sample()
 ```
 
 </details>
@@ -367,7 +386,8 @@ pieeg-server --mock && jupyter lab
 │       ├── server.py     → WebSocket broadcast            │
 │       ├── recorder.py   → CSV writer                     │
 │       ├── monitor.py    → Terminal sparklines             │
-│       └── osc_vrchat.py → VRChat OSC bridge              │
+│       ├── osc_vrchat.py → VRChat OSC bridge              │
+│       └── lsl.py        → Lab Streaming Layer outlet     │
 │                                                          │
 │  webhooks.py  → event rules + HTTP relay                 │
 │  dashboard.py → HTTP server (React UI)                   │
@@ -382,6 +402,7 @@ pieeg-server --mock && jupyter lab
            ├── Browser dashboard (React + Vite)
            ├── Python / Jupyter notebook
            ├── VRChat (OSC over UDP)
+           ├── LSL consumers (OpenViBE, MNE, LabRecorder…)
            ├── IFTTT / Zapier (webhooks)
            └── Any WebSocket client
 ```
