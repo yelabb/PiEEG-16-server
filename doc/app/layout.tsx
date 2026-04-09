@@ -8,8 +8,8 @@ import './globals.css'
 
 export const metadata = {
   title: {
-    default: 'PiEEG Documentation',
-    template: '%s — PiEEG Docs',
+    default: 'PiEEG Server Documentation',
+    template: '%s — PiEEG Server Docs',
   },
   description:
     'Real-time EEG streaming platform for PiEEG shields. 250 Hz WebSocket streaming, live dashboard, spectral analysis, VRChat OSC, Lab Streaming Layer, and webhook automation.',
@@ -22,7 +22,7 @@ const navbar = (
   <Navbar
     logo={
       <span style={{ fontWeight: 800, fontSize: '1.1rem' }}>
-        <span style={{ opacity: 0.6 }}>⚡</span> PiEEG
+        <span style={{ opacity: 0.6 }}>⚡</span> PiEEG Server
       </span>
     }
     projectLink="https://github.com/pieeg-club/PiEEG-server"
