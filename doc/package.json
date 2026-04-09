@@ -1,11 +1,11 @@
 {
-  "name": "pieeg-docs",
+  "name": "pieeg-server-docs",
   "version": "0.1.0",
   "private": true,
   "scripts": {
     "dev": "next --turbopack",
     "build": "next build",
-    "postbuild": "pagefind --site .next/server/app --output-path public/_pagefind",
+    "postbuild": "pagefind --site out --output-path out/_pagefind",
     "start": "next start"
   },
   "dependencies": {
