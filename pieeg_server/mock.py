@@ -29,10 +29,29 @@ class MockHardware:
         self._alpha_freq = [random.uniform(9, 11) for _ in range(self._num_channels)]
         self._alpha_phase = [random.uniform(0, 2 * math.pi) for _ in range(self._num_channels)]
         self._noise_amp = [random.uniform(5, 20) for _ in range(self._num_channels)]
+        # Spike config (mirrors PiEEGHardware interface)
+        self._spike_threshold = 5000
+        self._spike_reset_after = 50
 
     @property
     def num_channels(self) -> int:
         return self._num_channels
+
+    @property
+    def spike_threshold(self) -> int:
+        return self._spike_threshold
+
+    @spike_threshold.setter
+    def spike_threshold(self, value: int):
+        self._spike_threshold = max(0, int(value))
+
+    @property
+    def spike_reset_after(self) -> int:
+        return self._spike_reset_after
+
+    @spike_reset_after.setter
+    def spike_reset_after(self, value: int):
+        self._spike_reset_after = max(1, int(value))
 
     def open(self):
         self._start_time = time.time()

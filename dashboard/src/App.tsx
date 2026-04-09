@@ -51,6 +51,8 @@ export default function App() {
   const [highcut, setHighcut] = useState<number | string>(40);
   const [timeWindow, setTimeWindow] = useState(4);
   const [yScale, setYScale] = useState(100);
+  const [spikeThreshold, setSpikeThreshold] = useState<number | string>(5000);
+  const [spikeResetAfter, setSpikeResetAfter] = useState<number | string>(50);
   const [expandedCh, setExpandedCh] = useState<number | null>(null);
   const [showSpectrogram, setShowSpectrogram] = useState(false);
   const [showStats, setShowStats] = useState(false);
@@ -61,6 +63,12 @@ export default function App() {
   );
   const eeg = useEEG(timeWindow);
   const numCh = eeg.numChannels;
+
+  // Sync local spike inputs from server
+  useEffect(() => {
+    setSpikeThreshold(eeg.spikeConfig.threshold);
+    setSpikeResetAfter(eeg.spikeConfig.reset_after);
+  }, [eeg.spikeConfig.threshold, eeg.spikeConfig.reset_after]);
 
   const toggleWebhooksEnabled = useCallback(() => {
     setWebhooksEnabled((prev) => {
@@ -488,6 +496,41 @@ export default function App() {
               </option>
             ))}
           </select>
+        </div>
+        <div className="sep" />
+        <div className="control-group">
+          <label>Spike</label>
+          <input
+            type="number"
+            value={spikeThreshold}
+            min={100}
+            max={100000}
+            step={500}
+            style={{ width: "5.5em" }}
+            title="Max allowed jump in raw ADC value between consecutive samples"
+            onChange={(e: ChangeEvent<HTMLInputElement>) => {
+              setSpikeThreshold(e.target.value);
+              const v = parseInt(e.target.value);
+              if (v > 0) eeg.sendCommand({ cmd: "spike_config", config: { threshold: v } });
+            }}
+          />
+        </div>
+        <div className="control-group">
+          <label>Reset</label>
+          <input
+            type="number"
+            value={spikeResetAfter}
+            min={1}
+            max={1000}
+            step={5}
+            style={{ width: "4em" }}
+            title="Re-sync baseline after this many consecutive rejected frames"
+            onChange={(e: ChangeEvent<HTMLInputElement>) => {
+              setSpikeResetAfter(e.target.value);
+              const v = parseInt(e.target.value);
+              if (v > 0) eeg.sendCommand({ cmd: "spike_config", config: { reset_after: v } });
+            }}
+          />
         </div>
       </div>
 

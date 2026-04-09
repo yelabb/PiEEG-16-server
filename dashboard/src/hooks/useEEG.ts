@@ -3,6 +3,7 @@ import type {
   EEGData,
   UseEEGReturn,
   RecordResult,
+  SpikeConfig,
   WSMessage,
   WSRecordStatusMessage,
   WSSampleMessage,
@@ -25,6 +26,7 @@ export function useEEG(timeWindowSec = 4): UseEEGReturn {
   const [recording, setRecording] = useState(false);
   const [recordElapsed, setRecordElapsed] = useState(0);
   const [recordResult, setRecordResult] = useState<RecordResult | null>(null);
+  const [spikeConfig, setSpikeConfig] = useState<SpikeConfig>({ threshold: 5000, reset_after: 50 });
   const recordStartRef = useRef<number | null>(null);
   const recordTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
@@ -182,6 +184,12 @@ export function useEEG(timeWindowSec = 4): UseEEGReturn {
           if (typeof handler === "function") handler(msg);
         }
 
+        // Handle spike config updates (from welcome or spike_config command)
+        if ("spike_config" in msg) {
+          const sc = (msg as Record<string, unknown>).spike_config as SpikeConfig;
+          if (sc) setSpikeConfig(sc);
+        }
+
         if ("status" in msg) {
           // Welcome message — read channel count from server
           const serverCh = (msg as Record<string, unknown>).channels;
@@ -279,6 +287,7 @@ export function useEEG(timeWindowSec = 4): UseEEGReturn {
     recording,
     recordElapsed,
     recordResult,
+    spikeConfig,
     data,
     dismissRecordResult,
     setPaused,

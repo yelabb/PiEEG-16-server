@@ -56,6 +56,8 @@ class TestSpikeDetection:
         hw._last_valid_value = None
         hw._spike_count = 0
         hw._consecutive_rejects = 0
+        hw._spike_threshold = SPIKE_THRESHOLD
+        hw._spike_reset_after = SPIKE_RESET_AFTER
         return hw
 
     def _raw_with_last_3(self, b24, b25, b26):
@@ -148,6 +150,48 @@ class TestSpikeDetection:
         """Expected status bytes should be (0xC0, 0x00, 0x08)."""
         assert EXPECTED_STATUS == (192, 0, 8)
         assert EXPECTED_STATUS == (0xC0, 0x00, 0x08)
+
+    def test_custom_threshold_accepts_larger_jumps(self):
+        """Raising spike_threshold allows larger jumps through."""
+        hw = self._make_hw()
+        hw.spike_threshold = 10000
+        hw._is_valid_frame(self._raw_with_last_3(0, 0, 100))  # baseline
+        # Jump of 6000 — within new threshold
+        val = 6100
+        b24 = (val >> 16) & 0xFF
+        b25 = (val >> 8) & 0xFF
+        b26 = val & 0xFF
+        assert hw._is_valid_frame(self._raw_with_last_3(b24, b25, b26)) is True
+
+    def test_custom_reset_after(self):
+        """Lowering spike_reset_after resets sooner."""
+        hw = self._make_hw()
+        hw.spike_reset_after = 5
+        hw._is_valid_frame(self._raw_with_last_3(0, 0, 0))  # baseline
+
+        val = 100_000
+        b24 = (val >> 16) & 0xFF
+        b25 = (val >> 8) & 0xFF
+        b26 = val & 0xFF
+        far_raw = self._raw_with_last_3(b24, b25, b26)
+
+        for _ in range(4):
+            assert hw._is_valid_frame(far_raw) is False
+        # 5th triggers reset
+        assert hw._is_valid_frame(far_raw) is True
+        assert hw._consecutive_rejects == 0
+
+    def test_threshold_property_clamps_minimum(self):
+        """spike_threshold property enforces min=0."""
+        hw = self._make_hw()
+        hw.spike_threshold = -100
+        assert hw.spike_threshold == 0
+
+    def test_reset_after_property_clamps_minimum(self):
+        """spike_reset_after property enforces min=1."""
+        hw = self._make_hw()
+        hw.spike_reset_after = 0
+        assert hw.spike_reset_after == 1
 
 
 class TestADCDecoding:

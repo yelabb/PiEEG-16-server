@@ -84,7 +84,7 @@ BYTES_PER_READ = 27  # 3 status + 8 channels * 3 bytes
 # --- Expected status header from ADC chip 2 ---
 EXPECTED_STATUS = (192, 0, 8)  # 0xC0, 0x00, 0x08
 
-# --- Spike detection (matches not_spike script) ---
+# --- Spike detection defaults (matches not_spike script) ---
 SPIKE_THRESHOLD = 5000  # max allowed jump in raw 24-bit signed value
 SPIKE_RESET_AFTER = 50  # re-sync baseline after this many consecutive rejections
 
@@ -117,10 +117,28 @@ class PiEEGHardware:
         self._last_valid_value: int | None = None
         self._spike_count = 0
         self._consecutive_rejects = 0
+        self._spike_threshold = SPIKE_THRESHOLD
+        self._spike_reset_after = SPIKE_RESET_AFTER
 
     @property
     def num_channels(self) -> int:
         return self._num_channels
+
+    @property
+    def spike_threshold(self) -> int:
+        return self._spike_threshold
+
+    @spike_threshold.setter
+    def spike_threshold(self, value: int):
+        self._spike_threshold = max(0, int(value))
+
+    @property
+    def spike_reset_after(self) -> int:
+        return self._spike_reset_after
+
+    @spike_reset_after.setter
+    def spike_reset_after(self, value: int):
+        self._spike_reset_after = max(1, int(value))
 
     # --- lifecycle ---
 
@@ -208,10 +226,10 @@ class PiEEGHardware:
             self._last_valid_value = combined
             return False  # first frame is always skipped, matching original
 
-        if abs(combined - self._last_valid_value) > SPIKE_THRESHOLD:
+        if abs(combined - self._last_valid_value) > self._spike_threshold:
             self._spike_count += 1
             self._consecutive_rejects += 1
-            if self._consecutive_rejects >= SPIKE_RESET_AFTER:
+            if self._consecutive_rejects >= self._spike_reset_after:
                 # Electrode contact likely changed — accept new baseline
                 logger.info(
                     "Spike filter reset after %d consecutive rejects "
