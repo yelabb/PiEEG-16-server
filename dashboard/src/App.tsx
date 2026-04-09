@@ -55,6 +55,7 @@ export default function App() {
   const [showSpectrogram, setShowSpectrogram] = useState(false);
   const [showStats, setShowStats] = useState(false);
   const [showChat, setShowChat] = useState(false);
+  const [showDocs, setShowDocs] = useState(false);
   const [showWebhooks, setShowWebhooks] = useState(false);
   const [webhooksEnabled, setWebhooksEnabled] = useState(
     () => localStorage.getItem("pieeg_webhooks_enabled") === "true"
@@ -262,8 +263,12 @@ export default function App() {
         case "KeyG":
           setShowSpectrogram((v) => !v);
           break;
+        case "KeyD":
+          setShowDocs((v) => !v);
+          break;
         case "Escape":
-          if (activePreset) applyPreset(null);
+          if (showDocs) setShowDocs(false);
+          else if (activePreset) applyPreset(null);
           else if (expandedCh !== null) setExpandedCh(null);
           else if (eeg.recordResult) eeg.dismissRecordResult();
           break;
@@ -328,9 +333,14 @@ export default function App() {
           <small>{numCh}ch Dashboard</small>
           {isDemo && <span className="demo-badge">DEMO</span>}
           {serverInfo && (
-            <span className="version-badge">
+            <a
+              className="version-badge"
+              href="https://github.com/pieeg-club/PiEEG-server"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
               v{serverInfo.version}{serverInfo.branch ? ` · ${serverInfo.branch}` : ""}
-            </span>
+            </a>
           )}
         </h1>
         <div className="status-bar">
@@ -425,6 +435,13 @@ export default function App() {
           title="Open immersive EEG experiences"
         >
           Mini Games
+        </button>
+        <button
+          className={`btn${showDocs ? " active" : ""}`}
+          onClick={() => setShowDocs((v) => !v)}
+          title="Open documentation"
+        >
+          Docs
         </button>
         <div className="sep" />
         <div className="control-group">
@@ -686,6 +703,21 @@ export default function App() {
       {/* Keyboard shortcut help (press ? to toggle) */}
       <ShortcutHelp />
 
+      {/* Docs iframe panel */}
+      <div className={`docs-panel${showDocs ? " open" : ""}`}>
+        <div className="docs-header">
+          <strong>Documentation</strong>
+          <button className="docs-close" onClick={() => setShowDocs(false)}>✕</button>
+        </div>
+        {showDocs && (
+          <iframe
+            className="docs-iframe"
+            src="https://pieeg-server-doc.vercel.app/"
+            title="PiEEG Documentation"
+          />
+        )}
+      </div>
+
       {/* Footer */}
       <footer className="footer">
         <span style={{ fontFamily: "var(--mono)", letterSpacing: "-0.01em" }}>PiEEG {numCh}ch</span>
@@ -698,6 +730,7 @@ export default function App() {
           <kbd>V</kbd> Exp
           <kbd>C</kbd> Chat
           <kbd>W</kbd> Hooks
+          <kbd>D</kbd> Docs
           <kbd>Esc</kbd> Close
           <kbd>P</kbd> Perf
         </span>

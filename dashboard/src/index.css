@@ -126,6 +126,11 @@ body {
   color: #999;
   background: rgba(255,255,255,0.06);
   border-radius: 4px;
+  text-decoration: none;
+}
+.version-badge:hover {
+  color: #ccc;
+  background: rgba(255,255,255,0.12);
 }
 
 .status-bar {
@@ -2352,6 +2357,60 @@ body {
 
 .chat-panel.open {
   transform: translateX(0);
+}
+
+/* ── Docs panel ───────────────────────────────────────────────────── */
+.docs-panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: 50vw;
+  max-width: 900px;
+  height: 100vh;
+  background: var(--bg);
+  border-left: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  z-index: 950;
+  transform: translateX(100%);
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: -4px 0 32px rgba(0, 0, 0, 0.4);
+}
+.docs-panel.open {
+  transform: translateX(0);
+}
+.docs-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 14px;
+  height: 48px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.docs-close {
+  background: none;
+  border: none;
+  color: var(--text);
+  font-size: 18px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+.docs-close:hover {
+  background: rgba(255,255,255,0.1);
+}
+.docs-iframe {
+  flex: 1;
+  border: none;
+  width: 100%;
+  height: 100%;
+}
+@media (max-width: 768px) {
+  .docs-panel {
+    width: 100vw;
+    max-width: 100vw;
+  }
 }
 
 .chat-header {
