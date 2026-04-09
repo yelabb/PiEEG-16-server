@@ -1,0 +1,101 @@
+---
+title: Architecture
+description: System architecture, data flow, and module responsibilities.
+---
+
+import { FileTree } from 'nextra/components'
+
+# Architecture
+
+## System Diagram
+
+```
+┌──────────────────────────────────────────────────────────┐
+│  Raspberry Pi + PiEEG Shield (8 or 16 ch)                │
+│                                                          │
+│  hardware.py     → SPI/GPIO init, ADS1299 config         │
+│       ↓                                                  │
+│  acquisition.py  → 250 Hz read loop (background thread)  │
+│       ↓ pub/sub                                          │
+│       ├── server.py     → WebSocket broadcast            │
+│       ├── recorder.py   → CSV writer                     │
+│       ├── monitor.py    → Terminal sparklines             │
+│       ├── osc_vrchat.py → VRChat OSC bridge              │
+│       └── lsl.py        → Lab Streaming Layer outlet     │
+│                                                          │
+│  webhooks.py  → event rules + HTTP relay                 │
+│  dashboard.py → HTTP server (React UI)                   │
+│  auth.py      → session + WS token management            │
+│  filters.py   → Butterworth bandpass (SOS)               │
+│  updater.py   → version check + upgrade                  │
+│  doctor.py    → system diagnostics                       │
+│                                                          │
+│  ws://0.0.0.0:1616  │  http://0.0.0.0:1617              │
+└──────────┬───────────────────────────────────────────────┘
+           │  Local network / internet
+           ├── Browser dashboard (React + Vite)
+           ├── Python / Jupyter notebook
+           ├── VRChat (OSC over UDP)
+           ├── LSL consumers (OpenViBE, MNE…)
+           ├── IFTTT / Zapier (webhooks)
+           └── Any WebSocket client
+```
+
+## Server Modules
+
+<FileTree>
+  <FileTree.Folder name="pieeg_server" defaultOpen>
+    <FileTree.File name="__main__.py" />
+    <FileTree.File name="hardware.py" />
+    <FileTree.File name="acquisition.py" />
+    <FileTree.File name="server.py" />
+    <FileTree.File name="dashboard.py" />
+    <FileTree.File name="auth.py" />
+    <FileTree.File name="filters.py" />
+    <FileTree.File name="recorder.py" />
+    <FileTree.File name="monitor.py" />
+    <FileTree.File name="osc_vrchat.py" />
+    <FileTree.File name="lsl.py" />
+    <FileTree.File name="webhooks.py" />
+    <FileTree.File name="updater.py" />
+    <FileTree.File name="doctor.py" />
+    <FileTree.File name="mock.py" />
+  </FileTree.Folder>
+</FileTree>
+
+| Module | Responsibility |
+|--------|---------------|
+| `hardware.py` | SPI/GPIO initialization, ADS1299 register config |
+| `acquisition.py` | 250 Hz read loop in background thread, pub/sub queues |
+| `server.py` | WebSocket server, frame broadcast, command dispatch |
+| `dashboard.py` | HTTP server for React dashboard + REST API |
+| `auth.py` | 6-digit code auth, session cookies, WS token management |
+| `filters.py` | Butterworth IIR bandpass (SOS), per-channel state |
+| `recorder.py` | CSV writer, subscribes to acquisition queue |
+| `monitor.py` | Rich TUI with sparklines, standalone or embedded |
+| `osc_vrchat.py` | UDP OSC bridge for VRChat (chatbox + avatar params) |
+| `lsl.py` | Lab Streaming Layer outlet |
+| `webhooks.py` | Rule persistence, condition evaluation, HTTP relay |
+| `updater.py` | Version check (PyPI or git remote), upgrade trigger |
+| `doctor.py` | System diagnostics (Pi model, SPI, GPIO, ports, deps) |
+| `mock.py` | Synthetic EEG generator (alpha, drift, noise, blinks) |
+
+## Data Flow
+
+1. **ADS1299** chip on PiEEG shield reads analog voltages via SPI at 250 Hz
+2. `hardware.py` converts raw 24-bit values to µV floats
+3. `acquisition.py` runs a dedicated thread, pushes samples to async queues
+4. Each subscriber (server, recorder, monitor, etc.) consumes from its own queue
+5. `server.py` broadcasts JSON frames to all connected WebSocket clients
+6. Dashboard renders at 60 fps using Canvas 2D and refs (no React re-renders)
+
+## Dashboard Architecture
+
+| Layer | Tech |
+|-------|------|
+| Framework | React 19 |
+| Bundler | Vite 6 |
+| Rendering | Canvas 2D + Three.js (WebXR) |
+| FFT | Cooley-Tukey radix-2 (Web Worker) |
+| State | Hooks + refs only |
+| Styling | Plain CSS |

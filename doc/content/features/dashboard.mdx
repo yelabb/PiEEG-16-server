@@ -1,0 +1,68 @@
+---
+title: Dashboard
+description: Real-time browser dashboard with waveforms, FFT, spectrogram, topographic maps, and more.
+---
+
+import { Callout } from 'nextra/components'
+
+# Dashboard
+
+The PiEEG dashboard is a browser-based real-time visualization tool served at `http://<host>:1617`.
+
+## Features
+
+| Feature | Description |
+|---------|-------------|
+| **Real-time waveforms** | Canvas 2D, adaptive quality; time window 2–16 s, Y-scale ±50–500 µV |
+| **Signal quality badges** | Live per-channel RMS with color feedback (green / yellow / red / gray) |
+| **Channel detail panel** | Click to expand: zoomed trace, FFT, band power bars, histogram, statistics |
+| **Spectral analysis** | 256-point FFT in Web Worker; PSD (log dB / linear); band power bars δ θ α β γ |
+| **Spectrogram** | Scrolling time-frequency heatmap (Turbo colormap, –60 → 0 dB) |
+| **Topographic map** | IDW-interpolated scalp heatmap over 10-20 montage; selectable band metric |
+| **Statistics panel** | 10 metrics per channel; sortable columns; CSV export |
+| **Filter preview** | Live Butterworth magnitude response with –3 dB reference |
+| **Session library** | Browse, replay recordings; play/pause, seek, speed control (0.5×–2×); annotations |
+| **AI chat assistant** | BYO provider (OpenAI, Anthropic, Ollama, Groq, LM Studio); SSE streaming |
+| **Webhook panel** | Visual rule builder; POST/PUT/PATCH/GET; Authorization headers; IFTTT & Zapier |
+| **Webcam feed** | Optional video overlay |
+| **Performance monitor** | FPS, frame time, JS heap overlay |
+| **Update banner** | Version upgrade notification |
+| **Responsive** | Desktop: all 16 channels. Mobile: 4-channel subset |
+
+## Keyboard Shortcuts
+
+| Key | Action | Key | Action |
+|-----|--------|-----|--------|
+| `Space` | Toggle pause | `V` | Experiences gallery |
+| `R` | Toggle record | `C` | Toggle chat |
+| `F` | Toggle FFT | `W` | Toggle webhooks |
+| `G` | Toggle spectrogram | `P` | Toggle perf monitor |
+| `S` | Toggle stats | `Esc` | Close overlays |
+| `?` | Show shortcut help | | |
+
+## EEG Frequency Bands
+
+The dashboard color-codes all spectral data using standard EEG bands:
+
+| Band | Range | Color |
+|------|-------|-------|
+| Delta (δ) | 0.5–4 Hz | `#8b5cf6` purple |
+| Theta (θ) | 4–8 Hz | `#06b6d4` cyan |
+| Alpha (α) | 8–13 Hz | `#22c55e` green |
+| Beta (β) | 13–30 Hz | `#f59e0b` amber |
+| Gamma (γ) | 30–100 Hz | `#ef4444` red |
+
+## Tech Stack
+
+| Layer | Tech |
+|-------|------|
+| Framework | React 19 |
+| Bundler | Vite 6 |
+| Rendering | Canvas 2D (waveforms, spectra), Three.js (WebXR) |
+| FFT | Pure-JS Cooley-Tukey radix-2 (256-point, Hanning window) |
+| State | React hooks + refs (no external state library) |
+| Styling | Plain CSS |
+
+<Callout type="info">
+  The dashboard renders at 60 fps with zero React re-renders in the hot path — all waveform data flows through refs and Canvas directly.
+</Callout>

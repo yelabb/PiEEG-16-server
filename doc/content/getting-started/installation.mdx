@@ -1,0 +1,76 @@
+---
+title: Installation
+description: Install PiEEG Server on Raspberry Pi or any machine with Python 3.10+.
+---
+
+import { Tabs, Steps, Callout } from 'nextra/components'
+
+# Installation
+
+Pick **one** method — they all get you `pieeg-server` ready to run.
+
+<Steps>
+
+### One-line install (recommended)
+
+```bash
+curl -sSL https://raw.githubusercontent.com/pieeg-club/PiEEG-server/main/install.sh | bash
+```
+
+<Callout type="warning">
+  **First time on Raspberry Pi?** Run `sudo reboot` after install to enable SPI.
+</Callout>
+
+### Clone & setup
+
+```bash
+git clone https://github.com/pieeg-club/PiEEG-server.git
+cd PiEEG-server
+./setup.sh
+```
+
+### pip install
+
+```bash
+pip install pieeg-server
+```
+
+Requires Python 3.10+.
+
+</Steps>
+
+## IronBCI Support
+
+Experimental IronBCI board support is available on the `add-ironbci` branch:
+
+```bash
+git clone -b add-ironbci https://github.com/pieeg-club/PiEEG-server.git
+cd PiEEG-server
+./setup.sh
+```
+
+## Optional Dependencies
+
+| Extra | Install | Use case |
+|-------|---------|----------|
+| `lsl` | `pip install pieeg-server[lsl]` | Lab Streaming Layer outlet |
+| `rpi` | `pip install pieeg-server[rpi]` | Raspberry Pi SPI support |
+| `dev` | `pip install pieeg-server[dev]` | pytest + development tools |
+
+## System Requirements
+
+| Requirement | Minimum |
+|-------------|---------|
+| Python | 3.10+ |
+| OS | Linux (Raspberry Pi OS for hardware), macOS/Windows for mock mode |
+| RAM | 256 MB |
+| Network | Any — WebSocket streams over local network |
+
+## Verify Installation
+
+```bash
+pieeg-server doctor    # diagnose hardware, software, configuration
+pieeg-server --mock    # start with synthetic data (no hardware needed)
+```
+
+Open **http://localhost:1617** to see the dashboard.
