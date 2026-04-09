@@ -20,8 +20,7 @@ Reads at 250 Hz · streams over WebSocket · live dashboard with spectral analys
 
 **[Try it now](https://pieeg.vercel.app)** — no hardware needed, runs in demo mode with synthetic EEG data.
 **[Documentation](https://pieeg-server-doc.vercel.app)** — full guides, API reference, and integration docs.
-**[Chat with us](https://discord.gg/neJ45FR6Sv)** — questions, feedback, ideas, or just want to hang out? Join the Discord.
-
+**[Chat with us](https://discord.gg/neJ45FR6Sv)** — Join PiEEG Discord community 
 ```bash
 curl -sSL https://raw.githubusercontent.com/pieeg-club/PiEEG-server/main/install.sh | bash
 ```
