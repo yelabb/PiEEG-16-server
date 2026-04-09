@@ -1,0 +1,91 @@
+---
+title: Experiences Gallery
+description: Community-driven immersive EEG visualizations — lazy-loaded, card-based launcher.
+---
+
+import { Callout, Steps } from 'nextra/components'
+
+# Experiences Gallery
+
+Community-driven immersive EEG visualizations — lazy-loaded, card-based launcher, simple registry for contributors.
+
+## Built-in Experiences
+
+| Experience | Description |
+|---|---|
+| **Neural Wave Space** | Three.js 3D arc of 16 wave strips with amplitude-responsive color, starfield, WebXR + hand tracking |
+| **Blink Browser** | Scroll articles via eye blinks; per-user calibration; frontal electrode monitoring |
+| **Neural Sonification** | Brainwaves → live music; bands mapped to drone, FM pad, lead, harmonics, shimmer; DJ controls |
+| **VRChat OSC** | Stream band powers into VRChat; chatbox + avatar parameter output; live config UI |
+| **Spoon Bend** | Matrix-style telekinesis controlled by focus/beta/gamma; 3D spoon + digital rain |
+| **Webhook Wizard** | Guided 60-second first-webhook setup; live EEG feedback; IFTTT/Zapier templates |
+
+## Creating an Experience
+
+<Callout type="info">
+  **Time to first playable: ~15 minutes.** One `.tsx` file + one line in the registry.
+</Callout>
+
+<Steps>
+
+### Create your component
+
+Create `dashboard/src/experiences/my-game/MyGame.tsx`:
+
+```tsx
+import { useRef, useEffect } from "react";
+import type { ExperienceProps } from "../registry";
+import { useFocus, useRelax, useBlink } from "../../hooks/detectors";
+
+export default function MyGame({ eegData, onExit }: ExperienceProps) {
+  const { state: focus } = useFocus(eegData);
+  const { state: relax } = useRelax(eegData);
+  const { state: blink } = useBlink(eegData);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    let raf: number;
+    function loop() {
+      const f = focus.current.focus;       // 0–1
+      const r = relax.current.relaxation;  // 0–1
+      const b = blink.current.blinked;     // true for one cycle per blink
+      // --- your game logic here ---
+      raf = requestAnimationFrame(loop);
+    }
+    raf = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(raf);
+  }, []);
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "#000" }}>
+      <canvas ref={canvasRef} />
+      <button onClick={onExit} style={{ position: "absolute", top: 12, left: 12 }}>
+        ← Exit
+      </button>
+    </div>
+  );
+}
+```
+
+### Register in the gallery
+
+Add to `dashboard/src/experiences/registry.ts`:
+
+```ts
+const MyGameExperience = lazy(() => import("./my-game/MyGame"));
+
+// Add to EXPERIENCES array:
+{
+  id: "my-game",
+  name: "My Game",
+  description: "One-sentence summary.",
+  tag: "Focus",
+  gradient: ["#ec4899", "#8b5cf6"],
+  component: MyGameExperience,
+  author: "Your Name",
+}
+```
+
+</Steps>
+
+The gallery picks it up automatically. Each experience is code-split — no impact on initial load.

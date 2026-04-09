@@ -15,8 +15,10 @@ Reads at 250 Hz · streams over WebSocket · live dashboard with spectral analys
 [![Downloads](https://img.shields.io/pypi/dm/pieeg-server)](https://pypi.org/project/pieeg-server/)
 [![IFTTT](https://img.shields.io/badge/IFTTT-compatible-black?logo=ifttt&logoColor=white)](https://ifttt.com/maker_webhooks)
 [![Zapier](https://img.shields.io/badge/Zapier-compatible-FF4A00?logo=zapier&logoColor=white)](https://zapier.com/apps/webhooks)
+[![Docs](https://img.shields.io/badge/docs-pieeg--server-blue?logo=vercel&logoColor=white)](https://pieeg-server-doc.vercel.app)
 
 **[Try it now](https://pieeg.vercel.app)** — no hardware needed, runs in demo mode with synthetic EEG data.
+**[Documentation](https://pieeg-server-doc.vercel.app)** — full guides, API reference, and integration docs.
 
 ```bash
 curl -sSL https://raw.githubusercontent.com/pieeg-club/PiEEG-server/main/install.sh | bash

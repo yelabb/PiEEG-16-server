@@ -1,0 +1,89 @@
+---
+title: Configuration
+description: CLI options and runtime configuration for PiEEG Server.
+---
+
+import { Callout } from 'nextra/components'
+
+# Configuration
+
+## CLI Reference
+
+```
+pieeg-server [OPTIONS] [COMMAND]
+```
+
+### Commands
+
+| Command | Description |
+|---------|-------------|
+| `doctor` | Diagnose hardware, software, and configuration |
+| `record FILE` | Record EEG to CSV (standalone, no server) |
+| `monitor` | Live terminal display (standalone, no server) |
+
+### Server Options
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--device DEVICE` | `pieeg16` | `pieeg8` or `pieeg16` |
+| `--host HOST` | `0.0.0.0` | Bind address |
+| `--port PORT` | `1616` | WebSocket port |
+| `--dashboard-port PORT` | `1617` | Dashboard HTTP port |
+| `--no-dashboard` | — | Disable web dashboard |
+| `--auth` | — | Enable 6-digit access code |
+| `--gpio-chip PATH` | `/dev/gpiochip4` | GPIO chip device |
+
+### Filter Options
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--filter` | — | Enable 1–40 Hz bandpass filter |
+| `--lowcut HZ` | `1.0` | Filter low cutoff |
+| `--highcut HZ` | `40.0` | Filter high cutoff |
+
+### Recording Options
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--record FILE` | — | Record to CSV while streaming |
+| `--record-duration SEC` | — | Stop recording after N seconds |
+
+### Integration Options
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--monitor` | — | Show terminal monitor alongside server |
+| `--mock` | — | Synthetic EEG (no hardware needed) |
+| `--no-webhooks` | — | Disable webhooks |
+| `--osc` | — | Enable VRChat OSC bridge |
+| `--osc-host HOST` | `127.0.0.1` | VRChat receiver |
+| `--osc-port PORT` | `9000` | VRChat OSC port |
+| `--osc-mode MODE` | `both` | `chatbox`, `parameters`, or `both` |
+| `--osc-interval SEC` | `0.25` | OSC update rate |
+| `--lsl` | — | Enable Lab Streaming Layer outlet |
+| `--lsl-name NAME` | `PiEEG` | LSL stream name |
+| `-v, --verbose` | — | Debug logging |
+
+## Systemd Service
+
+The install script creates a systemd service that auto-starts on boot:
+
+```bash
+sudo systemctl status pieeg-server
+sudo systemctl restart pieeg-server
+journalctl -u pieeg-server -f
+```
+
+<Callout type="info">
+  The systemd service runs with whatever flags were set during installation. Edit `/etc/systemd/system/pieeg-server.service` to change runtime options.
+</Callout>
+
+## Environment
+
+PiEEG Server has minimal dependencies:
+
+| Package | Version | Purpose |
+|---------|---------|---------|
+| `websockets` | ≥12.0 | WebSocket streaming |
+| `scipy` | ≥1.10 | Butterworth filter |
+| `rich` | ≥13.0 | Terminal UI / monitor |
