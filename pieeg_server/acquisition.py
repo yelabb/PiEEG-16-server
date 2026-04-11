@@ -13,6 +13,10 @@ import time
 SAMPLE_RATE = 250  # Hz
 SAMPLE_INTERVAL = 1.0 / SAMPLE_RATE  # 4 ms
 
+# Number of frames to discard after a register config change.
+# At 250 Hz, 25 frames = 100 ms — enough for SPI + ADC to settle.
+_SETTLE_FRAMES = 25
+
 
 class AcquisitionLoop:
     """Runs the SPI read loop in a background thread, feeds async queues."""
@@ -25,6 +29,7 @@ class AcquisitionLoop:
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
         self._sample_count = 0
+        self._settle_remaining = 0
         # Default subscriber for backward compat (.queue property)
         self._default_queue = self.subscribe()
 
@@ -71,9 +76,12 @@ class AcquisitionLoop:
         """Stop acquisition, write registers, restart the thread.
 
         Drops ~10-20 ms of data during the transition (acceptable for config changes).
+        After restart, the first SETTLE_FRAMES frames are discarded to let the
+        SPI bus and ADC settle (avoids corrupted frames after RDATAC+START).
         """
         self.stop()
         self._hw.configure_registers(reg_map)
+        self._settle_remaining = _SETTLE_FRAMES
         self.start()
 
     def _run(self):
@@ -128,6 +136,12 @@ class AcquisitionLoop:
             armed = False
             sample = self._hw.read_sample()
             if sample is None:
+                continue
+
+            # Discard settling frames after register config change —
+            # SPI bus often produces corrupted data right after RDATAC+START
+            if self._settle_remaining > 0:
+                self._settle_remaining -= 1
                 continue
 
             self._sample_count += 1

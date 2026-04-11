@@ -273,6 +273,8 @@ class PiEEGHardware:
 
         Applies to both chips in 16-ch mode, chip 1 only in 8-ch mode.
         Updates the shadow register state.
+        Resets spike filter baseline so the first post-config frames aren't
+        rejected due to the signal level changing (e.g. normal → shorted).
         """
         chips = [1, 2] if self._num_channels == 16 else [1]
         for chip in chips:
@@ -283,6 +285,10 @@ class PiEEGHardware:
             self._send_command(chip, CMD_RDATAC)
             self._send_command(chip, CMD_START)
         self._register_state.update(reg_map)
+        # Reset spike filter — signal level changes after config, old baseline
+        # would cause false rejections (e.g. normal→shorted: ±50µV → ±2µV)
+        self._last_valid_value = None
+        self._consecutive_rejects = 0
         logger.info("Registers configured: %s", {hex(k): hex(v) for k, v in reg_map.items()})
 
     def set_input_short(self):
