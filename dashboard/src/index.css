@@ -3638,6 +3638,92 @@ body {
   gap: 4px;
 }
 
+/* ═══════════════════════════════════════════════════════════════════════
+   Channel Mismatch Banner
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.ch-mismatch-banner {
+  background: #332200;
+  border-bottom: 1px solid #664400;
+  padding: 10px 20px;
+  flex-shrink: 0;
+}
+
+.ch-mismatch-content {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  font-size: 13px;
+}
+
+.ch-mismatch-icon {
+  font-size: 18px;
+  line-height: 1.4;
+  flex-shrink: 0;
+}
+
+.ch-mismatch-text {
+  color: var(--text);
+  flex: 1;
+  line-height: 1.5;
+}
+
+.ch-mismatch-text strong {
+  color: #ffaa33;
+}
+
+.ch-mismatch-cmd {
+  margin: 6px 0 0;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 170, 51, 0.2);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  font-size: 12px;
+  font-family: var(--mono);
+  color: #ffcc66;
+  user-select: all;
+}
+
+.ch-mismatch-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.ch-mismatch-ok {
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--text-dim);
+  font-size: 12px;
+  padding: 0 12px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.ch-mismatch-ok:hover {
+  border-color: var(--text);
+}
+
+.ch-mismatch-dismiss {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 16px;
+  padding: 2px 6px;
+  line-height: 1;
+  border-radius: var(--radius-xs);
+  transition: color 0.15s;
+}
+
+.ch-mismatch-dismiss:hover {
+  color: var(--text);
+}
+
 .wiz-step-dot {
   font-size: 9px;
   color: var(--text-dim);

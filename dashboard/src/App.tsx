@@ -12,6 +12,7 @@ import Spectrogram from "./components/Spectrogram";
 import FilterPreview from "./components/FilterPreview";
 import StatsPanel from "./components/StatsPanel";
 import UpdateBanner from "./components/UpdateBanner";
+import ChannelMismatchBanner from "./components/ChannelMismatchBanner";
 import ShortcutHelp from "./components/ShortcutHelp";
 import ChatPanel from "./components/ChatPanel";
 import WebhookPanel from "./components/WebhookPanel";
@@ -347,6 +348,7 @@ export default function App() {
   return (
     <AuthGate>
       <UpdateBanner />
+      <ChannelMismatchBanner numChannels={numCh} eegData={eeg.data} connected={eeg.connected} />
       {/* Header */}
       <header className="header">
         <h1>
