@@ -14,7 +14,7 @@ import pytest
 from pieeg_server.hardware import (
     SIGN_TEST, FULL_SCALE, FULL_SCALE_PLUS_1, NEGATIVE_OFFSET,
     VREF_UV, SPIKE_THRESHOLD, SPIKE_RESET_AFTER,
-    EXPECTED_STATUS_2, BYTES_PER_READ,
+    EXPECTED_STATUS, BYTES_PER_READ,
     CS_PIN, DRDY_PIN, DRDY_PIN_2, SPI_SPEED_HZ,
     CH1SET, CH2SET, CH3SET, CH4SET, CH5SET, CH6SET, CH7SET, CH8SET,
     PiEEGHardware,
@@ -150,9 +150,9 @@ class TestSpikeDetection:
         assert hw._is_valid_frame(self._raw_with_last_3(b24, b25, b26)) is True
 
     def test_status_header_constant(self):
-        """Expected status bytes for chip 2."""
-        assert EXPECTED_STATUS_2 == (192, 0, 8)
-        assert EXPECTED_STATUS_2 == (0xC0, 0x00, 0x08)
+        """Expected status bytes should be (0xC0, 0x00, 0x08)."""
+        assert EXPECTED_STATUS == (192, 0, 8)
+        assert EXPECTED_STATUS == (0xC0, 0x00, 0x08)
 
     def test_custom_threshold_accepts_larger_jumps(self):
         """Raising spike_threshold allows larger jumps through."""
