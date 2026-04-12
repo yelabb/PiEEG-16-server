@@ -63,6 +63,7 @@ class PiEEGServer:
         self._osc_task: asyncio.Task | None = None
         self._lsl_bridge: LSLBridge | None = None
         self._lsl_task: asyncio.Task | None = None
+        self._noise_test_running = False
 
     def enable_filter(self, lowcut: float = 1.0, highcut: float = 40.0):
         self._filter = MultichannelFilter(
@@ -220,6 +221,15 @@ class PiEEGServer:
             await self._ws_spike_config(ws, msg)
         elif cmd == "inject_spike":
             await self._ws_inject_spike(ws, msg)
+        # ── Register / noise test commands ─────────────────────────────────
+        elif cmd == "reg_write":
+            await self._ws_reg_write(ws, msg)
+        elif cmd == "reg_preset":
+            await self._ws_reg_preset(ws, msg)
+        elif cmd == "noise_test":
+            await self._ws_noise_test(ws, msg)
+        elif cmd == "reg_read":
+            await self._ws_reg_read(ws)
 
     async def _start_recording(self):
         """Start recording EEG data to a timestamped CSV file."""
@@ -552,4 +562,190 @@ class PiEEGServer:
         self._acq._hw.inject_spike(count)
         logger.info("Injected %d synthetic spike(s)", count)
         await ws.send(json.dumps({"inject_spike": {"ok": True, "count": count}}))
+
+    # ── Register / noise test handlers ─────────────────────────────────
+
+    # Preset definitions: name → {addr: value} register map
+    _REG_PRESETS: dict[str, dict[int, int]] = {
+        "internal_short": {r: 0x01 for r in range(0x05, 0x0D)},
+        "normal":         {r: 0x00 for r in range(0x05, 0x0D)},
+        "test_signal":    {r: 0x05 for r in range(0x05, 0x0D)},
+        "temp_sensor":    {r: 0x04 for r in range(0x05, 0x0D)},
+    }
+
+    # Only CHnSET registers (0x05–0x0C) are allowed from the dashboard.
+    # Allowing CONFIG1/2/3 would silently change sample rate or reference.
+    _ALLOWED_REG_RANGE = range(0x05, 0x0D)
+
+    async def _ws_reg_write(self, ws, msg: dict):
+        """Write CHnSET registers via restart_with_config."""
+        raw_regs = msg.get("regs", {})
+        if not raw_regs or not isinstance(raw_regs, dict):
+            await ws.send(json.dumps({"reg_config": {"status": "error", "error": "No regs provided"}}))
+            return
+        reg_map = {int(k, 16) if isinstance(k, str) else int(k): int(v) & 0xFF
+                   for k, v in raw_regs.items()}
+        blocked = [hex(a) for a in reg_map if a not in self._ALLOWED_REG_RANGE]
+        if blocked:
+            await ws.send(json.dumps({"reg_config": {
+                "status": "error",
+                "error": f"Register(s) {', '.join(blocked)} not allowed (only CHnSET 0x05-0x0C)",
+            }}))
+            return
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, self._acq.restart_with_config, reg_map)
+        logger.info("Registers written: %s", {hex(k): hex(v) for k, v in reg_map.items()})
+        await self._broadcast_reg_config()
+
+    async def _ws_reg_preset(self, ws, msg: dict):
+        """Apply a named register preset."""
+        preset_name = msg.get("preset", "")
+        reg_map = self._REG_PRESETS.get(preset_name)
+        if reg_map is None:
+            await ws.send(json.dumps({"reg_config": {
+                "status": "error",
+                "error": f"Unknown preset: {preset_name}",
+                "available": list(self._REG_PRESETS.keys()),
+            }}))
+            return
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, self._acq.restart_with_config, dict(reg_map))
+        logger.info("Register preset applied: %s", preset_name)
+        await self._broadcast_reg_config()
+
+    async def _ws_reg_read(self, ws):
+        """Push current register state to the requesting client."""
+        hw = self._acq._hw
+        state = hw.register_state
+        payload = json.dumps({"reg_config": {
+            "regs": {hex(k): hex(v) for k, v in state.items()},
+            "status": "ok",
+        }})
+        await ws.send(payload)
+
+    async def _ws_noise_test(self, ws, msg: dict):
+        """Run the noise diagnostic: short inputs → collect → RMS → restore."""
+        if self._noise_test_running:
+            await ws.send(json.dumps({"noise_test_status": "busy"}))
+            return
+        self._noise_test_running = True
+        try:
+            duration = min(max(float(msg.get("duration", 3)), 1), 10)
+            # Notify client that test is starting
+            await ws.send(json.dumps({"noise_test_status": "running"}))
+
+            result = await self._run_noise_test(duration)
+            await ws.send(json.dumps({"noise_test_result": result}))
+        finally:
+            self._noise_test_running = False
+
+    async def _run_noise_test(self, duration: float = 3.0) -> dict:
+        """Execute the full noise test flow and return results."""
+        import math
+
+        hw = self._acq._hw
+        num_ch = self._num_channels
+
+        # 1. Save current config
+        saved_config = dict(hw.register_state)
+
+        # 2. Set internal short (0x01 on all CHnSET)
+        short_regs = {r: 0x01 for r in range(0x05, 0x0D)}
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, self._acq.restart_with_config, short_regs)
+
+        # 3. Discard first 0.5s (settling time)
+        settle_samples = int(0.5 * 250)
+        test_q = self._acq.subscribe()
+        try:
+            for _ in range(settle_samples):
+                try:
+                    await asyncio.wait_for(test_q.get(), timeout=0.1)
+                except asyncio.TimeoutError:
+                    break
+
+            # 4. Collect `duration` seconds of data
+            collect_samples = int(duration * 250)
+            data: list[list[float]] = [[] for _ in range(num_ch)]
+            for _ in range(collect_samples):
+                try:
+                    frame = await asyncio.wait_for(test_q.get(), timeout=0.1)
+                    channels = frame.get("channels", [])
+                    for ch in range(min(num_ch, len(channels))):
+                        data[ch].append(channels[ch])
+                except asyncio.TimeoutError:
+                    break
+        finally:
+            self._acq.unsubscribe(test_q)
+
+        # 5. Compute RMS per channel
+        rms_values = []
+        for ch in range(num_ch):
+            if data[ch]:
+                mean = sum(data[ch]) / len(data[ch])
+                variance = sum((x - mean) ** 2 for x in data[ch]) / len(data[ch])
+                rms_values.append(round(math.sqrt(variance), 2))
+            else:
+                rms_values.append(0.0)
+
+        # 6. Restore original config + restart
+        if saved_config:
+            await loop.run_in_executor(None, self._acq.restart_with_config, saved_config)
+        else:
+            normal_regs = {r: 0x00 for r in range(0x05, 0x0D)}
+            await loop.run_in_executor(None, self._acq.restart_with_config, normal_regs)
+
+        # 7. Build verdict and recommendation
+        max_rms = max(rms_values) if rms_values else 0
+        bad_channels = [i + 1 for i, v in enumerate(rms_values) if v > 15]
+        marginal_channels = [i + 1 for i, v in enumerate(rms_values) if 5 <= v <= 15]
+
+        if max_rms < 5:
+            verdict = "Device OK. Internal noise within spec."
+            recommendation = (
+                "Your PiEEG hardware is healthy. If you see noise in normal mode, "
+                "it's from external sources. Try: (1) Check electrode cable connections, "
+                "(2) Use shorter cables, (3) Move away from power supplies/monitors, "
+                "(4) Add a ground electrode."
+            )
+        elif bad_channels:
+            ch_str = ", ".join(str(c) for c in bad_channels)
+            verdict = f"Hardware issue detected on channel(s) {ch_str}."
+            recommendation = (
+                "Some channels show elevated internal noise. Try: "
+                "(1) Check solder joints, "
+                "(2) Ensure PiEEG shield is firmly seated on GPIO header."
+            )
+        else:
+            ch_str = ", ".join(str(c) for c in marginal_channels)
+            verdict = f"Marginal. Channel(s) {ch_str} slightly noisy."
+            recommendation = (
+                "Noise is slightly above ideal but may still be usable. "
+                "Check physical connections and try re-seating the shield."
+            )
+
+        return {
+            "rms": rms_values,
+            "max_rms": max_rms,
+            "verdict": verdict,
+            "recommendation": recommendation,
+            "duration": duration,
+            "samples_collected": len(data[0]) if data[0] else 0,
+        }
+
+    async def _broadcast_reg_config(self):
+        """Push current register state to all connected clients."""
+        hw = self._acq._hw
+        state = hw.register_state
+        payload = json.dumps({"reg_config": {
+            "regs": {hex(k): hex(v) for k, v in state.items()},
+            "status": "ok",
+        }})
+        stale = set()
+        for ws in list(self._clients):
+            try:
+                await ws.send(payload)
+            except websockets.ConnectionClosed:
+                stale.add(ws)
+        self._clients -= stale
 

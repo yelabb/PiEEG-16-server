@@ -10,6 +10,9 @@ import sys
 import platform
 import importlib
 import shutil
+import subprocess
+import re
+from datetime import datetime
 
 
 # --- Colors (for terminal output) ---
@@ -154,6 +157,41 @@ def run_doctor(quiet: bool = False) -> int:
             ok("SPI enabled in boot config")
         elif platform.system() == "Linux":
             warn("SPI not found in boot config (may still work if enabled via raspi-config)")
+
+        # Check core_freq_fixed (prevents SPI clock drift → corrupted ADC frames)
+        # See: https://forums.raspberrypi.com/viewtopic.php?t=386202
+        core_freq_fixed = False
+        for cfg in ["/boot/firmware/config.txt", "/boot/config.txt"]:
+            if os.path.isfile(cfg):
+                try:
+                    with open(cfg) as f:
+                        for line in f:
+                            if line.strip() == "core_freq_fixed=1":
+                                core_freq_fixed = True
+                                break
+                except PermissionError:
+                    pass
+
+        if core_freq_fixed:
+            ok("core_freq_fixed=1 set (stable SPI clock)")
+        elif platform.system() == "Linux":
+            warn("core_freq_fixed=1 NOT set — SPI clock may drift causing data spikes")
+            warn("  Fix: add 'core_freq_fixed=1' to /boot/firmware/config.txt and reboot")
+
+        # Check firmware is new enough for core_freq_fixed (added Sep 2024)
+        # See: https://forums.raspberrypi.com/viewtopic.php?t=386202
+        if platform.system() == "Linux":
+            fw_date = _detect_firmware_date()
+            if fw_date:
+                ok(f"Firmware date: {fw_date.strftime('%b %Y')}")
+                if fw_date < datetime(2024, 9, 1):
+                    warn("Firmware predates Sep 2024 — core_freq_fixed=1 is NOT supported")
+                    warn("  Upgrade: sudo apt update && sudo apt upgrade")
+                    warn("  If still old: sudo rpi-update (or sudo rpi-update 6.6.y for 6.6 kernel)")
+                else:
+                    ok("Firmware supports core_freq_fixed=1")
+            else:
+                warn("Cannot detect firmware date (vcgencmd not available)")
 
     if not quiet:
         print()
@@ -317,4 +355,25 @@ def _detect_pi_model() -> str | None:
     except (FileNotFoundError, PermissionError):
         pass
 
+    return None
+
+
+def _detect_firmware_date() -> datetime | None:
+    """Try to detect Raspberry Pi firmware date via vcgencmd."""
+    try:
+        result = subprocess.run(
+            ["vcgencmd", "version"],
+            capture_output=True, text=True, timeout=5,
+        )
+        if result.returncode == 0:
+            # First line is like "Sep 19 2024 14:39:07"
+            m = re.search(
+                r"([A-Z][a-z]{2})\s+\d{1,2}\s+(\d{4})",
+                result.stdout,
+            )
+            if m:
+                month_str, year_str = m.group(1), m.group(2)
+                return datetime.strptime(f"{month_str} {year_str}", "%b %Y")
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        pass
     return None

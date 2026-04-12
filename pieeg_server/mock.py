@@ -16,9 +16,22 @@ import time
 NUM_CHANNELS = 16
 SAMPLE_RATE = 250
 
+# ADS1299 channel register addresses (mirrors hardware.py)
+CH1SET = 0x05
+CH2SET = 0x06
+CH3SET = 0x07
+CH4SET = 0x08
+CH5SET = 0x09
+CH6SET = 0x0A
+CH7SET = 0x0B
+CH8SET = 0x0C
+CH_REGS = (CH1SET, CH2SET, CH3SET, CH4SET, CH5SET, CH6SET, CH7SET, CH8SET)
+
 
 class MockHardware:
     """Drop-in replacement for PiEEGHardware that generates synthetic data."""
+
+    CH_REGS = CH_REGS
 
     def __init__(self, num_channels: int = NUM_CHANNELS):
         self._num_channels = num_channels
@@ -32,6 +45,11 @@ class MockHardware:
         # Spike config (mirrors PiEEGHardware interface)
         self._spike_threshold = 5000
         self._spike_reset_after = 50
+        # Register state (shadow copy)
+        self._register_state: dict[int, int] = {}
+        # Per-channel input mode derived from CHnSET register value
+        # 0x00 = normal, 0x01 = shorted, 0x04 = temp, 0x05 = test signal
+        self._ch_modes: list[int] = [0x00] * self._num_channels
 
     @property
     def num_channels(self) -> int:
@@ -79,20 +97,34 @@ class MockHardware:
 
         channels = []
         for ch in range(self._num_channels):
-            # Alpha oscillation (8-12 Hz)
-            alpha = self._alpha_amp[ch] * math.sin(
-                2 * math.pi * self._alpha_freq[ch] * t + self._alpha_phase[ch]
-            )
-            # Slow drift (0.5 Hz)
-            drift = 10 * math.sin(2 * math.pi * 0.5 * t + ch)
-            # Gaussian-ish noise
-            noise = self._noise_amp[ch] * (random.gauss(0, 1))
-            # Occasional blink artifact on frontal channels (ch 0-3)
-            blink = 0.0
-            if ch < 4 and random.random() < 0.002:
-                blink = random.uniform(100, 300)
+            mode = self._ch_modes[ch] if ch < len(self._ch_modes) else 0x00
 
-            channels.append(round(alpha + drift + noise + blink, 2))
+            if mode == 0x01:
+                # Input shorted: flat noise ±2 µV
+                channels.append(round(random.gauss(0, 1.0), 2))
+            elif mode == 0x05:
+                # Test signal: 1.8 mV square wave at ~2 Hz
+                period = SAMPLE_RATE // 2  # 2 Hz
+                val = 1800.0 if (self._sample_index % period) < (period // 2) else -1800.0
+                channels.append(round(val + random.gauss(0, 0.5), 2))
+            elif mode == 0x04:
+                # Temperature sensor: slow sawtooth ~25 °C baseline
+                temp_base = 25.0 + 0.01 * math.sin(2 * math.pi * 0.05 * t)
+                channels.append(round(temp_base + random.gauss(0, 0.1), 2))
+            elif mode == 0x02:
+                # Bias measurement: near-zero with small offset
+                channels.append(round(0.5 + random.gauss(0, 0.3), 2))
+            else:
+                # Normal electrode (0x00): alpha + drift + noise + blink
+                alpha = self._alpha_amp[ch] * math.sin(
+                    2 * math.pi * self._alpha_freq[ch] * t + self._alpha_phase[ch]
+                )
+                drift = 10 * math.sin(2 * math.pi * 0.5 * t + ch)
+                noise = self._noise_amp[ch] * (random.gauss(0, 1))
+                blink = 0.0
+                if ch < 4 and random.random() < 0.002:
+                    blink = random.uniform(100, 300)
+                channels.append(round(alpha + drift + noise + blink, 2))
 
         return channels
 
@@ -102,3 +134,38 @@ class MockHardware:
 
     def __exit__(self, *exc):
         self.close()
+
+    # --- register configuration (mirrors PiEEGHardware) ---
+
+    def configure_registers(self, reg_map: dict[int, int]):
+        """Store shadow state and update per-channel data mode from CHnSET values.
+
+        Mirrors real hardware: both ADS1299 chips receive the same register
+        writes, so CHnSET 0x05–0x0C controls channels 1–8 AND 9–16.
+        """
+        self._register_state.update(reg_map)
+        for i, reg_addr in enumerate(self.CH_REGS):
+            if reg_addr in self._register_state:
+                mode = self._register_state[reg_addr]
+                # Chip 1: channels 0–7
+                if i < self._num_channels:
+                    self._ch_modes[i] = mode
+                # Chip 2: channels 8–15 (mirror, same register on 2nd chip)
+                mirror = i + 8
+                if mirror < self._num_channels:
+                    self._ch_modes[mirror] = mode
+
+    def set_input_short(self):
+        """Switch all channels to flat noise (±2 µV random)."""
+        reg_map = {reg: 0x01 for reg in self.CH_REGS}
+        self.configure_registers(reg_map)
+
+    def set_input_normal(self):
+        """Restore all channels to synthetic alpha+noise."""
+        reg_map = {reg: 0x00 for reg in self.CH_REGS}
+        self.configure_registers(reg_map)
+
+    @property
+    def register_state(self) -> dict[int, int]:
+        """Return a copy of the shadow register state."""
+        return dict(self._register_state)

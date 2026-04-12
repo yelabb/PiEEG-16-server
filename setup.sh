@@ -162,6 +162,18 @@ enable_spi() {
         NEEDS_REBOOT=1
     fi
 
+    # Fix SPI clock stability: the VPU/core clock drives SPI, and by default
+    # it scales dynamically for power saving. This causes SPI timing glitches
+    # that corrupt ADS1299 frames (random spikes in shorted-input mode).
+    # See: https://forums.raspberrypi.com/viewtopic.php?t=386202
+    if grep -q "^core_freq_fixed=1" "$config_file" 2>/dev/null; then
+        ok "core_freq_fixed=1 already set (stable SPI clock)"
+    else
+        echo "core_freq_fixed=1" | sudo tee -a "$config_file" > /dev/null
+        ok "Added core_freq_fixed=1 to $config_file (prevents SPI clock drift)"
+        NEEDS_REBOOT=1
+    fi
+
     # Check if SPI device exists right now
     if [ -e /dev/spidev0.0 ]; then
         ok "SPI device /dev/spidev0.0 is available"
@@ -172,6 +184,21 @@ enable_spi() {
 }
 
 enable_spi
+
+# Check firmware is new enough for core_freq_fixed (added Sep 2024)
+if command -v vcgencmd &>/dev/null; then
+    FW_DATE=$(vcgencmd version 2>/dev/null | grep -oP '[A-Z][a-z]{2}\s+\d{1,2}\s+\d{4}' | head -1) || true
+    if [ -n "$FW_DATE" ]; then
+        FW_YEAR=$(echo "$FW_DATE" | grep -oP '\d{4}')
+        FW_MON=$(date -d "$FW_DATE" +%m 2>/dev/null) || FW_MON="00"
+        ok "Firmware date: $FW_DATE"
+        if [ "$FW_YEAR" -lt 2024 ] || { [ "$FW_YEAR" -eq 2024 ] && [ "$FW_MON" -lt 09 ]; }; then
+            warn "Firmware predates Sep 2024 — core_freq_fixed=1 may be unsupported"
+            warn "  Run: sudo apt update && sudo apt upgrade"
+            warn "  If still old: sudo rpi-update (or sudo rpi-update 6.6.y for 6.6 kernel)"
+        fi
+    fi
+fi
 
 # ============================================================
 # Step 5: Create venv & install pieeg-server
