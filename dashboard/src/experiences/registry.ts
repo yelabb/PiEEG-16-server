@@ -56,6 +56,9 @@ const SpoonBendExperience = lazy(
 const WebhookWizardExperience = lazy(
   () => import("./webhook-wizard/WebhookWizard"),
 );
+const EyeTrackExperience = lazy(
+  () => import("./eye-track/EyeTrack"),
+);
 
 export const EXPERIENCES: ExperienceEntry[] = [
   {
@@ -118,6 +121,16 @@ export const EXPERIENCES: ExperienceEntry[] = [
     tag: "Automation",
     gradient: ["#ff4a00", "#33ccff"],
     component: WebhookWizardExperience,
+    author: "PiEEG community",
+  },
+  {
+    id: "eye-track",
+    name: "Eye Track",
+    description:
+      "Calibrate your gaze with 5 fixation targets, then watch a live dot follow your eye movements using EOG from frontal channels. Includes an editable algorithm panel to tweak the estimation in real time.",
+    tag: "BCI",
+    gradient: ["#06b6d4", "#8b5cf6"],
+    component: EyeTrackExperience,
     author: "PiEEG community",
   },
 ];
