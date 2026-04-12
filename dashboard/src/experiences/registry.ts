@@ -127,7 +127,7 @@ export const EXPERIENCES: ExperienceEntry[] = [
     id: "eye-track",
     name: "Eye Track",
     description:
-      "Calibrate your gaze with 5 fixation targets, then watch a live dot follow your eye movements using EOG from frontal channels. Includes an editable algorithm panel to tweak the estimation in real time.",
+      "EOG-based gaze estimation using Fp1/Fp2 frontal electrodes. Polynomial ridge regression (degree 2) maps eye signals to screen position. Online adaptive learning continuously improves accuracy — save your trained model to localStorage and resume later. Includes a live algorithm editor.",
     tag: "BCI",
     gradient: ["#06b6d4", "#8b5cf6"],
     component: EyeTrackExperience,

@@ -7,13 +7,19 @@
 //   Horizontal ≈ Fp2 − Fp1   (differential — lateralised corneal dipole)
 //   Vertical   ≈ (Fp1 + Fp2) / 2   (common-mode — both eyes move together)
 //
-// The game runs in three phases:
-//   1. Calibration   — user fixates on 5 targets (center, up, down, left, right)
-//   2. Model build   — simple linear mapping from EOG features → screen X, Y
-//   3. Live tracking — real-time gaze dot + optional algorithm editor
+// Scientific basis:
+//   The corneal-retinal potential (~0.4–1.0 mV) creates a dipole whose
+//   projection onto frontal electrodes shifts proportionally with gaze angle.
+//   Documented accuracy: for sufficient for quadrant-level tracking.
+//   https://pubmed.ncbi.nlm.nih.gov/20421675/
+// Model: Polynomial ridge regression (degree 2)
+//   Features: [1, h, v, h², h·v, v²]  →  6 coefficients per axis
+//   Ridge regularisation (λ=0.01) prevents overfitting with few samples.
+//   Online adaptive learning continuously collects new (EOG, target) pairs
+//   during tracking and periodically refits — accuracy improves over time.
 //
-// Users can open a live code editor to tweak the gaze-estimation function,
-// experimenting with smoothing, channel selection, and heuristics.
+// Users can toggle learning on/off, save/load models to localStorage,
+// and edit the gaze-estimation algorithm live.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useRef, useState, useEffect, useCallback } from "react";
@@ -32,13 +38,15 @@ interface CalibrationSample {
   y: number; // normalised target y  (-1 … 1)
 }
 
+/** Polynomial ridge regression model for gaze estimation. */
 interface GazeModel {
-  hOffset: number;
-  vOffset: number;
-  hScaleX: number;
-  hScaleY: number;
-  vScaleX: number;
-  vScaleY: number;
+  weightsX: number[]; // [bias, h, v, h², h·v, v²] → predicts screen X
+  weightsY: number[]; // [bias, h, v, h², h·v, v²] → predicts screen Y
+  hMean: number; // mean hEOG (normalisation center)
+  vMean: number; // mean vEOG
+  hStd: number; // std hEOG (normalisation scale)
+  vStd: number; // std vEOG
+  sampleCount: number; // training samples used
 }
 
 // ── Constants ────────────────────────────────────────────────────────────
@@ -51,16 +59,20 @@ const TARGETS: { label: TargetLabel; x: number; y: number; instruction: string }
   { label: "right", x: 0.7, y: 0, instruction: "Look RIGHT at the dot" },
 ];
 
-const CALIBRATION_DURATION_MS = 2500; // collect per target
-const SETTLE_DELAY_MS = 500; // ignore first N ms after target appears
+const CALIBRATION_DURATION_MS = 2500;
+const SETTLE_DELAY_MS = 500;
 const CH_FP1 = 0;
 const CH_FP2 = 1;
-const SMOOTHING = 0.15; // exponential smoothing (lower = smoother)
+const SMOOTHING = 0.15;
 const DOT_RADIUS = 14;
 const TARGET_RADIUS = 32;
-const WINDOW_SAMPLES = Math.round(SAMPLE_RATE * 0.12); // ~30 ms sliding window
-const TARGET_MOVE_MS = 3000; // validation target jumps every 3 s
-const ERROR_HISTORY_LEN = 60; // rolling accuracy window (samples)
+const WINDOW_SAMPLES = Math.round(SAMPLE_RATE * 0.12);
+const TARGET_MOVE_MS = 3000;
+const ERROR_HISTORY_LEN = 60;
+const RIDGE_LAMBDA = 0.01;
+const ONLINE_COLLECT_EVERY = 15; // collect a training pair every N frames (~4 Hz at 60fps)
+const ONLINE_REFIT_EVERY = 12; // refit model after N new online samples
+const STORAGE_KEY = "pieeg-eyetrack-v1";
 
 // ── EOG feature extraction from ring buffer ──────────────────────────────
 
@@ -81,8 +93,8 @@ function readEOGFeatures(eeg: EEGData, windowSamples: number): { hEOG: number; v
     const idx = (wi - windowSamples + i + bs) % bs;
     const v1 = fp1[idx];
     const v2 = fp2[idx];
-    sumH += v2 - v1; // horizontal: Fp2 − Fp1
-    sumV += (v1 + v2) * 0.5; // vertical: mean of both
+    sumH += v2 - v1;
+    sumV += (v1 + v2) * 0.5;
   }
   return {
     hEOG: sumH / windowSamples,
@@ -90,52 +102,119 @@ function readEOGFeatures(eeg: EEGData, windowSamples: number): { hEOG: number; v
   };
 }
 
-// ── Build linear model from calibration data ────────────────────────────
+// ── Ridge regression solver (Gaussian elimination, 6×6) ─────────────────
 
-function buildModel(samples: CalibrationSample[]): GazeModel {
-  const center = samples.find((s) => s.x === 0 && s.y === 0);
-  const hOffset = center?.hEOG ?? 0;
-  const vOffset = center?.vEOG ?? 0;
+function solveRidge(X: number[][], y: number[], lambda: number): number[] {
+  const p = X[0].length;
+  const n = X.length;
 
-  // Simple least-squares for X = a·hEOG + b·vEOG  (after offset removal)
-  // and Y = c·hEOG + d·vEOG
-  let shh = 0, svv = 0, shv = 0, shx = 0, svx = 0, shy = 0, svy = 0;
-  for (const s of samples) {
-    const h = s.hEOG - hOffset;
-    const v = s.vEOG - vOffset;
-    shh += h * h;
-    svv += v * v;
-    shv += h * v;
-    shx += h * s.x;
-    svx += v * s.x;
-    shy += h * s.y;
-    svy += v * s.y;
+  // Build normal equations: (X'X + λI) w = X'y
+  const A: number[][] = [];
+  const b: number[] = new Array(p).fill(0);
+  for (let i = 0; i < p; i++) {
+    A[i] = new Array(p).fill(0);
+    for (let j = 0; j < p; j++) {
+      let s = 0;
+      for (let k = 0; k < n; k++) s += X[k][i] * X[k][j];
+      A[i][j] = s + (i === j ? lambda : 0);
+    }
+    let s = 0;
+    for (let k = 0; k < n; k++) s += X[k][i] * y[k];
+    b[i] = s;
   }
 
-  const det = shh * svv - shv * shv || 1;
+  // Gaussian elimination with partial pivoting
+  for (let col = 0; col < p; col++) {
+    let maxRow = col;
+    let maxVal = Math.abs(A[col][col]);
+    for (let row = col + 1; row < p; row++) {
+      if (Math.abs(A[row][col]) > maxVal) {
+        maxVal = Math.abs(A[row][col]);
+        maxRow = row;
+      }
+    }
+    [A[col], A[maxRow]] = [A[maxRow], A[col]];
+    [b[col], b[maxRow]] = [b[maxRow], b[col]];
+
+    for (let row = col + 1; row < p; row++) {
+      const f = A[row][col] / A[col][col];
+      for (let j = col; j < p; j++) A[row][j] -= f * A[col][j];
+      b[row] -= f * b[col];
+    }
+  }
+
+  // Back substitution
+  const w = new Array(p).fill(0);
+  for (let i = p - 1; i >= 0; i--) {
+    let s = b[i];
+    for (let j = i + 1; j < p; j++) s -= A[i][j] * w[j];
+    w[i] = s / (A[i][i] || 1e-12);
+  }
+  return w;
+}
+
+// ── Build polynomial ridge regression model ─────────────────────────────
+
+function buildModel(samples: CalibrationSample[]): GazeModel {
+  const n = samples.length;
+  if (n === 0) {
+    return {
+      weightsX: [0, 1, 0, 0, 0, 0],
+      weightsY: [0, 0, 1, 0, 0, 0],
+      hMean: 0, vMean: 0, hStd: 1, vStd: 1, sampleCount: 0,
+    };
+  }
+
+  // Compute mean and std for normalisation
+  let hSum = 0, vSum = 0;
+  for (const s of samples) { hSum += s.hEOG; vSum += s.vEOG; }
+  const hMean = hSum / n;
+  const vMean = vSum / n;
+
+  let hVar = 0, vVar = 0;
+  for (const s of samples) {
+    hVar += (s.hEOG - hMean) ** 2;
+    vVar += (s.vEOG - vMean) ** 2;
+  }
+  const hStd = Math.max(1e-6, Math.sqrt(hVar / n));
+  const vStd = Math.max(1e-6, Math.sqrt(vVar / n));
+
+  // Build feature matrix: [1, h, v, h², h·v, v²]
+  const X: number[][] = [];
+  const yX: number[] = [];
+  const yY: number[] = [];
+  for (const s of samples) {
+    const h = (s.hEOG - hMean) / hStd;
+    const v = (s.vEOG - vMean) / vStd;
+    X.push([1, h, v, h * h, h * v, v * v]);
+    yX.push(s.x);
+    yY.push(s.y);
+  }
+
   return {
-    hOffset,
-    vOffset,
-    hScaleX: (svv * shx - shv * svx) / det,
-    vScaleX: (shh * svx - shv * shx) / det,
-    hScaleY: (svv * shy - shv * svy) / det,
-    vScaleY: (shh * svy - shv * shy) / det,
+    weightsX: solveRidge(X, yX, RIDGE_LAMBDA),
+    weightsY: solveRidge(X, yY, RIDGE_LAMBDA),
+    hMean, vMean, hStd, vStd,
+    sampleCount: n,
   };
 }
 
 // ── Default user-editable algorithm ─────────────────────────────────────
 
-const DEFAULT_ALGORITHM = `// Gaze estimation — edit me!
-// Inputs:  hEOG (horizontal), vEOG (vertical), model (calibration)
-// Output:  { x, y } in range -1…1
+const DEFAULT_ALGORITHM = `// Polynomial ridge regression — edit me!
+// model.weightsX/Y = [bias, h, v, h², h·v, v²]
+// model.hMean/vMean/hStd/vStd = normalisation stats
 
-const h = hEOG - model.hOffset;
-const v = vEOG - model.vOffset;
+const h = (hEOG - model.hMean) / model.hStd;
+const v = (vEOG - model.vMean) / model.vStd;
+const feat = [1, h, v, h*h, h*v, v*v];
 
-const x = h * model.hScaleX + v * model.vScaleX;
-const y = h * model.hScaleY + v * model.vScaleY;
+let x = 0, y = 0;
+for (let i = 0; i < feat.length; i++) {
+  x += feat[i] * model.weightsX[i];
+  y += feat[i] * model.weightsY[i];
+}
 
-// Clamp to screen bounds
 return {
   x: Math.max(-1, Math.min(1, x)),
   y: Math.max(-1, Math.min(1, y)),
@@ -145,20 +224,50 @@ return {
 
 function compileAlgorithm(code: string): ((hEOG: number, vEOG: number, model: GazeModel) => { x: number; y: number }) | null {
   try {
-    // Wrap in function body — user code must return {x, y}
     const fn = new Function("hEOG", "vEOG", "model", "Math", code) as (
-      hEOG: number,
-      vEOG: number,
-      model: GazeModel,
-      math: typeof Math,
+      hEOG: number, vEOG: number, model: GazeModel, math: typeof Math,
     ) => { x: number; y: number };
-    // Quick test
-    const test = fn(0, 0, { hOffset: 0, vOffset: 0, hScaleX: 1, hScaleY: 0, vScaleX: 0, vScaleY: 1 }, Math);
+    const testModel: GazeModel = {
+      weightsX: [0, 1, 0, 0, 0, 0], weightsY: [0, 0, 1, 0, 0, 0],
+      hMean: 0, vMean: 0, hStd: 1, vStd: 1, sampleCount: 0,
+    };
+    const test = fn(0, 0, testModel, Math);
     if (typeof test?.x !== "number" || typeof test?.y !== "number") return null;
     return (h, v, m) => fn(h, v, m, Math);
   } catch {
     return null;
   }
+}
+
+// ── localStorage persistence ────────────────────────────────────────────
+
+interface SavedState {
+  samples: CalibrationSample[];
+  model: GazeModel;
+  savedAt: number;
+}
+
+function saveToStorage(samples: CalibrationSample[], model: GazeModel): void {
+  try {
+    const data: SavedState = { samples, model, savedAt: Date.now() };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  } catch { /* quota exceeded — ignore */ }
+}
+
+function loadFromStorage(): SavedState | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    const data = JSON.parse(raw) as SavedState;
+    if (!data.model?.weightsX || !data.samples?.length) return null;
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+function clearStorage(): void {
+  try { localStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
 }
 
 // ═════════════════════════════════════════════════════════════════════════
@@ -174,8 +283,8 @@ export default function EyeTrack({ eegData, onExit }: ExperienceProps) {
   // ── Calibration state ──────────────────────────────────────────────
   const [phase, setPhase] = useState<Phase>("intro");
   const [targetIdx, setTargetIdx] = useState(0);
-  const [progress, setProgress] = useState(0); // 0…1 per target
-  const [countdown, setCountdown] = useState(3); // 3-2-1 before first target
+  const [progress, setProgress] = useState(0);
+  const [countdown, setCountdown] = useState(3);
 
   // ── Model state ────────────────────────────────────────────────────
   const modelRef = useRef<GazeModel | null>(null);
@@ -186,16 +295,30 @@ export default function EyeTrack({ eegData, onExit }: ExperienceProps) {
   const gazeRef = useRef({ x: 0, y: 0 });
   const rawRef = useRef({ x: 0, y: 0 });
 
-  // ── Validation target ("real" dot the user follows) ────────────────
+  // ── Validation target ─────────────────────────────────────────────
   const validationRef = useRef({ x: 0, y: 0, lastMove: 0 });
   const errorHistoryRef = useRef<number[]>([]);
   const avgErrorRef = useRef(0);
+
+  // ── Online learning ───────────────────────────────────────────────
+  const [learning, setLearning] = useState(true);
+  const learningRef = useRef(true); // mirror for RAF
+  const onlineFrameRef = useRef(0);
+  const onlineNewRef = useRef(0);
+  const [sampleCount, setSampleCount] = useState(0);
+
+  // ── Save/load ─────────────────────────────────────────────────────
+  const [hasSaved, setHasSaved] = useState(false);
+  const savedModelExists = useRef(!!loadFromStorage());
 
   // ── Algorithm editor ──────────────────────────────────────────────
   const [showEditor, setShowEditor] = useState(false);
   const [algoCode, setAlgoCode] = useState(DEFAULT_ALGORITHM);
   const [algoError, setAlgoError] = useState<string | null>(null);
   const algoFnRef = useRef<ReturnType<typeof compileAlgorithm>>(null);
+
+  // Keep learningRef in sync
+  useEffect(() => { learningRef.current = learning; }, [learning]);
 
   // Compile initial algorithm
   useEffect(() => {
@@ -233,7 +356,6 @@ export default function EyeTrack({ eegData, onExit }: ExperienceProps) {
       if (elapsed < CALIBRATION_DURATION_MS) {
         raf = requestAnimationFrame(collect);
       } else {
-        // Compute mean for this target
         const { hArr, vArr } = collectRef.current;
         if (hArr.length > 0) {
           const meanH = hArr.reduce((a, b) => a + b, 0) / hArr.length;
@@ -241,12 +363,11 @@ export default function EyeTrack({ eegData, onExit }: ExperienceProps) {
           samplesRef.current.push({ hEOG: meanH, vEOG: meanV, x: target.x, y: target.y });
         }
 
-        // Next target or finish
         if (targetIdx < TARGETS.length - 1) {
           setTargetIdx((i) => i + 1);
         } else {
-          // Build model and go live
           modelRef.current = buildModel(samplesRef.current);
+          setSampleCount(samplesRef.current.length);
           setPhase("tracking");
         }
       }
@@ -268,12 +389,12 @@ export default function EyeTrack({ eegData, onExit }: ExperienceProps) {
     let raf: number;
     const dpr = devicePixelRatio || 1;
 
-    // Seed first validation target
     validationRef.current = { x: 0, y: 0, lastMove: performance.now() };
     errorHistoryRef.current = [];
+    onlineFrameRef.current = 0;
+    onlineNewRef.current = 0;
 
     const render = () => {
-      // Resize if needed
       const rect = canvas.getBoundingClientRect();
       const w = rect.width;
       const h = rect.height;
@@ -307,9 +428,28 @@ export default function EyeTrack({ eegData, onExit }: ExperienceProps) {
         }
         rawRef.current = raw;
 
-        // Exponential smoothing
         gazeRef.current.x += SMOOTHING * (raw.x - gazeRef.current.x);
         gazeRef.current.y += SMOOTHING * (raw.y - gazeRef.current.y);
+
+        // ── Online adaptive learning ─────────────────────────────
+        if (learningRef.current) {
+          onlineFrameRef.current++;
+          if (onlineFrameRef.current % ONLINE_COLLECT_EVERY === 0) {
+            const vt = validationRef.current;
+            samplesRef.current.push({
+              hEOG: feat.hEOG, vEOG: feat.vEOG,
+              x: vt.x, y: vt.y,
+            });
+            onlineNewRef.current++;
+
+            if (onlineNewRef.current >= ONLINE_REFIT_EVERY) {
+              modelRef.current = buildModel(samplesRef.current);
+              onlineNewRef.current = 0;
+              // Throttled React state update for UI counter
+              setSampleCount(samplesRef.current.length);
+            }
+          }
+        }
       }
 
       const cx = w / 2;
@@ -337,12 +477,11 @@ export default function EyeTrack({ eegData, onExit }: ExperienceProps) {
         ctx.fill();
       }
 
-      // ── Validation target (green — "look here") ───────────────────
+      // ── Validation target (green — "look here") ──────────────────
       const vt = validationRef.current;
       const vtx = cx + vt.x * rangeX;
       const vty = cy + vt.y * rangeY;
 
-      // Outer glow
       const vtGrad = ctx.createRadialGradient(vtx, vty, 0, vtx, vty, TARGET_RADIUS * 1.5);
       vtGrad.addColorStop(0, "rgba(34,197,94,0.25)");
       vtGrad.addColorStop(1, "rgba(34,197,94,0)");
@@ -351,20 +490,17 @@ export default function EyeTrack({ eegData, onExit }: ExperienceProps) {
       ctx.arc(vtx, vty, TARGET_RADIUS * 1.5, 0, Math.PI * 2);
       ctx.fill();
 
-      // Ring
       ctx.strokeStyle = "#22c55e";
       ctx.lineWidth = 2.5;
       ctx.beginPath();
       ctx.arc(vtx, vty, TARGET_RADIUS, 0, Math.PI * 2);
       ctx.stroke();
 
-      // Inner dot
       ctx.fillStyle = "#22c55e";
       ctx.beginPath();
       ctx.arc(vtx, vty, 5, 0, Math.PI * 2);
       ctx.fill();
 
-      // Label
       ctx.fillStyle = "rgba(34,197,94,0.7)";
       ctx.font = "11px monospace";
       ctx.textAlign = "center";
@@ -374,13 +510,12 @@ export default function EyeTrack({ eegData, onExit }: ExperienceProps) {
       const gx = cx + gazeRef.current.x * rangeX;
       const gy = cy + gazeRef.current.y * rangeY;
 
-      // Error line connecting predicted → real
       const errDist = Math.hypot(gazeRef.current.x - vt.x, gazeRef.current.y - vt.y);
       errorHistoryRef.current.push(errDist);
       if (errorHistoryRef.current.length > ERROR_HISTORY_LEN) errorHistoryRef.current.shift();
       const errArr = errorHistoryRef.current;
       avgErrorRef.current = errArr.reduce((a, b) => a + b, 0) / errArr.length;
-      const accuracy = Math.max(0, (1 - avgErrorRef.current / 1.4) * 100); // 1.4 ≈ max diagonal
+      const accuracy = Math.max(0, (1 - avgErrorRef.current / 1.4) * 100);
 
       ctx.strokeStyle = `rgba(255,${errDist < 0.3 ? 255 : errDist < 0.6 ? 180 : 80},80,0.35)`;
       ctx.lineWidth = 1;
@@ -391,7 +526,6 @@ export default function EyeTrack({ eegData, onExit }: ExperienceProps) {
       ctx.stroke();
       ctx.setLineDash([]);
 
-      // Outer glow
       const grad = ctx.createRadialGradient(gx, gy, 0, gx, gy, DOT_RADIUS * 3);
       grad.addColorStop(0, "rgba(59,130,246,0.35)");
       grad.addColorStop(1, "rgba(59,130,246,0)");
@@ -400,19 +534,16 @@ export default function EyeTrack({ eegData, onExit }: ExperienceProps) {
       ctx.arc(gx, gy, DOT_RADIUS * 3, 0, Math.PI * 2);
       ctx.fill();
 
-      // Core dot
       ctx.fillStyle = "#3b82f6";
       ctx.beginPath();
       ctx.arc(gx, gy, DOT_RADIUS, 0, Math.PI * 2);
       ctx.fill();
 
-      // Inner highlight
       ctx.fillStyle = "rgba(255,255,255,0.6)";
       ctx.beginPath();
       ctx.arc(gx - 3, gy - 3, DOT_RADIUS * 0.35, 0, Math.PI * 2);
       ctx.fill();
 
-      // Label
       ctx.fillStyle = "rgba(59,130,246,0.7)";
       ctx.font = "11px monospace";
       ctx.textAlign = "center";
@@ -424,18 +555,19 @@ export default function EyeTrack({ eegData, onExit }: ExperienceProps) {
       ctx.textAlign = "left";
       ctx.fillText(
         `predicted: (${gazeRef.current.x.toFixed(2)}, ${gazeRef.current.y.toFixed(2)})`,
-        12,
-        h - 52,
+        12, h - 68,
       );
       ctx.fillText(
         `target:    (${vt.x.toFixed(2)}, ${vt.y.toFixed(2)})`,
-        12,
-        h - 36,
+        12, h - 52,
       );
       ctx.fillText(
         `error: ${errDist.toFixed(3)}   accuracy: ${accuracy.toFixed(1)}%`,
-        12,
-        h - 20,
+        12, h - 36,
+      );
+      ctx.fillText(
+        `samples: ${samplesRef.current.length}   model: poly2+ridge   learning: ${learningRef.current ? "ON" : "OFF"}`,
+        12, h - 20,
       );
 
       // ── Accuracy badge (top-right) ────────────────────────────────
@@ -447,6 +579,14 @@ export default function EyeTrack({ eegData, onExit }: ExperienceProps) {
       ctx.fillStyle = "rgba(255,255,255,0.35)";
       ctx.font = "11px monospace";
       ctx.fillText("accuracy", w - 16, 100);
+
+      // ── Learning indicator (top-right, below accuracy) ────────────
+      if (learningRef.current) {
+        ctx.fillStyle = "#f59e0b";
+        ctx.font = "11px monospace";
+        ctx.textAlign = "right";
+        ctx.fillText("● LEARNING", w - 16, 118);
+      }
 
       raf = requestAnimationFrame(render);
     };
@@ -463,17 +603,23 @@ export default function EyeTrack({ eegData, onExit }: ExperienceProps) {
         else onExit();
       }
       if (e.key === "r" || e.key === "R") {
-        // Recalibrate
         samplesRef.current = [];
         modelRef.current = null;
         gazeRef.current = { x: 0, y: 0 };
         setTargetIdx(0);
         setCountdown(3);
         setProgress(0);
+        setSampleCount(0);
         setPhase("calibrating");
       }
-      if (e.key === "e" || e.key === "E") {
-        setShowEditor((v) => !v);
+      if (e.key === "e" || e.key === "E") setShowEditor((v) => !v);
+      if (e.key === "l" || e.key === "L") setLearning((v) => !v);
+      if (e.key === "s" || e.key === "S") {
+        if (modelRef.current) {
+          saveToStorage(samplesRef.current, modelRef.current);
+          setHasSaved(true);
+          setTimeout(() => setHasSaved(false), 2000);
+        }
       }
     };
     window.addEventListener("keydown", onKey);
@@ -491,11 +637,35 @@ export default function EyeTrack({ eegData, onExit }: ExperienceProps) {
     }
   }, [algoCode]);
 
+  // ── Save / Load handlers ──────────────────────────────────────────
+  const handleSave = useCallback(() => {
+    if (!modelRef.current) return;
+    saveToStorage(samplesRef.current, modelRef.current);
+    setHasSaved(true);
+    setTimeout(() => setHasSaved(false), 2000);
+  }, []);
+
+  const handleLoad = useCallback(() => {
+    const saved = loadFromStorage();
+    if (!saved) return;
+    samplesRef.current = saved.samples;
+    modelRef.current = saved.model;
+    setSampleCount(saved.samples.length);
+    gazeRef.current = { x: 0, y: 0 };
+    setPhase("tracking");
+  }, []);
+
+  const handleClearSaved = useCallback(() => {
+    clearStorage();
+    savedModelExists.current = false;
+  }, []);
+
   // ═══════════════════════════════════════════════════════════════════
   // Render
   // ═══════════════════════════════════════════════════════════════════
 
   const target = TARGETS[targetIdx];
+  const saved = loadFromStorage();
 
   return (
     <div
@@ -524,7 +694,7 @@ export default function EyeTrack({ eegData, onExit }: ExperienceProps) {
         >
           <div
             style={{
-              maxWidth: 480,
+              maxWidth: 500,
               padding: "36px 32px",
               background: "rgba(255,255,255,0.04)",
               border: "1px solid rgba(255,255,255,0.08)",
@@ -535,9 +705,9 @@ export default function EyeTrack({ eegData, onExit }: ExperienceProps) {
             <div style={{ fontSize: 40, marginBottom: 12 }}>👁️</div>
             <h2 style={{ fontSize: 24, fontWeight: 700, margin: "0 0 10px" }}>Eye Track</h2>
             <p style={{ fontSize: 14, opacity: 0.6, lineHeight: 1.7, margin: "0 0 16px" }}>
-              This experiment estimates where you're looking using EOG signals from
-              your frontal EEG electrodes (Fp1 &amp; Fp2). Eye movements create
-              electrical artifacts that differ for left/right and up/down gaze.
+              Estimate where you're looking using EOG signals from Fp1 &amp; Fp2.
+              Based on the corneal-retinal dipole (~0.4–1.0 mV) measured by
+              frontal electrodes — well-documented in BCI literature for ~5–10° accuracy.
             </p>
             <div
               style={{
@@ -546,40 +716,69 @@ export default function EyeTrack({ eegData, onExit }: ExperienceProps) {
                 lineHeight: 1.8,
                 textAlign: "left",
                 margin: "0 auto 20px",
-                maxWidth: 360,
+                maxWidth: 400,
               }}
             >
               <strong style={{ opacity: 1, color: "#3b82f6" }}>How it works:</strong>
               <br />
-              1. You'll fixate on <strong>5 targets</strong> (center, up, down, left, right)
+              1. Calibrate on <strong>5 fixation targets</strong> (center, up, down, left, right)
               <br />
-              2. The system builds a <strong>calibration model</strong> from your signals
+              2. A <strong>polynomial ridge regression</strong> model maps EOG → gaze
               <br />
-              3. A <span style={{ color: "#22c55e" }}>green target</span> appears —
-              follow it with your eyes
+              3. Follow the <span style={{ color: "#22c55e" }}>green target</span> — the model <strong>learns continuously</strong>
               <br />
-              4. A <span style={{ color: "#3b82f6" }}>blue dot</span> shows the model's prediction
+              4. The <span style={{ color: "#3b82f6" }}>blue dot</span> shows the prediction — watch accuracy improve
               <br />
-              5. Open the <strong>Algorithm Editor</strong> to tweak the estimation live
+              5. Toggle learning on/off, <strong>save your model</strong>, or edit the algorithm live
             </div>
             <p style={{ fontSize: 12, opacity: 0.35, margin: "0 0 20px" }}>
-              Tip: keep your head still — only move your eyes.
+              Tip: keep your head still — only move your eyes. The model improves with more data.
             </p>
-            <button
-              onClick={() => setPhase("calibrating")}
-              style={{
-                background: "#3b82f6",
-                color: "#fff",
-                border: "none",
-                borderRadius: 10,
-                padding: "10px 32px",
-                fontSize: 15,
-                fontWeight: 600,
-                cursor: "pointer",
-              }}
-            >
-              Start Calibration →
-            </button>
+            <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
+              <button
+                onClick={() => setPhase("calibrating")}
+                style={{
+                  background: "#3b82f6",
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: 10,
+                  padding: "10px 28px",
+                  fontSize: 15,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                Start Calibration →
+              </button>
+              {saved && (
+                <button
+                  onClick={handleLoad}
+                  style={{
+                    background: "rgba(255,255,255,0.08)",
+                    color: "#fff",
+                    border: "1px solid rgba(255,255,255,0.15)",
+                    borderRadius: 10,
+                    padding: "10px 20px",
+                    fontSize: 14,
+                    fontWeight: 500,
+                    cursor: "pointer",
+                  }}
+                >
+                  Load Saved ({saved.samples.length} samples)
+                </button>
+              )}
+            </div>
+            {saved && (
+              <div style={{ fontSize: 11, opacity: 0.3, marginTop: 10 }}>
+                Saved {new Date(saved.savedAt).toLocaleDateString()} ·{" "}
+                <span
+                  onClick={handleClearSaved}
+                  style={{ textDecoration: "underline", cursor: "pointer" }}
+                >
+                  delete
+                </span>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -608,7 +807,6 @@ export default function EyeTrack({ eegData, onExit }: ExperienceProps) {
             </>
           ) : (
             <>
-              {/* Target dot */}
               <div
                 style={{
                   position: "absolute",
@@ -629,7 +827,6 @@ export default function EyeTrack({ eegData, onExit }: ExperienceProps) {
                 />
               </div>
 
-              {/* Instruction */}
               <div
                 style={{
                   position: "absolute",
@@ -643,7 +840,6 @@ export default function EyeTrack({ eegData, onExit }: ExperienceProps) {
                 <div style={{ fontSize: 14, opacity: 0.5 }}>
                   Target {targetIdx + 1} of {TARGETS.length}
                 </div>
-                {/* Progress bar */}
                 <div
                   style={{
                     marginTop: 12,
@@ -702,8 +898,9 @@ export default function EyeTrack({ eegData, onExit }: ExperienceProps) {
             ✏️ Algorithm Editor
           </div>
           <div style={{ fontSize: 11, opacity: 0.45, lineHeight: 1.4 }}>
-            Edit the gaze estimation function. Inputs: hEOG, vEOG, model.
-            Must return {"{"} x, y {"}"} in range −1…1. Press Apply to update live.
+            Polynomial ridge regression. Inputs: hEOG, vEOG, model.
+            model.weightsX/Y = [bias, h, v, h², h·v, v²].
+            Must return {"{"} x, y {"}"} in range −1…1.
           </div>
           <textarea
             value={algoCode}
@@ -757,7 +954,7 @@ export default function EyeTrack({ eegData, onExit }: ExperienceProps) {
           display: "flex",
           alignItems: "center",
           padding: "0 12px",
-          gap: 12,
+          gap: 8,
           zIndex: 30,
           background: "linear-gradient(180deg, rgba(0,0,0,0.6) 0%, transparent 100%)",
         }}
@@ -768,11 +965,30 @@ export default function EyeTrack({ eegData, onExit }: ExperienceProps) {
         <span style={{ fontSize: 15, fontWeight: 600, opacity: 0.9 }}>
           Eye Track
         </span>
-        <span style={{ fontSize: 12, opacity: 0.4, marginLeft: "auto" }}>
+
+        {phase === "tracking" && (
+          <span style={{ fontSize: 11, opacity: 0.35, marginLeft: 4 }}>
+            {sampleCount} samples
+          </span>
+        )}
+
+        <span style={{ flex: 1 }} />
+
+        <span style={{ fontSize: 12, opacity: 0.4 }}>
           {phase === "intro" ? "Ready" : phase === "calibrating" ? "Calibrating…" : "Live Tracking"}
         </span>
+
         {phase === "tracking" && (
           <>
+            <button
+              onClick={() => setLearning((v) => !v)}
+              style={btnStyle(learning ? "#f59e0b" : "rgba(255,255,255,0.1)")}
+            >
+              {learning ? "⏸ Pause Learning" : "▶ Resume Learning"}
+            </button>
+            <button onClick={handleSave} style={btnStyle("rgba(255,255,255,0.1)")}>
+              {hasSaved ? "✓ Saved" : "💾 Save"}
+            </button>
             <button
               onClick={() => setShowEditor((v) => !v)}
               style={btnStyle(showEditor ? "#3b82f6" : "rgba(255,255,255,0.1)")}
@@ -787,6 +1003,7 @@ export default function EyeTrack({ eegData, onExit }: ExperienceProps) {
                 setTargetIdx(0);
                 setCountdown(3);
                 setProgress(0);
+                setSampleCount(0);
                 setPhase("calibrating");
               }}
               style={btnStyle("rgba(255,255,255,0.1)")}
@@ -814,7 +1031,7 @@ export default function EyeTrack({ eegData, onExit }: ExperienceProps) {
         {" · "}
         <span style={{ color: "#3b82f6" }}>●</span> predicted (model)
         <br />
-        Esc exit · R recalibrate · E toggle editor
+        Esc exit · R recalibrate · E editor · L toggle learning · S save
       </div>
 
       {/* ── Pulse animation ──────────────────────────────────────── */}
