@@ -3,15 +3,15 @@
 
 # PiEEG-server
 
-**Real-time EEG streaming platform for PiEEG shields ([8](https://github.com/pieeg-club/PiEEG)/[16](https://github.com/pieeg-club/PiEEG-16) ch)**
+**Real-time EEG streaming platform for [PiEEG](https://github.com/pieeg-club/PiEEG) (8/16 ch) and [IronBCI](https://ironbci.com) (8 ch BLE)**
 
-Reads at 250 Hz · streams over WebSocket · live dashboard with spectral analysis, topographic maps, experiences gallery, VRChat OSC, Lab Streaming Layer, webhook automation — all from your Raspberry Pi.
+Reads at 250 Hz · streams over WebSocket · live dashboard with spectral analysis, topographic maps, experiences gallery, VRChat OSC, Lab Streaming Layer, webhook automation — Raspberry Pi (SPI) or IronBCI (Bluetooth LE).
 
 [![PyPI](https://img.shields.io/pypi/v/pieeg-server?color=blue)](https://pypi.org/project/pieeg-server/)
 [![Python](https://img.shields.io/pypi/pyversions/pieeg-server)](https://pypi.org/project/pieeg-server/)
 [![CI](https://github.com/pieeg-club/PiEEG-server/actions/workflows/ci.yml/badge.svg)](https://github.com/pieeg-club/PiEEG-server/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/github/license/pieeg-club/PiEEG-server)](LICENSE)
-[![Platform](https://img.shields.io/badge/platform-Raspberry%20Pi-c51a4a)](https://www.raspberrypi.com/)
+[![Platform](https://img.shields.io/badge/platform-Raspberry%20Pi%20|%20IronBCI-c51a4a)](https://www.raspberrypi.com/)
 [![Downloads](https://img.shields.io/pypi/dm/pieeg-server)](https://pypi.org/project/pieeg-server/)
 [![IFTTT](https://img.shields.io/badge/IFTTT-compatible-black?logo=ifttt&logoColor=white)](https://ifttt.com/maker_webhooks)
 [![Zapier](https://img.shields.io/badge/Zapier-compatible-FF4A00?logo=zapier&logoColor=white)](https://zapier.com/apps/webhooks)
@@ -101,11 +101,13 @@ curl -sSL https://raw.githubusercontent.com/pieeg-club/PiEEG-server/main/install
 | **A) One-line** (recommended) | `curl -sSL https://raw.githubusercontent.com/pieeg-club/PiEEG-server/main/install.sh \| bash` | Run `sudo reboot` first time to enable SPI |
 | **B) Clone & setup** | `git clone https://github.com/pieeg-club/PiEEG-server.git && cd PiEEG-server && ./setup.sh` | Same reboot note |
 | **C) pip** | `pip install pieeg-server` | Requires Python 3.10+ |
+| **D) pip + IronBCI** | `pip install pieeg-server[ironbci]` | Adds `bleak` for Bluetooth LE |
 
-> **IronBCI users:** experimental IronBCI board support is available on the [`add-ironbci`](https://github.com/pieeg-club/PiEEG-server/tree/add-ironbci) branch. To test it now:
+> **IronBCI / EAREEG users:** install the BLE extra for Bluetooth Low Energy support:
 > ```bash
-> git clone -b add-ironbci https://github.com/pieeg-club/PiEEG-server.git && cd PiEEG-server && ./setup.sh
+> pip install pieeg-server[ironbci]
 > ```
+> Then run with `pieeg-server --device ironbci8`. See [CLI Reference](#cli-reference) for BLE options.
 
 <sup>[↑ Navigation](#nav)</sup>
 
@@ -116,8 +118,10 @@ curl -sSL https://raw.githubusercontent.com/pieeg-club/PiEEG-server/main/install
 ## Run
 
 ```bash
-pieeg-server                        # stream 16 ch
-pieeg-server --device pieeg8        # 8-channel shield
+pieeg-server                        # stream 16 ch (PiEEG)
+pieeg-server --device pieeg8        # 8-channel PiEEG shield
+pieeg-server --device ironbci8      # IronBCI via Bluetooth LE
+pieeg-server --device ironbci8 --ble-name MyBoard   # custom BLE name
 pieeg-server --filter               # 1–40 Hz bandpass
 pieeg-server --monitor              # terminal sparklines
 pieeg-server --mock                 # synthetic data, no hardware
@@ -193,7 +197,8 @@ That's it. Every frame is plain JSON — no SDK, no binary protocol, works in an
 | Feature | Description |
 |---------|-------------|
 | **250 Hz streaming** | WebSocket (`ws://<host>:1616`), plain JSON, language-agnostic |
-| **8 & 16 channel** | Auto-adapts to PiEEG-8 or PiEEG-16 shields |
+| **8 & 16 channel** | PiEEG-8, PiEEG-16 (SPI) and IronBCI-8 (BLE) |
+| **IronBCI BLE** | Bluetooth Low Energy support for IronBCI / EAREEG boards; auto-scan or direct MAC address |
 | **Bandpass filter** | Butterworth IIR (SOS), per-channel state, adjustable live via WebSocket |
 | **CSV recording** | Start/stop from dashboard or CLI; auto-timestamped; optional duration limit |
 | **Session annotations** | Text notes on any frame; sidecar `.annotations.json` |
@@ -703,7 +708,9 @@ pieeg-server [OPTIONS] [COMMAND]
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--device DEVICE` | `pieeg16` | `pieeg8` or `pieeg16` |
+| `--device DEVICE` | `pieeg16` | `pieeg8`, `pieeg16`, or `ironbci8` |
+| `--ble-name NAME` | `EAREEG` | BLE advertised device name (IronBCI only) |
+| `--ble-address ADDR` | — | BLE MAC address — skip scan, connect directly |
 | `--host HOST` | `0.0.0.0` | Bind address |
 | `--port PORT` | `1616` | WebSocket port |
 | `--dashboard-port PORT` | `1617` | Dashboard HTTP port |
@@ -738,10 +745,12 @@ pieeg-server [OPTIONS] [COMMAND]
 ```
 ┌──────────────────────────────────────────────────────────┐
 │  Raspberry Pi + PiEEG Shield (8 or 16 ch)                │
+│  — or — IronBCI / EAREEG board (8 ch, Bluetooth LE)      │
 │                                                          │
-│  hardware.py     → SPI/GPIO init, ADS1299 config         │
+│  hardware.py     → SPI/GPIO init, ADS1299 config (PiEEG) │
+│  ironbci.py      → BLE scan + GATT notifications (IronBCI)│
 │       ↓                                                  │
-│  acquisition.py  → 250 Hz read loop (background thread)  │
+│  acquisition.py  → 250 Hz read loop (SPI or BLE)         │
 │       ↓ pub/sub                                          │
 │       ├── server.py     → WebSocket broadcast            │
 │       ├── recorder.py   → CSV writer                     │
@@ -768,6 +777,12 @@ pieeg-server [OPTIONS] [COMMAND]
 ```
 
 ### Dashboard Tech Stack
+
+| Module | Responsibility |
+|--------|---------------|
+| `hardware.py` | SPI/GPIO initialization, ADS1299 register config (PiEEG) |
+| `ironbci.py` | BLE scan, GATT notifications, ADS1299 packet parsing (IronBCI) |
+| `acquisition.py` | 250 Hz read loop (SPI, BLE, or mock), pub/sub queues |
 
 | Layer | Tech |
 |-------|------|
@@ -829,7 +844,7 @@ Start with `--auth` to require a 6-digit access code (printed at startup, change
 git clone https://github.com/pieeg-club/PiEEG-server.git
 cd PiEEG-server
 python -m venv .venv && source .venv/bin/activate  # Windows: .venv\Scripts\Activate.ps1
-pip install -e ".[dev]"
+pip install -e ".[dev,ironbci]"
 ```
 
 ### Dashboard (React + Vite)

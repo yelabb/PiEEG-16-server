@@ -39,15 +39,25 @@ Requires Python 3.10+.
 
 </Steps>
 
-## IronBCI Support
+## IronBCI / EAREEG Support
 
-Experimental IronBCI board support is available on the `add-ironbci` branch:
+For Bluetooth Low Energy boards (IronBCI, EAREEG), install the `ironbci` extra:
 
 ```bash
-git clone -b add-ironbci https://github.com/pieeg-club/PiEEG-server.git
-cd PiEEG-server
-./setup.sh
+pip install pieeg-server[ironbci]
 ```
+
+Then run with:
+
+```bash
+pieeg-server --device ironbci8                     # auto-scan for BLE device
+pieeg-server --device ironbci8 --ble-name MyBoard   # custom device name
+pieeg-server --device ironbci8 --ble-address AA:BB:CC:DD:EE:FF  # skip scan
+```
+
+<Callout type="info">
+  IronBCI boards use the ADS1299 chip over BLE and support 8 channels. The BLE transport requires the `bleak` Python package (≥0.21).
+</Callout>
 
 ## Optional Dependencies
 
@@ -55,6 +65,7 @@ cd PiEEG-server
 |-------|---------|----------|
 | `lsl` | `pip install pieeg-server[lsl]` | Lab Streaming Layer outlet |
 | `rpi` | `pip install pieeg-server[rpi]` | Raspberry Pi SPI support |
+| `ironbci` | `pip install pieeg-server[ironbci]` | Bluetooth LE for IronBCI / EAREEG boards |
 | `dev` | `pip install pieeg-server[dev]` | pytest + development tools |
 
 ## System Requirements

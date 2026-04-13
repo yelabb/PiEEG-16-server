@@ -25,13 +25,24 @@ pieeg-server [OPTIONS] [COMMAND]
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--device DEVICE` | `pieeg16` | `pieeg8` or `pieeg16` |
+| `--device DEVICE` | `pieeg16` | `pieeg8`, `pieeg16`, or `ironbci8` |
 | `--host HOST` | `0.0.0.0` | Bind address |
 | `--port PORT` | `1616` | WebSocket port |
 | `--dashboard-port PORT` | `1617` | Dashboard HTTP port |
 | `--no-dashboard` | — | Disable web dashboard |
 | `--auth` | — | Enable 6-digit access code |
 | `--gpio-chip PATH` | `/dev/gpiochip4` | GPIO chip device |
+
+### BLE Options (IronBCI)
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--ble-name NAME` | `EAREEG` | BLE advertised device name |
+| `--ble-address ADDR` | — | BLE MAC address — skip scan, connect directly |
+
+<Callout type="info">
+  BLE options only apply when `--device ironbci8` is selected. Install the `ironbci` extra for Bluetooth support: `pip install pieeg-server[ironbci]`.
+</Callout>
 
 ### Filter Options
 
@@ -87,3 +98,4 @@ PiEEG Server has minimal dependencies:
 | `websockets` | ≥12.0 | WebSocket streaming |
 | `scipy` | ≥1.10 | Butterworth filter |
 | `rich` | ≥13.0 | Terminal UI / monitor |
+| `bleak` | ≥0.21 | Bluetooth LE (IronBCI only, optional) |

@@ -12,10 +12,12 @@ import { FileTree } from 'nextra/components'
 ```
 ┌──────────────────────────────────────────────────────────┐
 │  Raspberry Pi + PiEEG Shield (8 or 16 ch)                │
+│  — or — IronBCI / EAREEG board (8 ch, Bluetooth LE)      │
 │                                                          │
-│  hardware.py     → SPI/GPIO init, ADS1299 config         │
+│  hardware.py     → SPI/GPIO init, ADS1299 config (PiEEG) │
+│  ironbci.py      → BLE scan + GATT notifications (IronBCI)│
 │       ↓                                                  │
-│  acquisition.py  → 250 Hz read loop (background thread)  │
+│  acquisition.py  → 250 Hz read loop (SPI or BLE)         │
 │       ↓ pub/sub                                          │
 │       ├── server.py     → WebSocket broadcast            │
 │       ├── recorder.py   → CSV writer                     │
@@ -47,6 +49,7 @@ import { FileTree } from 'nextra/components'
   <FileTree.Folder name="pieeg_server" defaultOpen>
     <FileTree.File name="__main__.py" />
     <FileTree.File name="hardware.py" />
+    <FileTree.File name="ironbci.py" />
     <FileTree.File name="acquisition.py" />
     <FileTree.File name="server.py" />
     <FileTree.File name="dashboard.py" />
@@ -65,8 +68,9 @@ import { FileTree } from 'nextra/components'
 
 | Module | Responsibility |
 |--------|---------------|
-| `hardware.py` | SPI/GPIO initialization, ADS1299 register config |
-| `acquisition.py` | 250 Hz read loop in background thread, pub/sub queues |
+| `hardware.py` | SPI/GPIO initialization, ADS1299 register config (PiEEG) |
+| `ironbci.py` | BLE scan, GATT notifications, ADS1299 packet parsing (IronBCI) |
+| `acquisition.py` | 250 Hz read loop (SPI, BLE, or mock), pub/sub queues |
 | `server.py` | WebSocket server, frame broadcast, command dispatch |
 | `dashboard.py` | HTTP server for React dashboard + REST API |
 | `auth.py` | 6-digit code auth, session cookies, WS token management |
