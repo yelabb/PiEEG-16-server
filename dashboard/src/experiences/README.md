@@ -231,6 +231,53 @@ useEffect(() => {
 
 ---
 
+---
+
+## Advanced: Direct Signal Extraction (Eye Track)
+
+The **Eye Track** experience bypasses the detector hooks and reads raw ring buffers directly — useful when you need custom signal processing rather than pre-built detectors.
+
+### EOG Physics
+
+The corneal-retinal potential (~0.4–1.0 mV) creates a dipole whose projection onto frontal electrodes (Fp1, Fp2) shifts with gaze angle:
+
+- **Horizontal gaze** ≈ `Fp2 − Fp1` (differential — lateralised dipole)
+- **Vertical gaze** ≈ `(Fp1 + Fp2) / 2` (common-mode — both eyes move together)
+- Typical accuracy: **5–10° angular resolution** (Bulling et al. 2011)
+
+### Reading the ring buffer directly
+
+```tsx
+function readEOGFeatures(eeg: EEGData, windowSamples: number) {
+  const fp1 = eeg.buffers.current[0]; // channel 0 = Fp1
+  const fp2 = eeg.buffers.current[1]; // channel 1 = Fp2
+  const wi = eeg.writeIndex.current;
+  const bs = eeg.bufferSize;
+
+  let sumH = 0, sumV = 0;
+  for (let i = 0; i < windowSamples; i++) {
+    const idx = (wi - windowSamples + i + bs) % bs;
+    sumH += fp2[idx] - fp1[idx];
+    sumV += (fp1[idx] + fp2[idx]) * 0.5;
+  }
+  return { hEOG: sumH / windowSamples, vEOG: sumV / windowSamples };
+}
+```
+
+### Model training & persistence
+
+Eye Track uses **polynomial ridge regression** (degree 2, λ = 0.01):
+
+1. **Calibration** — collect mean EOG features at 5 fixation targets
+2. **Feature expansion** — `[1, h, v, h², h·v, v²]` (6 coefficients per axis)
+3. **Ridge solve** — Gaussian elimination on `(X'X + λI)w = X'y`
+4. **Online learning** — during tracking, new (EOG, target) pairs are collected ~4 Hz; model refits every 12 new samples
+5. **Persistence** — `localStorage` save/load under key `pieeg-eyetrack-v1`
+
+Users can pause/resume learning (L key), save (S key), and edit the algorithm live (E key).
+
+---
+
 ## File Structure
 
 ```
@@ -238,9 +285,11 @@ dashboard/src/experiences/
 ├── registry.ts              ← register your game here
 ├── README.md                ← you are here
 ├── blink-scroll/            ← Blink Browser
+├── eye-track/               ← Eye Track (EOG gaze estimation)
 ├── neural-sonification/     ← Neural Sonification
 ├── spoon-bend/              ← Spoon Bend
 ├── vrchat-osc/              ← VRChat OSC Bridge
+├── webhook-wizard/          ← Webhook Wizard
 └── my-game/                 ← your new game folder
     └── MyGame.tsx
 ```

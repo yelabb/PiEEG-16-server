@@ -1,0 +1,57 @@
+---
+title: VRChat OSC
+description: Stream EEG band powers to VRChat via UDP OSC — chatbox and avatar parameters.
+---
+
+import { Callout } from 'nextra/components'
+
+# VRChat OSC
+
+Stream EEG band powers to VRChat via UDP OSC. Enable with `--osc` or from the dashboard.
+
+```bash
+pieeg-server --osc                                          # defaults
+pieeg-server --osc --osc-mode chatbox --osc-interval 0.5    # chatbox only, 2 Hz
+```
+
+## Modes
+
+| Mode | Output |
+|------|--------|
+| `chatbox` | Band powers as text in VRChat chatbox |
+| `parameters` | Avatar parameter floats (normalized 0–1) |
+| `both` | Chatbox + avatar parameters (default) |
+
+## Configuration
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--osc-host` | `127.0.0.1` | VRChat receiver address |
+| `--osc-port` | `9000` | VRChat OSC port |
+| `--osc-mode` | `both` | `chatbox`, `parameters`, or `both` |
+| `--osc-interval` | `0.25` | Update rate in seconds |
+
+## WebSocket Control
+
+```json
+{"cmd": "osc_start"}
+{"cmd": "osc_stop"}
+{"cmd": "osc_configure", "host": "127.0.0.1", "port": 9000, "mode": "both", "interval": 0.25}
+{"cmd": "osc_status"}
+```
+
+## Avatar Parameters
+
+When in `parameters` or `both` mode, band powers are sent as normalized floats (0–1) with rolling normalization:
+
+| Parameter | Band |
+|-----------|------|
+| `EEG_Delta` | Delta (0.5–4 Hz) |
+| `EEG_Theta` | Theta (4–8 Hz) |
+| `EEG_Alpha` | Alpha (8–13 Hz) |
+| `EEG_Beta` | Beta (13–30 Hz) |
+| `EEG_Gamma` | Gamma (30–100 Hz) |
+
+<Callout type="info">
+  The VRChat OSC experience in the dashboard provides a visual configuration UI with live parameter preview.
+</Callout>

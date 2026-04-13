@@ -156,10 +156,18 @@ export interface Annotation {
   timestamp: string;
 }
 
+// ── Spike config ─────────────────────────────────────────────────────────
+
+export interface SpikeConfig {
+  threshold: number;
+  reset_after: number;
+}
+
 // ── useEEG hook return type ──────────────────────────────────────────────
 
 export interface UseEEGReturn {
   connected: boolean;
+  mock: boolean;
   numChannels: number;
   sampleCount: number;
   hz: number;
@@ -167,6 +175,7 @@ export interface UseEEGReturn {
   recording: boolean;
   recordElapsed: number;
   recordResult: RecordResult | null;
+  spikeConfig: SpikeConfig;
   data: EEGData;
   dismissRecordResult: () => void;
   setPaused: (v: boolean) => void;

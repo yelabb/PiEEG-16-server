@@ -6,6 +6,7 @@ Only tests logic that doesn't require actual GPIO/SPI hardware:
 - Spike detection logic
 - SPI frame validation (status byte checking)
 - Register/command constants
+- Register configuration & shadow state
 """
 
 import pytest
@@ -14,7 +15,8 @@ from pieeg_server.hardware import (
     SIGN_TEST, FULL_SCALE, FULL_SCALE_PLUS_1, NEGATIVE_OFFSET,
     VREF_UV, SPIKE_THRESHOLD, SPIKE_RESET_AFTER,
     EXPECTED_STATUS, BYTES_PER_READ,
-    CS_PIN, DRDY_PIN, SPI_SPEED_HZ,
+    CS_PIN, DRDY_PIN, DRDY_PIN_2, SPI_SPEED_HZ,
+    CH1SET, CH2SET, CH3SET, CH4SET, CH5SET, CH6SET, CH7SET, CH8SET,
     PiEEGHardware,
 )
 
@@ -35,8 +37,8 @@ class TestADCConstants:
     def test_vref_is_4_5V(self):
         assert VREF_UV == 4.5e6  # 4.5V in µV
 
-    def test_spi_speed_is_1mhz(self):
-        assert SPI_SPEED_HZ == 1_000_000
+    def test_spi_speed_is_4mhz(self):
+        assert SPI_SPEED_HZ == 4_000_000
 
     def test_bytes_per_read_is_27(self):
         # 3 status + 8 channels × 3 bytes = 27
@@ -45,6 +47,7 @@ class TestADCConstants:
     def test_gpio_pins(self):
         assert CS_PIN == 19
         assert DRDY_PIN == 26
+        assert DRDY_PIN_2 == 13
 
 
 class TestSpikeDetection:
@@ -56,6 +59,8 @@ class TestSpikeDetection:
         hw._last_valid_value = None
         hw._spike_count = 0
         hw._consecutive_rejects = 0
+        hw._spike_threshold = SPIKE_THRESHOLD
+        hw._spike_reset_after = SPIKE_RESET_AFTER
         return hw
 
     def _raw_with_last_3(self, b24, b25, b26):
@@ -149,6 +154,61 @@ class TestSpikeDetection:
         assert EXPECTED_STATUS == (192, 0, 8)
         assert EXPECTED_STATUS == (0xC0, 0x00, 0x08)
 
+    def test_custom_threshold_accepts_larger_jumps(self):
+        """Raising spike_threshold allows larger jumps through."""
+        hw = self._make_hw()
+        hw.spike_threshold = 10000
+        hw._is_valid_frame(self._raw_with_last_3(0, 0, 100))  # baseline
+        # Jump of 6000 — within new threshold
+        val = 6100
+        b24 = (val >> 16) & 0xFF
+        b25 = (val >> 8) & 0xFF
+        b26 = val & 0xFF
+        assert hw._is_valid_frame(self._raw_with_last_3(b24, b25, b26)) is True
+
+    def test_custom_reset_after(self):
+        """Lowering spike_reset_after resets sooner."""
+        hw = self._make_hw()
+        hw.spike_reset_after = 5
+        hw._is_valid_frame(self._raw_with_last_3(0, 0, 0))  # baseline
+
+        val = 100_000
+        b24 = (val >> 16) & 0xFF
+        b25 = (val >> 8) & 0xFF
+        b26 = val & 0xFF
+        far_raw = self._raw_with_last_3(b24, b25, b26)
+
+        for _ in range(4):
+            assert hw._is_valid_frame(far_raw) is False
+        # 5th triggers reset
+        assert hw._is_valid_frame(far_raw) is True
+        assert hw._consecutive_rejects == 0
+
+    def test_threshold_minus_one_disables_filter(self):
+        """Setting threshold to -1 disables spike rejection entirely."""
+        hw = self._make_hw()
+        hw.spike_threshold = -1
+        assert hw.spike_threshold == -1
+        # Even a huge jump should be accepted
+        assert hw._is_valid_frame(self._raw_with_last_3(0, 0, 0)) is True
+        val = 8_000_000  # massive jump
+        b24 = (val >> 16) & 0xFF
+        b25 = (val >> 8) & 0xFF
+        b26 = val & 0xFF
+        assert hw._is_valid_frame(self._raw_with_last_3(b24, b25, b26)) is True
+
+    def test_threshold_property_clamps_minimum(self):
+        """spike_threshold property enforces min=0 (except -1)."""
+        hw = self._make_hw()
+        hw.spike_threshold = -100
+        assert hw.spike_threshold == 0
+
+    def test_reset_after_property_clamps_minimum(self):
+        """spike_reset_after property enforces min=1."""
+        hw = self._make_hw()
+        hw.spike_reset_after = 0
+        assert hw.spike_reset_after == 1
+
 
 class TestADCDecoding:
     """Test the 24-bit signed integer to µV conversion.
@@ -217,3 +277,197 @@ class TestADCDecoding:
         assert channels[0] != channels[1]
         assert channels[0] == round(VREF_UV * (1 / FULL_SCALE_PLUS_1), 2)
         assert channels[1] == round(VREF_UV * (2 / FULL_SCALE_PLUS_1), 2)
+
+
+class TestRegisterState:
+    """Test register shadow state tracking (no SPI required)."""
+
+    def _make_hw(self):
+        """Create a PiEEGHardware without initializing GPIO/SPI."""
+        hw = PiEEGHardware.__new__(PiEEGHardware)
+        hw._register_state = {}
+        hw._num_channels = 8
+        hw._last_valid_value = None
+        hw._spike_count = 0
+        hw._consecutive_rejects = 0
+        hw._spike_threshold = SPIKE_THRESHOLD
+        hw._spike_reset_after = SPIKE_RESET_AFTER
+        return hw
+
+    def test_register_state_starts_empty(self):
+        hw = self._make_hw()
+        assert hw.register_state == {}
+
+    def test_register_state_is_copy(self):
+        """register_state property returns a copy, not a reference."""
+        hw = self._make_hw()
+        state = hw.register_state
+        state[0xFF] = 0x99
+        assert 0xFF not in hw.register_state
+
+    def test_ch_regs_constant(self):
+        """CH_REGS should contain all 8 channel register addresses."""
+        assert PiEEGHardware.CH_REGS == (
+            CH1SET, CH2SET, CH3SET, CH4SET,
+            CH5SET, CH6SET, CH7SET, CH8SET,
+        )
+        assert len(PiEEGHardware.CH_REGS) == 8
+        # Sequential from 0x05 to 0x0C
+        assert PiEEGHardware.CH_REGS == tuple(range(0x05, 0x0D))
+
+
+class TestMockRegisterConfig:
+    """Test MockHardware register config and input mode switching."""
+
+    def test_set_input_short_switches_mode(self):
+        from pieeg_server.mock import MockHardware
+        hw = MockHardware(num_channels=8)
+        hw.open()
+
+        hw.set_input_short()
+        # All channels should be in shorted mode (0x01)
+        assert all(m == 0x01 for m in hw._ch_modes[:8])
+        for reg in hw.CH_REGS:
+            assert hw.register_state.get(reg) == 0x01
+
+    def test_set_input_normal_restores_mode(self):
+        from pieeg_server.mock import MockHardware
+        hw = MockHardware(num_channels=8)
+        hw.open()
+
+        hw.set_input_short()
+        hw.set_input_normal()
+        assert all(m == 0x00 for m in hw._ch_modes[:8])
+        for reg in hw.CH_REGS:
+            assert hw.register_state.get(reg) == 0x00
+
+    def test_shorted_mode_produces_low_noise(self):
+        """In shorted mode, samples should be very small (±few µV)."""
+        import statistics
+        from pieeg_server.mock import MockHardware
+        hw = MockHardware(num_channels=8)
+        hw.open()
+        hw.set_input_short()
+
+        samples = [hw.read_sample() for _ in range(500)]
+        # Check all channels have low RMS
+        for ch in range(8):
+            values = [s[ch] for s in samples]
+            rms = statistics.stdev(values)
+            assert rms < 5, f"Channel {ch} RMS {rms} too high for shorted mode"
+
+    def test_normal_mode_produces_alpha(self):
+        """In normal mode, samples should have higher amplitude (alpha rhythm)."""
+        import statistics
+        from pieeg_server.mock import MockHardware
+        hw = MockHardware(num_channels=8)
+        hw.open()
+
+        samples = [hw.read_sample() for _ in range(500)]
+        values = [s[0] for s in samples]
+        rms = statistics.stdev(values)
+        assert rms > 5, f"Channel 0 RMS {rms} too low for normal mode"
+
+    def test_configure_registers_updates_state(self):
+        from pieeg_server.mock import MockHardware
+        hw = MockHardware(num_channels=8)
+        hw.open()
+
+        hw.configure_registers({0x05: 0x05, 0x06: 0x05})
+        assert hw.register_state[0x05] == 0x05
+        assert hw.register_state[0x06] == 0x05
+
+    def test_register_state_is_copy(self):
+        from pieeg_server.mock import MockHardware
+        hw = MockHardware(num_channels=8)
+        hw.open()
+
+        hw.configure_registers({0x05: 0x01})
+        state = hw.register_state
+        state[0x05] = 0xFF
+        assert hw.register_state[0x05] == 0x01
+
+    def test_per_channel_mode_individual(self):
+        """Individual channel register changes affect only that channel."""
+        from pieeg_server.mock import MockHardware
+        hw = MockHardware(num_channels=8)
+        hw.open()
+
+        # Set only CH1 to shorted, rest stay normal
+        hw.configure_registers({0x05: 0x01})
+        assert hw._ch_modes[0] == 0x01  # CH1 shorted
+        assert hw._ch_modes[1] == 0x00  # CH2 still normal
+
+    def test_test_signal_mode_produces_square_wave(self):
+        """Test signal mode should produce large ±1800 µV values."""
+        from pieeg_server.mock import MockHardware
+        hw = MockHardware(num_channels=8)
+        hw.open()
+
+        hw.configure_registers({0x05: 0x05})  # CH1 = test signal
+        samples = [hw.read_sample()[0] for _ in range(250)]
+        # Test signal alternates ±1800, check amplitude is large
+        assert max(abs(v) for v in samples) > 1000
+
+    def test_16ch_mirror_registers(self):
+        """On 16-channel mock, CHnSET registers mirror to channels 9-16."""
+        from pieeg_server.mock import MockHardware
+        hw = MockHardware(num_channels=16)
+        hw.open()
+
+        hw.set_input_short()
+        # Channels 0-7 AND 8-15 should all be shorted
+        assert all(m == 0x01 for m in hw._ch_modes)
+
+        hw.set_input_normal()
+        assert all(m == 0x00 for m in hw._ch_modes)
+
+    def test_16ch_individual_register_mirrors(self):
+        """Setting CH1SET on 16ch affects ch0 AND ch8."""
+        from pieeg_server.mock import MockHardware
+        hw = MockHardware(num_channels=16)
+        hw.open()
+
+        hw.configure_registers({0x05: 0x05})  # CH1SET = test signal
+        assert hw._ch_modes[0] == 0x05   # ch1
+        assert hw._ch_modes[8] == 0x05   # ch9 (mirror)
+        assert hw._ch_modes[1] == 0x00   # ch2 unchanged
+        assert hw._ch_modes[9] == 0x00   # ch10 unchanged
+
+    def test_16ch_shorted_produces_low_noise_all_channels(self):
+        """16-channel shorted mode: all 16 channels should have low noise."""
+        import statistics
+        from pieeg_server.mock import MockHardware
+        hw = MockHardware(num_channels=16)
+        hw.open()
+        hw.set_input_short()
+
+        samples = [hw.read_sample() for _ in range(500)]
+        for ch in range(16):
+            values = [s[ch] for s in samples]
+            rms = statistics.stdev(values)
+            assert rms < 5, f"Channel {ch} RMS {rms} too high for shorted 16ch mode"
+
+
+class TestAcquisitionRestartWithConfig:
+    """Test acquisition restart_with_config method."""
+
+    def test_restart_with_config_calls_configure(self):
+        import asyncio
+        from pieeg_server.mock import MockHardware
+        from pieeg_server.acquisition import AcquisitionLoop
+
+        loop = asyncio.new_event_loop()
+        hw = MockHardware(num_channels=8)
+        hw.open()
+        acq = AcquisitionLoop(hw, loop, mock=True)
+        acq.start()
+
+        reg_map = {0x05: 0x01, 0x06: 0x01}
+        acq.restart_with_config(reg_map)
+
+        assert hw.register_state.get(0x05) == 0x01
+        assert hw.register_state.get(0x06) == 0x01
+
+        acq.stop()
+        loop.close()

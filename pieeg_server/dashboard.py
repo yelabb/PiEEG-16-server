@@ -25,7 +25,10 @@ import threading
 from urllib.parse import parse_qs, urlparse
 
 from .auth import AuthManager, COOKIE_NAME
+import subprocess
+
 from .updater import check_update
+from . import __version__
 
 logger = logging.getLogger("pieeg.dashboard")
 
@@ -168,6 +171,21 @@ def _make_handler(static_dir: Path, auth: AuthManager):
                         return self._send_json({"error": "Not authenticated"}, 403)
                     ws_token = auth.create_ws_token()
                     return self._send_json({"token": ws_token})
+
+                # Server info (public — no auth needed)
+                if self.path == "/api/info":
+                    branch = None
+                    try:
+                        r = subprocess.run(
+                            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+                            cwd=str(_PKG_DIR.parent),
+                            capture_output=True, text=True, timeout=5,
+                        )
+                        if r.returncode == 0:
+                            branch = r.stdout.strip() or None
+                    except Exception:
+                        pass
+                    return self._send_json({"version": __version__, "branch": branch})
 
                 # Static assets (JS/CSS bundles) are served without auth
                 # so the login page can load properly if nested under /assets

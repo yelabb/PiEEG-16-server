@@ -56,6 +56,9 @@ const SpoonBendExperience = lazy(
 const WebhookWizardExperience = lazy(
   () => import("./webhook-wizard/WebhookWizard"),
 );
+const EyeTrackExperience = lazy(
+  () => import("./eye-track/EyeTrack"),
+);
 
 export const EXPERIENCES: ExperienceEntry[] = [
   {
@@ -118,6 +121,16 @@ export const EXPERIENCES: ExperienceEntry[] = [
     tag: "Automation",
     gradient: ["#ff4a00", "#33ccff"],
     component: WebhookWizardExperience,
+    author: "PiEEG community",
+  },
+  {
+    id: "eye-track",
+    name: "Eye Track",
+    description:
+      "EOG-based gaze estimation using Fp1/Fp2 frontal electrodes. Polynomial ridge regression (degree 2) maps eye signals to screen position. Online adaptive learning continuously improves accuracy — save your trained model to localStorage and resume later. Includes a live algorithm editor.",
+    tag: "BCI",
+    gradient: ["#06b6d4", "#8b5cf6"],
+    component: EyeTrackExperience,
     author: "PiEEG community",
   },
 ];

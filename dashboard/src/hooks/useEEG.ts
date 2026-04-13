@@ -3,6 +3,7 @@ import type {
   EEGData,
   UseEEGReturn,
   RecordResult,
+  SpikeConfig,
   WSMessage,
   WSRecordStatusMessage,
   WSSampleMessage,
@@ -25,6 +26,8 @@ export function useEEG(timeWindowSec = 4): UseEEGReturn {
   const [recording, setRecording] = useState(false);
   const [recordElapsed, setRecordElapsed] = useState(0);
   const [recordResult, setRecordResult] = useState<RecordResult | null>(null);
+  const [spikeConfig, setSpikeConfig] = useState<SpikeConfig>({ threshold: 5000, reset_after: 50 });
+  const [mock, setMock] = useState(false);
   const recordStartRef = useRef<number | null>(null);
   const recordTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
@@ -182,9 +185,22 @@ export function useEEG(timeWindowSec = 4): UseEEGReturn {
           if (typeof handler === "function") handler(msg);
         }
 
+        // Forward register / noise test messages to RegisterPanel handler
+        if ("reg_config" in msg || "noise_test_result" in msg || "noise_test_status" in msg) {
+          const handler = (window as unknown as Record<string, unknown>).__regHandler;
+          if (typeof handler === "function") handler(msg);
+        }
+
+        // Handle spike config updates (from welcome or spike_config command)
+        if ("spike_config" in msg) {
+          const sc = (msg as Record<string, unknown>).spike_config as SpikeConfig;
+          if (sc) setSpikeConfig(sc);
+        }
+
         if ("status" in msg) {
-          // Welcome message — read channel count from server
-          const serverCh = (msg as Record<string, unknown>).channels;
+          // Welcome message — read channel count and mock flag from server
+          const welcome = msg as Record<string, unknown>;
+          const serverCh = welcome.channels;
           if (typeof serverCh === "number" && serverCh > 0 && serverCh <= NUM_CHANNELS) {
             numChRef.current = serverCh;
             setNumChannels(serverCh);
@@ -196,6 +212,7 @@ export function useEEG(timeWindowSec = 4): UseEEGReturn {
             writeIndexRef.current = 0;
             samplesInBufRef.current = 0;
           }
+          if (typeof welcome.mock === "boolean") setMock(welcome.mock);
           return;
         }
         if (pausedRef.current) return;
@@ -272,6 +289,7 @@ export function useEEG(timeWindowSec = 4): UseEEGReturn {
 
   return {
     connected,
+    mock,
     numChannels,
     sampleCount,
     hz,
@@ -279,6 +297,7 @@ export function useEEG(timeWindowSec = 4): UseEEGReturn {
     recording,
     recordElapsed,
     recordResult,
+    spikeConfig,
     data,
     dismissRecordResult,
     setPaused,

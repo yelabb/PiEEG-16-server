@@ -73,10 +73,11 @@ VREF_UV = 4.5e6  # 4.5V reference in microvolts
 
 # --- GPIO pins ---
 CS_PIN = 19
-DRDY_PIN = 26
+DRDY_PIN = 26      # DRDY chip 1
+DRDY_PIN_2 = 13    # DRDY chip 2
 
 # --- SPI settings ---
-SPI_SPEED_HZ = 1_000_000
+SPI_SPEED_HZ = 4_000_000
 SPI_MODE = 0b01
 SPI_BITS = 8
 BYTES_PER_READ = 27  # 3 status + 8 channels * 3 bytes
@@ -84,7 +85,7 @@ BYTES_PER_READ = 27  # 3 status + 8 channels * 3 bytes
 # --- Expected status header from ADC chip 2 ---
 EXPECTED_STATUS = (192, 0, 8)  # 0xC0, 0x00, 0x08
 
-# --- Spike detection (matches not_spike script) ---
+# --- Spike detection defaults (matches not_spike script) ---
 SPIKE_THRESHOLD = 5000  # max allowed jump in raw 24-bit signed value
 SPIKE_RESET_AFTER = 50  # re-sync baseline after this many consecutive rejections
 
@@ -103,6 +104,9 @@ _HANDLE_DATA_SIZE    = 64   # sizeof(struct gpiohandle_data)
 class PiEEGHardware:
     """Hardware abstraction for PiEEG shields (8 or 16 channels)."""
 
+    # Channel register addresses for convenience
+    CH_REGS = (CH1SET, CH2SET, CH3SET, CH4SET, CH5SET, CH6SET, CH7SET, CH8SET)
+
     def __init__(self, gpio_chip: str = "/dev/gpiochip4",
                  num_channels: int = 16):
         if num_channels not in (8, 16):
@@ -112,15 +116,36 @@ class PiEEGHardware:
         self._chip_fd = -1
         self._cs_fd = -1
         self._drdy_fd = -1
+        self._drdy2_fd = -1
         self._spi1 = None
         self._spi2 = None
         self._last_valid_value: int | None = None
         self._spike_count = 0
         self._consecutive_rejects = 0
+        self._spike_threshold = SPIKE_THRESHOLD
+        self._spike_reset_after = SPIKE_RESET_AFTER
+        self._register_state: dict[int, int] = {}
 
     @property
     def num_channels(self) -> int:
         return self._num_channels
+
+    @property
+    def spike_threshold(self) -> int:
+        return self._spike_threshold
+
+    @spike_threshold.setter
+    def spike_threshold(self, value: int):
+        v = int(value)
+        self._spike_threshold = v if v == -1 else max(0, v)
+
+    @property
+    def spike_reset_after(self) -> int:
+        return self._spike_reset_after
+
+    @spike_reset_after.setter
+    def spike_reset_after(self, value: int):
+        self._spike_reset_after = max(1, int(value))
 
     # --- lifecycle ---
 
@@ -145,6 +170,9 @@ class PiEEGHardware:
         if self._drdy_fd >= 0:
             os.close(self._drdy_fd)
             self._drdy_fd = -1
+        if self._drdy2_fd >= 0:
+            os.close(self._drdy2_fd)
+            self._drdy2_fd = -1
         if self._chip_fd >= 0:
             os.close(self._chip_fd)
             self._chip_fd = -1
@@ -171,6 +199,8 @@ class PiEEGHardware:
         raw1 = self._spi1.readbytes(BYTES_PER_READ)
 
         if self._num_channels == 16:
+            # Wait for chip 2 DRDY falling edge before reading
+            self._wait_drdy2()
             self._cs_set(0)
             raw2 = self._spi2.readbytes(BYTES_PER_READ)
             self._cs_set(1)
@@ -199,7 +229,12 @@ class PiEEGHardware:
         Checks the last 3 bytes (bytes 24-26) of the SPI read as a signed
         24-bit integer. If the jump from the previous valid value exceeds
         SPIKE_THRESHOLD, the frame is considered corrupted.
+
+        A threshold of -1 disables spike rejection entirely.
         """
+        if self._spike_threshold == -1:
+            return True
+
         combined = (raw[24] << 16) | (raw[25] << 8) | raw[26]
         if raw[24] & 0x80:
             combined -= 1 << 24
@@ -208,10 +243,10 @@ class PiEEGHardware:
             self._last_valid_value = combined
             return False  # first frame is always skipped, matching original
 
-        if abs(combined - self._last_valid_value) > SPIKE_THRESHOLD:
+        if abs(combined - self._last_valid_value) > self._spike_threshold:
             self._spike_count += 1
             self._consecutive_rejects += 1
-            if self._consecutive_rejects >= SPIKE_RESET_AFTER:
+            if self._consecutive_rejects >= self._spike_reset_after:
                 # Electrode contact likely changed — accept new baseline
                 logger.info(
                     "Spike filter reset after %d consecutive rejects "
@@ -238,6 +273,46 @@ class PiEEGHardware:
         """
         return self._drdy_get() == 1
 
+    # --- register configuration ---
+
+    def configure_registers(self, reg_map: dict[int, int]):
+        """Write arbitrary registers with STOP → SDATAC → write → RDATAC → START.
+
+        Applies to both chips in 16-ch mode, chip 1 only in 8-ch mode.
+        Updates the shadow register state.
+        Resets spike filter baseline so the first post-config frames aren't
+        rejected due to the signal level changing (e.g. normal → shorted).
+        """
+        chips = [1, 2] if self._num_channels == 16 else [1]
+        for chip in chips:
+            self._send_command(chip, CMD_STOP)
+            self._send_command(chip, CMD_SDATAC)
+            for addr, value in reg_map.items():
+                self._write_register(chip, int(addr), int(value) & 0xFF)
+            self._send_command(chip, CMD_RDATAC)
+            self._send_command(chip, CMD_START)
+        self._register_state.update(reg_map)
+        # Reset spike filter — signal level changes after config, old baseline
+        # would cause false rejections (e.g. normal→shorted: ±50µV → ±2µV)
+        self._last_valid_value = None
+        self._consecutive_rejects = 0
+        logger.info("Registers configured: %s", {hex(k): hex(v) for k, v in reg_map.items()})
+
+    def set_input_short(self):
+        """Set all CHnSET registers to 0x01 (input shorted for noise test)."""
+        reg_map = {reg: 0x01 for reg in self.CH_REGS}
+        self.configure_registers(reg_map)
+
+    def set_input_normal(self):
+        """Set all CHnSET registers to 0x00 (normal electrode input)."""
+        reg_map = {reg: 0x00 for reg in self.CH_REGS}
+        self.configure_registers(reg_map)
+
+    @property
+    def register_state(self) -> dict[int, int]:
+        """Return a copy of the shadow register state."""
+        return dict(self._register_state)
+
     # --- GPIO helpers (direct Linux chardev ioctl) ---
 
     def _cs_set(self, value: int):
@@ -247,10 +322,23 @@ class PiEEGHardware:
         fcntl.ioctl(self._cs_fd, _GPIOHANDLE_SET_VALUES, buf)
 
     def _drdy_get(self) -> int:
-        """Read data-ready line. Returns 1 when high."""
+        """Read chip 1 data-ready line. Returns 1 when high."""
         buf = bytearray(_HANDLE_DATA_SIZE)
         fcntl.ioctl(self._drdy_fd, _GPIOHANDLE_GET_VALUES, buf)
         return buf[0]
+
+    def _drdy2_get(self) -> int:
+        """Read chip 2 data-ready line. Returns 1 when high."""
+        buf = bytearray(_HANDLE_DATA_SIZE)
+        fcntl.ioctl(self._drdy2_fd, _GPIOHANDLE_GET_VALUES, buf)
+        return buf[0]
+
+    def _wait_drdy2(self):
+        """Block until chip 2 DRDY goes LOW (falling edge = data ready)."""
+        while self._drdy2_get() == 0:   # wait out previous low
+            pass
+        while self._drdy2_get() == 1:   # wait for HIGH→LOW
+            pass
 
     # --- private helpers ---
 
@@ -264,10 +352,16 @@ class PiEEGHardware:
             self._chip_fd, CS_PIN, _GPIOHANDLE_REQUEST_OUTPUT,
             default_value=1, consumer=b"pieeg_cs")
 
-        # Data-ready line (input)
+        # Data-ready line chip 1 (input)
         self._drdy_fd = self._request_line(
             self._chip_fd, DRDY_PIN, _GPIOHANDLE_REQUEST_INPUT,
             consumer=b"pieeg_drdy")
+
+        # Data-ready line chip 2 (input) — only for 16-ch mode
+        if self._num_channels == 16:
+            self._drdy2_fd = self._request_line(
+                self._chip_fd, DRDY_PIN_2, _GPIOHANDLE_REQUEST_INPUT,
+                consumer=b"pieeg_drdy2")
 
     @staticmethod
     def _request_line(chip_fd: int, pin: int, flags: int,

@@ -2,5 +2,9 @@
   "buildCommand": "npm run build",
   "outputDirectory": "../pieeg_server/static/dashboard",
   "framework": "vite",
-  "installCommand": "npm install"
+  "installCommand": "npm install",
+  "rewrites": [
+    { "source": "/api/:path*", "destination": "https://pieeg-server--mock.fly.dev/api/:path*" },
+    { "source": "/auth/:path*", "destination": "https://pieeg-server--mock.fly.dev/auth/:path*" }
+  ]
 }

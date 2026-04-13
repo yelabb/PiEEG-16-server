@@ -12,9 +12,11 @@ import Spectrogram from "./components/Spectrogram";
 import FilterPreview from "./components/FilterPreview";
 import StatsPanel from "./components/StatsPanel";
 import UpdateBanner from "./components/UpdateBanner";
+import ChannelMismatchBanner from "./components/ChannelMismatchBanner";
 import ShortcutHelp from "./components/ShortcutHelp";
 import ChatPanel from "./components/ChatPanel";
 import WebhookPanel from "./components/WebhookPanel";
+import RegisterPanel from "./components/RegisterPanel";
 import ExperiencesPage from "./components/ExperiencesPage";
 import { useWebhooks } from "./hooks/useWebhooks";
 import ErrorBoundary from "./components/ErrorBoundary";
@@ -51,16 +53,42 @@ export default function App() {
   const [highcut, setHighcut] = useState<number | string>(40);
   const [timeWindow, setTimeWindow] = useState(4);
   const [yScale, setYScale] = useState(100);
+  const [spikeThreshold, setSpikeThreshold] = useState<number | string>(5000);
+  const [spikeResetAfter, setSpikeResetAfter] = useState<number | string>(50);
+  const lastSpikeThreshold = useRef(5000);
+  const spikeEnabled = Number(spikeThreshold) !== -1;
   const [expandedCh, setExpandedCh] = useState<number | null>(null);
   const [showSpectrogram, setShowSpectrogram] = useState(false);
   const [showStats, setShowStats] = useState(false);
   const [showChat, setShowChat] = useState(false);
+  const [showDocs, setShowDocs] = useState(false);
+  const [showRegisters, setShowRegisters] = useState(false);
   const [showWebhooks, setShowWebhooks] = useState(false);
   const [webhooksEnabled, setWebhooksEnabled] = useState(
     () => localStorage.getItem("pieeg_webhooks_enabled") === "true"
   );
   const eeg = useEEG(timeWindow);
   const numCh = eeg.numChannels;
+
+  const [serverInfo, setServerInfo] = useState<{ version: string; branch: string | null } | null>(null);
+  useEffect(() => {
+    fetch("/api/info")
+      .then((r) => r.json())
+      .then((d) => { if (d.version) setServerInfo(d); })
+      .catch(() => {});
+  }, []);
+
+  // Sync local spike inputs from server (skip if user just toggled)
+  const spikeUserAction = useRef(false);
+  useEffect(() => {
+    if (spikeUserAction.current) {
+      spikeUserAction.current = false;
+      return;
+    }
+    setSpikeThreshold(eeg.spikeConfig.threshold);
+    if (eeg.spikeConfig.threshold > 0) lastSpikeThreshold.current = eeg.spikeConfig.threshold;
+    setSpikeResetAfter(eeg.spikeConfig.reset_after);
+  }, [eeg.spikeConfig.threshold, eeg.spikeConfig.reset_after]);
 
   const toggleWebhooksEnabled = useCallback(() => {
     setWebhooksEnabled((prev) => {
@@ -254,8 +282,15 @@ export default function App() {
         case "KeyG":
           setShowSpectrogram((v) => !v);
           break;
+        case "KeyD":
+          setShowDocs((v) => !v);
+          break;
+        case "KeyN":
+          setShowRegisters((v) => !v);
+          break;
         case "Escape":
-          if (activePreset) applyPreset(null);
+          if (showDocs) setShowDocs(false);
+          else if (activePreset) applyPreset(null);
           else if (expandedCh !== null) setExpandedCh(null);
           else if (eeg.recordResult) eeg.dismissRecordResult();
           break;
@@ -313,12 +348,23 @@ export default function App() {
   return (
     <AuthGate>
       <UpdateBanner />
+      <ChannelMismatchBanner numChannels={numCh} eegData={eeg.data} connected={eeg.connected} />
       {/* Header */}
       <header className="header">
         <h1>
           Pi<span>EEG</span>
           <small>{numCh}ch Dashboard</small>
           {isDemo && <span className="demo-badge">DEMO</span>}
+          {serverInfo && (
+            <a
+              className="version-badge"
+              href="https://github.com/pieeg-club/PiEEG-server"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              v{serverInfo.version}{serverInfo.branch ? ` · ${serverInfo.branch}` : ""}
+            </a>
+          )}
         </h1>
         <div className="status-bar">
           <span>
@@ -413,6 +459,20 @@ export default function App() {
         >
           Mini Games
         </button>
+        <button
+          className={`btn${showDocs ? " active" : ""}`}
+          onClick={() => setShowDocs((v) => !v)}
+          title="Open documentation"
+        >
+          Docs
+        </button>
+        <button
+          className={`btn${showRegisters ? " active" : ""}`}
+          onClick={() => setShowRegisters((v) => !v)}
+          title="ADS1299 register config & noise diagnostic"
+        >
+          Registers
+        </button>
         <div className="sep" />
         <div className="control-group">
           <label>Guide</label>
@@ -489,6 +549,72 @@ export default function App() {
             ))}
           </select>
         </div>
+        <div className="sep" />
+        <button
+          className={`btn${spikeEnabled ? " active" : ""}`}
+          onClick={() => {
+            spikeUserAction.current = true;
+            if (spikeEnabled) {
+              lastSpikeThreshold.current = Math.max(1, Number(spikeThreshold));
+              setSpikeThreshold(-1);
+              eeg.sendCommand({ cmd: "spike_config", config: { threshold: -1 } });
+            } else {
+              const restore = lastSpikeThreshold.current;
+              setSpikeThreshold(restore);
+              eeg.sendCommand({ cmd: "spike_config", config: { threshold: restore } });
+            }
+          }}
+        >
+          Spike Filter: {spikeEnabled ? "ON" : "OFF"}
+        </button>
+        <div className="control-group">
+          <label>Spike</label>
+          <input
+            type="number"
+            value={spikeEnabled ? spikeThreshold : lastSpikeThreshold.current}
+            min={1}
+            max={100000}
+            step={500}
+            disabled={!spikeEnabled}
+            style={{ width: "5.5em" }}
+            title="Max allowed jump in raw ADC value between consecutive samples"
+            onChange={(e: ChangeEvent<HTMLInputElement>) => {
+              setSpikeThreshold(e.target.value);
+              const v = parseInt(e.target.value);
+              if (v > 0) {
+                lastSpikeThreshold.current = v;
+                eeg.sendCommand({ cmd: "spike_config", config: { threshold: v } });
+              }
+            }}
+          />
+        </div>
+        <div className="control-group">
+          <label>Reset</label>
+          <input
+            type="number"
+            value={spikeResetAfter}
+            min={1}
+            max={1000}
+            step={5}
+            disabled={!spikeEnabled}
+            style={{ width: "4em" }}
+            title="Re-sync baseline after this many consecutive rejected frames"
+            onChange={(e: ChangeEvent<HTMLInputElement>) => {
+              setSpikeResetAfter(e.target.value);
+              const v = parseInt(e.target.value);
+              if (v > 0) eeg.sendCommand({ cmd: "spike_config", config: { reset_after: v } });
+            }}
+          />
+        </div>
+        {eeg.mock && (
+          <button
+            className="btn btn-inject-spike"
+            onClick={() => eeg.sendCommand({ cmd: "inject_spike", count: 1 })}
+            title="Inject a synthetic spike into the mock data stream (testing only)"
+          >
+            ⚡ Inject Spike
+          </button>
+        )}
       </div>
 
       {/* Channel selector */}
@@ -670,8 +796,31 @@ export default function App() {
         onToggleEnabled={toggleWebhooksEnabled}
       />
 
+      {/* Register / Noise diagnostic panel */}
+      <RegisterPanel
+        open={showRegisters}
+        onClose={() => setShowRegisters(false)}
+        numChannels={numCh}
+        sendCommand={eeg.sendCommand}
+      />
+
       {/* Keyboard shortcut help (press ? to toggle) */}
       <ShortcutHelp />
+
+      {/* Docs iframe panel */}
+      <div className={`docs-panel${showDocs ? " open" : ""}`}>
+        <div className="docs-header">
+          <strong>Documentation</strong>
+          <button className="docs-close" onClick={() => setShowDocs(false)}>✕</button>
+        </div>
+        {showDocs && (
+          <iframe
+            className="docs-iframe"
+            src="https://pieeg-server-doc.vercel.app/"
+            title="PiEEG Documentation"
+          />
+        )}
+      </div>
 
       {/* Footer */}
       <footer className="footer">
@@ -685,6 +834,8 @@ export default function App() {
           <kbd>V</kbd> Exp
           <kbd>C</kbd> Chat
           <kbd>W</kbd> Hooks
+          <kbd>N</kbd> Regs
+          <kbd>D</kbd> Docs
           <kbd>Esc</kbd> Close
           <kbd>P</kbd> Perf
         </span>
