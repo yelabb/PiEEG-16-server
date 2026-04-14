@@ -3,7 +3,7 @@
 
 # PiEEG-server
 
-**Real-time EEG streaming platform for [PiEEG](https://github.com/pieeg-club/PiEEG) (8/16 ch) and [IronBCI](https://github.com/pieeg-club/ironbci) (8 ch BLE)**
+**Real-time EEG streaming platform for PiEEG ([8](https://github.com/pieeg-club/PiEEG)/[16](https://github.com/pieeg-club/PiEEG-16) ch) and IronBCI ([8](https://github.com/pieeg-club/ironbci) ch BLE)**
 
 Reads at 250 Hz · streams over WebSocket · live dashboard with spectral analysis, topographic maps, experiences gallery, VRChat OSC, Lab Streaming Layer, webhook automation — Raspberry Pi (SPI) or IronBCI (Bluetooth LE).
 
