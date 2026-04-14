@@ -59,6 +59,9 @@ const WebhookWizardExperience = lazy(
 const EyeTrackExperience = lazy(
   () => import("./eye-track/EyeTrack"),
 );
+const NorthernLightsExperience = lazy(
+  () => import("./northern-lights/NorthernLights"),
+);
 
 export const EXPERIENCES: ExperienceEntry[] = [
   {
@@ -131,6 +134,18 @@ export const EXPERIENCES: ExperienceEntry[] = [
     tag: "BCI",
     gradient: ["#06b6d4", "#8b5cf6"],
     component: EyeTrackExperience,
+    author: "PiEEG community",
+  },
+  {
+    id: "northern-lights",
+    name: "Northern Lights",
+    description:
+      "Stand beneath your own aurora borealis — three layered curtains of light dance across an arctic sky, shaped in real-time by your brainwaves. Delta sways the curtains, Alpha brightens the glow, Gamma sparks particles at the edges. Ethereal sonification turns each band into wind, drones, and crystalline chimes. VR headset with hand tracking supported.",
+    tag: "VR / Audio",
+    gradient: ["#22c55e", "#7c3aed"],
+    component: NorthernLightsExperience,
+    vr: true,
+    handTracking: true,
     author: "PiEEG community",
   },
 ];
