@@ -1,13 +1,16 @@
 """
 Tests for IronBCI BLE driver — pure-Python logic (no BLE hardware needed).
 
-Tests packet parsing, voltage conversion, and class interface.
+Tests packet parsing, voltage conversion, class interface, and BLE scan logic.
 """
+
+import asyncio
 
 import pytest
 
 from pieeg_server.ironbci import (
     parse_samples,
+    scan_ble_devices,
     VREF,
     FULL_SCALE,
     SIGN_BIT,
@@ -216,3 +219,114 @@ class TestAcquisitionBLEFlag:
         assert acq._ble is False
         hw.close()
         loop.close()
+
+
+# --- Helpers for BLE scan tests ---
+
+class _FakeBLEDevice:
+    """Minimal stand-in for bleak.backends.device.BLEDevice."""
+
+    def __init__(self, name, address, rssi=None):
+        self.name = name
+        self.address = address
+        self.rssi = rssi
+
+
+class TestScanBleDevices:
+    """Tests for scan_ble_devices filtering and sorting."""
+
+    @pytest.mark.asyncio
+    async def test_unnamed_devices_are_skipped(self, monkeypatch):
+        fake_devices = [
+            _FakeBLEDevice("EAREEG", "AA:BB:CC:DD:EE:01", -40),
+            _FakeBLEDevice("", "AA:BB:CC:DD:EE:02", -50),
+            _FakeBLEDevice(None, "AA:BB:CC:DD:EE:03", -60),
+        ]
+
+        async def _fake_discover(timeout=5.0):
+            return fake_devices
+
+        monkeypatch.setattr("pieeg_server.ironbci.BleakScanner.discover", _fake_discover)
+
+        results = await scan_ble_devices(timeout=1.0)
+        assert len(results) == 1
+        assert results[0]["name"] == "EAREEG"
+
+    @pytest.mark.asyncio
+    async def test_sorted_by_rssi_descending(self, monkeypatch):
+        fake_devices = [
+            _FakeBLEDevice("DeviceA", "AA:BB:CC:DD:EE:01", -80),
+            _FakeBLEDevice("DeviceB", "AA:BB:CC:DD:EE:02", -30),
+            _FakeBLEDevice("DeviceC", "AA:BB:CC:DD:EE:03", -55),
+        ]
+
+        async def _fake_discover(timeout=5.0):
+            return fake_devices
+
+        monkeypatch.setattr("pieeg_server.ironbci.BleakScanner.discover", _fake_discover)
+
+        results = await scan_ble_devices(timeout=1.0)
+        assert [d["name"] for d in results] == ["DeviceB", "DeviceC", "DeviceA"]
+        assert results[0]["rssi"] == -30
+        assert results[-1]["rssi"] == -80
+
+    @pytest.mark.asyncio
+    async def test_none_rssi_sorted_last(self, monkeypatch):
+        fake_devices = [
+            _FakeBLEDevice("NoRSSI", "AA:BB:CC:DD:EE:01", None),
+            _FakeBLEDevice("StrongSignal", "AA:BB:CC:DD:EE:02", -20),
+        ]
+
+        async def _fake_discover(timeout=5.0):
+            return fake_devices
+
+        monkeypatch.setattr("pieeg_server.ironbci.BleakScanner.discover", _fake_discover)
+
+        results = await scan_ble_devices(timeout=1.0)
+        assert results[0]["name"] == "StrongSignal"
+        assert results[1]["name"] == "NoRSSI"
+        assert results[1]["rssi"] is None
+
+    @pytest.mark.asyncio
+    async def test_no_devices_returns_empty_list(self, monkeypatch):
+        async def _fake_discover(timeout=5.0):
+            return []
+
+        monkeypatch.setattr("pieeg_server.ironbci.BleakScanner.discover", _fake_discover)
+
+        results = await scan_ble_devices(timeout=1.0)
+        assert results == []
+
+    @pytest.mark.asyncio
+    async def test_result_dict_keys(self, monkeypatch):
+        fake_devices = [
+            _FakeBLEDevice("TestDev", "11:22:33:44:55:66", -45),
+        ]
+
+        async def _fake_discover(timeout=5.0):
+            return fake_devices
+
+        monkeypatch.setattr("pieeg_server.ironbci.BleakScanner.discover", _fake_discover)
+
+        results = await scan_ble_devices(timeout=1.0)
+        assert len(results) == 1
+        d = results[0]
+        assert d == {"name": "TestDev", "address": "11:22:33:44:55:66", "rssi": -45}
+
+    @pytest.mark.asyncio
+    async def test_device_without_rssi_attr(self, monkeypatch):
+        """Device object that lacks an rssi attribute entirely."""
+
+        class _NoRSSIDevice:
+            def __init__(self):
+                self.name = "BareDevice"
+                self.address = "FF:FF:FF:FF:FF:FF"
+
+        async def _fake_discover(timeout=5.0):
+            return [_NoRSSIDevice()]
+
+        monkeypatch.setattr("pieeg_server.ironbci.BleakScanner.discover", _fake_discover)
+
+        results = await scan_ble_devices(timeout=1.0)
+        assert len(results) == 1
+        assert results[0]["rssi"] is None
