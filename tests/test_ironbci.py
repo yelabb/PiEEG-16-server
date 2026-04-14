@@ -232,6 +232,22 @@ class _FakeBLEDevice:
         self.rssi = rssi
 
 
+def _patch_bleak(monkeypatch, fake_devices):
+    """Stub BleakScanner and BleakClient at module level.
+
+    On CI (no bleak installed) these are None, so we cannot patch
+    attributes *on* them — we replace the module-level names instead.
+    """
+
+    class _FakeScanner:
+        @staticmethod
+        async def discover(timeout=5.0):
+            return fake_devices
+
+    monkeypatch.setattr("pieeg_server.ironbci.BleakScanner", _FakeScanner)
+    monkeypatch.setattr("pieeg_server.ironbci.BleakClient", object)  # truthy
+
+
 class TestScanBleDevices:
     """Tests for scan_ble_devices filtering and sorting."""
 
@@ -242,11 +258,7 @@ class TestScanBleDevices:
             _FakeBLEDevice("", "AA:BB:CC:DD:EE:02", -50),
             _FakeBLEDevice(None, "AA:BB:CC:DD:EE:03", -60),
         ]
-
-        async def _fake_discover(timeout=5.0):
-            return fake_devices
-
-        monkeypatch.setattr("pieeg_server.ironbci.BleakScanner.discover", _fake_discover)
+        _patch_bleak(monkeypatch, fake_devices)
 
         results = await scan_ble_devices(timeout=1.0)
         assert len(results) == 1
@@ -259,11 +271,7 @@ class TestScanBleDevices:
             _FakeBLEDevice("DeviceB", "AA:BB:CC:DD:EE:02", -30),
             _FakeBLEDevice("DeviceC", "AA:BB:CC:DD:EE:03", -55),
         ]
-
-        async def _fake_discover(timeout=5.0):
-            return fake_devices
-
-        monkeypatch.setattr("pieeg_server.ironbci.BleakScanner.discover", _fake_discover)
+        _patch_bleak(monkeypatch, fake_devices)
 
         results = await scan_ble_devices(timeout=1.0)
         assert [d["name"] for d in results] == ["DeviceB", "DeviceC", "DeviceA"]
@@ -276,11 +284,7 @@ class TestScanBleDevices:
             _FakeBLEDevice("NoRSSI", "AA:BB:CC:DD:EE:01", None),
             _FakeBLEDevice("StrongSignal", "AA:BB:CC:DD:EE:02", -20),
         ]
-
-        async def _fake_discover(timeout=5.0):
-            return fake_devices
-
-        monkeypatch.setattr("pieeg_server.ironbci.BleakScanner.discover", _fake_discover)
+        _patch_bleak(monkeypatch, fake_devices)
 
         results = await scan_ble_devices(timeout=1.0)
         assert results[0]["name"] == "StrongSignal"
@@ -289,10 +293,7 @@ class TestScanBleDevices:
 
     @pytest.mark.asyncio
     async def test_no_devices_returns_empty_list(self, monkeypatch):
-        async def _fake_discover(timeout=5.0):
-            return []
-
-        monkeypatch.setattr("pieeg_server.ironbci.BleakScanner.discover", _fake_discover)
+        _patch_bleak(monkeypatch, [])
 
         results = await scan_ble_devices(timeout=1.0)
         assert results == []
@@ -302,11 +303,7 @@ class TestScanBleDevices:
         fake_devices = [
             _FakeBLEDevice("TestDev", "11:22:33:44:55:66", -45),
         ]
-
-        async def _fake_discover(timeout=5.0):
-            return fake_devices
-
-        monkeypatch.setattr("pieeg_server.ironbci.BleakScanner.discover", _fake_discover)
+        _patch_bleak(monkeypatch, fake_devices)
 
         results = await scan_ble_devices(timeout=1.0)
         assert len(results) == 1
@@ -322,10 +319,7 @@ class TestScanBleDevices:
                 self.name = "BareDevice"
                 self.address = "FF:FF:FF:FF:FF:FF"
 
-        async def _fake_discover(timeout=5.0):
-            return [_NoRSSIDevice()]
-
-        monkeypatch.setattr("pieeg_server.ironbci.BleakScanner.discover", _fake_discover)
+        _patch_bleak(monkeypatch, [_NoRSSIDevice()])
 
         results = await scan_ble_devices(timeout=1.0)
         assert len(results) == 1
