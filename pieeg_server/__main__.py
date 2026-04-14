@@ -280,9 +280,14 @@ def _make_hardware(args, logger):
         logger.info("Starting in MOCK mode (%d-channel synthetic EEG data)", num_ch)
         hw = MockHardware(num_channels=num_ch)
     elif _is_ble_device(device):
-        from .ironbci import IronBCIHardware
+        from .ironbci import IronBCIHardware, scan_ble_devices
         ble_name = getattr(args, "ble_name", "EAREEG")
         ble_addr = getattr(args, "ble_address", None)
+
+        # Interactive scan if no address provided
+        if not ble_addr:
+            ble_addr = _ble_interactive_scan(ble_name, logger)
+
         logger.info(
             "Initializing IronBCI-%d (BLE name=%s, address=%s)...",
             num_ch, ble_name, ble_addr or "auto-scan",
@@ -299,6 +304,68 @@ def _make_hardware(args, logger):
     if not args.mock and not _is_ble_device(device):
         logger.info("Hardware initialized - ADCs configured, LEDs should be ON")
     return hw
+
+
+def _ble_interactive_scan(ble_name: str, logger) -> str | None:
+    """Scan for BLE devices and let the user pick one interactively.
+
+    Returns the selected BLE address, or None to fall back to name-based scan.
+    """
+    import asyncio as _aio
+    from .ironbci import scan_ble_devices
+
+    print(f"\n  Scanning for BLE devices (8 s) ...")
+    try:
+        devices = _aio.run(scan_ble_devices(timeout=8.0))
+    except Exception as e:
+        logger.warning("BLE scan failed: %s — falling back to name scan", e)
+        return None
+
+    if not devices:
+        print("  No BLE devices found. Will try connecting by name...\n")
+        return None
+
+    # Highlight matching devices
+    matches = [d for d in devices if d["name"] == ble_name]
+    others = [d for d in devices if d["name"] != ble_name]
+
+    print(f"\n  Found {len(devices)} BLE device(s):\n")
+    print(f"  {'#':<4} {'Name':<24} {'Address':<20} {'RSSI'}")
+    print(f"  {'—'*4} {'—'*24} {'—'*20} {'—'*6}")
+
+    idx = 1
+    for d in matches + others:
+        rssi_str = f"{d['rssi']} dBm" if d["rssi"] is not None else "?"
+        marker = " ◀ match" if d["name"] == ble_name else ""
+        print(f"  {idx:<4} {d['name']:<24} {d['address']:<20} {rssi_str}{marker}")
+        idx += 1
+
+    # Auto-connect if exactly one matching device
+    ordered = matches + others
+    if len(matches) == 1:
+        addr = matches[0]["address"]
+        print(f"\n  Auto-selecting '{matches[0]['name']}' ({addr})\n")
+        return addr
+
+    # Prompt user to pick
+    print()
+    while True:
+        try:
+            choice = input("  Select device # (or Enter to scan by name): ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return None
+        if not choice:
+            return None
+        try:
+            num = int(choice)
+            if 1 <= num <= len(ordered):
+                selected = ordered[num - 1]
+                print(f"  → Connecting to '{selected['name']}' ({selected['address']})\n")
+                return selected["address"]
+        except ValueError:
+            pass
+        print(f"  Invalid choice. Enter 1-{len(ordered)} or press Enter to skip.")
 
 
 def main():

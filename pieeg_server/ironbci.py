@@ -82,6 +82,29 @@ def parse_samples(data: bytes | list[int], num_channels: int = 8) -> list[list[f
     return samples
 
 
+async def scan_ble_devices(timeout: float = 8.0) -> list[dict]:
+    """Scan for nearby BLE devices and return a list of dicts.
+
+    Each dict has keys: name, address, rssi.
+    Only returns devices with a non-empty name.
+    """
+    _require_bleak()
+    devices = await BleakScanner.discover(timeout=timeout)
+    results = []
+    for d in devices:
+        name = d.name or ""
+        if not name:
+            continue
+        results.append({
+            "name": name,
+            "address": d.address,
+            "rssi": d.rssi if hasattr(d, "rssi") else None,
+        })
+    # Sort by signal strength (strongest first)
+    results.sort(key=lambda d: d["rssi"] or -999, reverse=True)
+    return results
+
+
 class IronBCIHardware:
     """BLE hardware abstraction for IronBCI boards.
 
