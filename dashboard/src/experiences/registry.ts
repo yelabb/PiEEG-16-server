@@ -62,6 +62,9 @@ const EyeTrackExperience = lazy(
 const NorthernLightsExperience = lazy(
   () => import("./northern-lights/NorthernLights"),
 );
+const MindCastExperience = lazy(
+  () => import("./mindcast/MindCast"),
+);
 
 export const EXPERIENCES: ExperienceEntry[] = [
   {
@@ -146,6 +149,16 @@ export const EXPERIENCES: ExperienceEntry[] = [
     component: NorthernLightsExperience,
     vr: true,
     handTracking: true,
+    author: "PiEEG community",
+  },
+  {
+    id: "mindcast",
+    name: "MindCast",
+    description:
+      "A podcast that listens to your brain — playback speed adapts to your focus in real-time. Zone out and it slows down, lock in and it speeds up. Your attention is the throttle.",
+    tag: "Audio",
+    gradient: ["#06b6d4", "#22c55e"],
+    component: MindCastExperience,
     author: "PiEEG community",
   },
 ];
