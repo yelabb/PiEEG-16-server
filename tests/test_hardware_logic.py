@@ -14,7 +14,8 @@ import pytest
 from pieeg_server.hardware import (
     SIGN_TEST, FULL_SCALE, FULL_SCALE_PLUS_1, NEGATIVE_OFFSET,
     VREF_UV, SPIKE_THRESHOLD, SPIKE_RESET_AFTER,
-    EXPECTED_STATUS, BYTES_PER_READ,
+    EXPECTED_STATUS_2, STATUS_HIGH_MASK, STATUS_HIGH_EXPECTED,
+    BYTES_PER_READ,
     CS_PIN, DRDY_PIN, DRDY_PIN_2, SPI_SPEED_HZ,
     CH1SET, CH2SET, CH3SET, CH4SET, CH5SET, CH6SET, CH7SET, CH8SET,
     PiEEGHardware,
@@ -56,9 +57,9 @@ class TestSpikeDetection:
     def _make_hw(self):
         """Create a PiEEGHardware without initializing GPIO/SPI."""
         hw = PiEEGHardware.__new__(PiEEGHardware)
-        hw._last_valid_value = None
-        hw._spike_count = 0
-        hw._consecutive_rejects = 0
+        hw._last_valid = {1: None, 2: None}
+        hw._spike_count = {1: 0, 2: 0}
+        hw._consecutive_rejects = {1: 0, 2: 0}
         hw._spike_threshold = SPIKE_THRESHOLD
         hw._spike_reset_after = SPIKE_RESET_AFTER
         return hw
@@ -75,42 +76,42 @@ class TestSpikeDetection:
         """First frame is skipped (no reference value to compare against)."""
         hw = self._make_hw()
         raw = self._raw_with_last_3(0, 0, 100)
-        assert hw._is_valid_frame(raw) is False
+        assert hw._is_valid_frame(raw, chip=1) is False
         # But it sets the baseline
-        assert hw._last_valid_value is not None
+        assert hw._last_valid[1] is not None
 
     def test_small_change_accepted(self):
         hw = self._make_hw()
         # First frame (sets baseline)
-        hw._is_valid_frame(self._raw_with_last_3(0, 0, 100))
+        hw._is_valid_frame(self._raw_with_last_3(0, 0, 100), chip=1)
         # Second frame with small change
-        assert hw._is_valid_frame(self._raw_with_last_3(0, 0, 110)) is True
+        assert hw._is_valid_frame(self._raw_with_last_3(0, 0, 110), chip=1) is True
 
     def test_large_spike_rejected(self):
         hw = self._make_hw()
         # Baseline at value 100
-        hw._is_valid_frame(self._raw_with_last_3(0, 0, 100))
+        hw._is_valid_frame(self._raw_with_last_3(0, 0, 100), chip=1)
         # Jump of >5000 — this is a spike
         # Encode value 6000 as 24-bit: 0x001770
         val = 6000
         b24 = (val >> 16) & 0xFF
         b25 = (val >> 8) & 0xFF
         b26 = val & 0xFF
-        assert hw._is_valid_frame(self._raw_with_last_3(b24, b25, b26)) is False
-        assert hw._spike_count == 1
+        assert hw._is_valid_frame(self._raw_with_last_3(b24, b25, b26), chip=1) is False
+        assert hw._spike_count[1] == 1
 
     def test_negative_values_handled(self):
         """Signed 24-bit negative values should be decoded correctly."""
         hw = self._make_hw()
         # Set baseline to 0
-        hw._is_valid_frame(self._raw_with_last_3(0, 0, 0))
+        hw._is_valid_frame(self._raw_with_last_3(0, 0, 0), chip=1)
         # Small negative (-10): 24-bit two's complement = 0xFFFFF6
         raw = self._raw_with_last_3(0xFF, 0xFF, 0xF6)
-        assert hw._is_valid_frame(raw) is True
+        assert hw._is_valid_frame(raw, chip=1) is True
 
     def test_spike_count_increments(self):
         hw = self._make_hw()
-        hw._is_valid_frame(self._raw_with_last_3(0, 0, 0))  # baseline
+        hw._is_valid_frame(self._raw_with_last_3(0, 0, 0), chip=1)  # baseline
 
         # Produce multiple spikes (fewer than SPIKE_RESET_AFTER)
         for i in range(5):
@@ -118,14 +119,14 @@ class TestSpikeDetection:
             b24 = (val >> 16) & 0xFF
             b25 = (val >> 8) & 0xFF
             b26 = val & 0xFF
-            hw._is_valid_frame(self._raw_with_last_3(b24, b25, b26))
+            hw._is_valid_frame(self._raw_with_last_3(b24, b25, b26), chip=1)
 
-        assert hw._spike_count == 5
+        assert hw._spike_count[1] == 5
 
     def test_spike_filter_resets_after_consecutive_rejects(self):
         """After SPIKE_RESET_AFTER consecutive rejects, baseline re-syncs."""
         hw = self._make_hw()
-        hw._is_valid_frame(self._raw_with_last_3(0, 0, 0))  # baseline at 0
+        hw._is_valid_frame(self._raw_with_last_3(0, 0, 0), chip=1)  # baseline at 0
 
         # Send the same far-away value repeatedly (simulates electrode connect)
         val = 100_000
@@ -135,42 +136,53 @@ class TestSpikeDetection:
         far_raw = self._raw_with_last_3(b24, b25, b26)
 
         for i in range(SPIKE_RESET_AFTER - 1):
-            assert hw._is_valid_frame(far_raw) is False
+            assert hw._is_valid_frame(far_raw, chip=1) is False
 
         # The next one triggers the reset and is accepted
-        assert hw._is_valid_frame(far_raw) is True
-        assert hw._consecutive_rejects == 0
-        assert hw._last_valid_value == val
+        assert hw._is_valid_frame(far_raw, chip=1) is True
+        assert hw._consecutive_rejects[1] == 0
+        assert hw._last_valid[1] == val
 
         # Subsequent close values are accepted normally
         val2 = val + 10
         b24 = (val2 >> 16) & 0xFF
         b25 = (val2 >> 8) & 0xFF
         b26 = val2 & 0xFF
-        assert hw._is_valid_frame(self._raw_with_last_3(b24, b25, b26)) is True
+        assert hw._is_valid_frame(self._raw_with_last_3(b24, b25, b26), chip=1) is True
 
     def test_status_header_constant(self):
         """Expected status bytes should be (0xC0, 0x00, 0x08)."""
-        assert EXPECTED_STATUS == (192, 0, 8)
-        assert EXPECTED_STATUS == (0xC0, 0x00, 0x08)
+        assert EXPECTED_STATUS_2 == (192, 0, 8)
+        assert EXPECTED_STATUS_2 == (0xC0, 0x00, 0x08)
+
+    def test_status_high_nibble_mask(self):
+        """Chip 1 status check uses high nibble mask 0xF0 expecting 0xC0."""
+        assert STATUS_HIGH_MASK == 0xF0
+        assert STATUS_HIGH_EXPECTED == 0xC0
+        # 0xC0 passes
+        assert (0xC0 & STATUS_HIGH_MASK) == STATUS_HIGH_EXPECTED
+        # 0xC8 also passes (lower bits vary)
+        assert (0xC8 & STATUS_HIGH_MASK) == STATUS_HIGH_EXPECTED
+        # 0x00 fails
+        assert (0x00 & STATUS_HIGH_MASK) != STATUS_HIGH_EXPECTED
 
     def test_custom_threshold_accepts_larger_jumps(self):
         """Raising spike_threshold allows larger jumps through."""
         hw = self._make_hw()
         hw.spike_threshold = 10000
-        hw._is_valid_frame(self._raw_with_last_3(0, 0, 100))  # baseline
+        hw._is_valid_frame(self._raw_with_last_3(0, 0, 100), chip=1)  # baseline
         # Jump of 6000 — within new threshold
         val = 6100
         b24 = (val >> 16) & 0xFF
         b25 = (val >> 8) & 0xFF
         b26 = val & 0xFF
-        assert hw._is_valid_frame(self._raw_with_last_3(b24, b25, b26)) is True
+        assert hw._is_valid_frame(self._raw_with_last_3(b24, b25, b26), chip=1) is True
 
     def test_custom_reset_after(self):
         """Lowering spike_reset_after resets sooner."""
         hw = self._make_hw()
         hw.spike_reset_after = 5
-        hw._is_valid_frame(self._raw_with_last_3(0, 0, 0))  # baseline
+        hw._is_valid_frame(self._raw_with_last_3(0, 0, 0), chip=1)  # baseline
 
         val = 100_000
         b24 = (val >> 16) & 0xFF
@@ -179,10 +191,10 @@ class TestSpikeDetection:
         far_raw = self._raw_with_last_3(b24, b25, b26)
 
         for _ in range(4):
-            assert hw._is_valid_frame(far_raw) is False
+            assert hw._is_valid_frame(far_raw, chip=1) is False
         # 5th triggers reset
-        assert hw._is_valid_frame(far_raw) is True
-        assert hw._consecutive_rejects == 0
+        assert hw._is_valid_frame(far_raw, chip=1) is True
+        assert hw._consecutive_rejects[1] == 0
 
     def test_threshold_minus_one_disables_filter(self):
         """Setting threshold to -1 disables spike rejection entirely."""
@@ -190,12 +202,37 @@ class TestSpikeDetection:
         hw.spike_threshold = -1
         assert hw.spike_threshold == -1
         # Even a huge jump should be accepted
-        assert hw._is_valid_frame(self._raw_with_last_3(0, 0, 0)) is True
+        assert hw._is_valid_frame(self._raw_with_last_3(0, 0, 0), chip=1) is True
         val = 8_000_000  # massive jump
         b24 = (val >> 16) & 0xFF
         b25 = (val >> 8) & 0xFF
         b26 = val & 0xFF
-        assert hw._is_valid_frame(self._raw_with_last_3(b24, b25, b26)) is True
+        assert hw._is_valid_frame(self._raw_with_last_3(b24, b25, b26), chip=1) is True
+
+    def test_per_chip_isolation(self):
+        """Chip 1 and chip 2 baselines are independent."""
+        hw = self._make_hw()
+        # Chip 1 baseline at 100
+        hw._is_valid_frame(self._raw_with_last_3(0, 0, 100), chip=1)
+        # Chip 2 baseline at 50000
+        val2 = 50000
+        b24 = (val2 >> 16) & 0xFF
+        b25 = (val2 >> 8) & 0xFF
+        b26 = val2 & 0xFF
+        hw._is_valid_frame(self._raw_with_last_3(b24, b25, b26), chip=2)
+
+        # Small change on chip 1 is accepted (relative to chip 1 baseline)
+        assert hw._is_valid_frame(self._raw_with_last_3(0, 0, 110), chip=1) is True
+        # Small change on chip 2 is accepted (relative to chip 2 baseline)
+        val2b = 50010
+        b24 = (val2b >> 16) & 0xFF
+        b25 = (val2b >> 8) & 0xFF
+        b26 = val2b & 0xFF
+        assert hw._is_valid_frame(self._raw_with_last_3(b24, b25, b26), chip=2) is True
+
+        # Chip 1 count should be 0 (no spikes seen)
+        assert hw._spike_count[1] == 0
+        assert hw._spike_count[2] == 0
 
     def test_threshold_property_clamps_minimum(self):
         """spike_threshold property enforces min=0 (except -1)."""
@@ -287,9 +324,9 @@ class TestRegisterState:
         hw = PiEEGHardware.__new__(PiEEGHardware)
         hw._register_state = {}
         hw._num_channels = 8
-        hw._last_valid_value = None
-        hw._spike_count = 0
-        hw._consecutive_rejects = 0
+        hw._last_valid = {1: None, 2: None}
+        hw._spike_count = {1: 0, 2: 0}
+        hw._consecutive_rejects = {1: 0, 2: 0}
         hw._spike_threshold = SPIKE_THRESHOLD
         hw._spike_reset_after = SPIKE_RESET_AFTER
         return hw

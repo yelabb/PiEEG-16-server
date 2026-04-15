@@ -82,8 +82,15 @@ SPI_MODE = 0b01
 SPI_BITS = 8
 BYTES_PER_READ = 27  # 3 status + 8 channels * 3 bytes
 
-# --- Expected status header from ADC chip 2 ---
-EXPECTED_STATUS = (192, 0, 8)  # 0xC0, 0x00, 0x08
+# --- Expected status header from ADC chips ---
+# Chip 1 status: high nibble 0xC = 1100b (4 MSBs of CONFIG1 readback)
+# followed by 5 GPIO + LOFF_STATP/N bits (vary by wiring, mask below).
+# Chip 2 has a fixed expected tuple from the reference script.
+EXPECTED_STATUS_2 = (192, 0, 8)  # 0xC0, 0x00, 0x08 (chip 2)
+# For chip 1 we only check the high nibble (0xC0) — lower bits depend on
+# GPIO/LOFF configuration which varies across boards.
+STATUS_HIGH_MASK = 0xF0
+STATUS_HIGH_EXPECTED = 0xC0
 
 # --- Spike detection defaults (matches not_spike script) ---
 SPIKE_THRESHOLD = 5000  # max allowed jump in raw 24-bit signed value
@@ -119,9 +126,10 @@ class PiEEGHardware:
         self._drdy2_fd = -1
         self._spi1 = None
         self._spi2 = None
-        self._last_valid_value: int | None = None
-        self._spike_count = 0
-        self._consecutive_rejects = 0
+        # Per-chip spike detection state (keyed by chip number 1 or 2)
+        self._last_valid: dict[int, int | None] = {1: None, 2: None}
+        self._spike_count: dict[int, int] = {1: 0, 2: 0}
+        self._consecutive_rejects: dict[int, int] = {1: 0, 2: 0}
         self._spike_threshold = SPIKE_THRESHOLD
         self._spike_reset_after = SPIKE_RESET_AFTER
         self._register_state: dict[int, int] = {}
@@ -198,6 +206,15 @@ class PiEEGHardware:
         # Read 27 bytes from ADC chip 1
         raw1 = self._spi1.readbytes(BYTES_PER_READ)
 
+        # ── Validate chip 1 ────────────────────────────────────────────
+        # Status byte check: high nibble must be 0xC (CONFIG1 readback)
+        if (raw1[0] & STATUS_HIGH_MASK) != STATUS_HIGH_EXPECTED:
+            return None
+
+        # Spike detection on chip 1 (was missing — caused ch 1-8 spikes)
+        if not self._is_valid_frame(raw1, chip=1):
+            return None
+
         if self._num_channels == 16:
             # Wait for chip 2 DRDY falling edge before reading
             self._wait_drdy2()
@@ -205,12 +222,12 @@ class PiEEGHardware:
             raw2 = self._spi2.readbytes(BYTES_PER_READ)
             self._cs_set(1)
 
-            # Spike detection: check last channel of chip 2 (bytes 24-26)
-            if not self._is_valid_frame(raw2):
+            # Validate status bytes from chip 2
+            if (raw2[0], raw2[1], raw2[2]) != EXPECTED_STATUS_2:
                 return None
 
-            # Validate status bytes from chip 2
-            if (raw2[0], raw2[1], raw2[2]) != EXPECTED_STATUS:
+            # Spike detection on chip 2
+            if not self._is_valid_frame(raw2, chip=2):
                 return None
 
             channels = []
@@ -218,17 +235,17 @@ class PiEEGHardware:
             channels.extend(self._decode_channels(raw2))
             return channels
         else:
-            # 8-channel mode: spike detection on chip 1
-            if not self._is_valid_frame(raw1):
-                return None
             return self._decode_channels(raw1)
 
-    def _is_valid_frame(self, raw: list[int]) -> bool:
-        """Spike detection matching the original not_spike script.
+    def _is_valid_frame(self, raw: list[int], chip: int = 1) -> bool:
+        """Per-chip spike detection matching the original not_spike script.
 
         Checks the last 3 bytes (bytes 24-26) of the SPI read as a signed
         24-bit integer. If the jump from the previous valid value exceeds
         SPIKE_THRESHOLD, the frame is considered corrupted.
+
+        Each chip maintains its own baseline so that chip 1 and chip 2
+        don't interfere with each other's detection.
 
         A threshold of -1 disables spike rejection entirely.
         """
@@ -239,30 +256,32 @@ class PiEEGHardware:
         if raw[24] & 0x80:
             combined -= 1 << 24
 
-        if self._last_valid_value is None:
-            self._last_valid_value = combined
+        if self._last_valid[chip] is None:
+            self._last_valid[chip] = combined
             return False  # first frame is always skipped, matching original
 
-        if abs(combined - self._last_valid_value) > self._spike_threshold:
-            self._spike_count += 1
-            self._consecutive_rejects += 1
-            if self._consecutive_rejects >= self._spike_reset_after:
+        if abs(combined - self._last_valid[chip]) > self._spike_threshold:
+            self._spike_count[chip] += 1
+            self._consecutive_rejects[chip] += 1
+            if self._consecutive_rejects[chip] >= self._spike_reset_after:
                 # Electrode contact likely changed — accept new baseline
                 logger.info(
-                    "Spike filter reset after %d consecutive rejects "
+                    "Spike filter chip %d reset after %d consecutive rejects "
                     "(old=%d, new=%d)",
-                    self._consecutive_rejects,
-                    self._last_valid_value,
+                    chip,
+                    self._consecutive_rejects[chip],
+                    self._last_valid[chip],
                     combined,
                 )
-                self._last_valid_value = combined
-                self._consecutive_rejects = 0
+                self._last_valid[chip] = combined
+                self._consecutive_rejects[chip] = 0
                 return True
-            logger.debug("Spike detected (count: %d)", self._spike_count)
+            logger.debug("Spike detected chip %d (count: %d)",
+                         chip, self._spike_count[chip])
             return False
 
-        self._last_valid_value = combined
-        self._consecutive_rejects = 0
+        self._last_valid[chip] = combined
+        self._consecutive_rejects[chip] = 0
         return True
 
     def wait_for_drdy(self):
@@ -294,8 +313,8 @@ class PiEEGHardware:
         self._register_state.update(reg_map)
         # Reset spike filter — signal level changes after config, old baseline
         # would cause false rejections (e.g. normal→shorted: ±50µV → ±2µV)
-        self._last_valid_value = None
-        self._consecutive_rejects = 0
+        self._last_valid = {1: None, 2: None}
+        self._consecutive_rejects = {1: 0, 2: 0}
         logger.info("Registers configured: %s", {hex(k): hex(v) for k, v in reg_map.items()})
 
     def set_input_short(self):
