@@ -10,6 +10,8 @@ import asyncio
 import threading
 import time
 
+from .spike_filter import HampelFilter
+
 SAMPLE_RATE = 250  # Hz
 SAMPLE_INTERVAL = 1.0 / SAMPLE_RATE  # 4 ms
 
@@ -32,6 +34,8 @@ class AcquisitionLoop:
         self._thread: threading.Thread | None = None
         self._sample_count = 0
         self._settle_remaining = 0
+        # Device-agnostic Hampel spike filter (runs in acquisition thread)
+        self._hampel = HampelFilter(num_channels=hardware.num_channels)
         # Default subscriber for backward compat (.queue property)
         self._default_queue = self.subscribe()
 
@@ -39,6 +43,11 @@ class AcquisitionLoop:
     def num_channels(self) -> int:
         """Number of channels provided by the underlying hardware."""
         return self._hw.num_channels
+
+    @property
+    def hampel(self) -> HampelFilter:
+        """Access the Hampel spike filter for configuration."""
+        return self._hampel
 
     def subscribe(self, maxsize: int = 2048) -> asyncio.Queue:
         """Create and return a new queue that receives every frame."""
@@ -83,6 +92,7 @@ class AcquisitionLoop:
         """
         self.stop()
         self._hw.configure_registers(reg_map)
+        self._hampel.reset()
         self._settle_remaining = _SETTLE_FRAMES
         self.start()
 
@@ -98,6 +108,7 @@ class AcquisitionLoop:
         """Generate synthetic data at 250 Hz for testing without hardware."""
         while not self._stop_event.is_set():
             sample = self._hw.read_sample()
+            sample = self._hampel.apply(sample)
             self._sample_count += 1
             frame = {
                 "t": round(time.time(), 6),
@@ -145,6 +156,7 @@ class AcquisitionLoop:
                 self._settle_remaining -= 1
                 continue
 
+            sample = self._hampel.apply(sample)
             self._sample_count += 1
             timestamp = time.time()
 
@@ -201,6 +213,7 @@ class AcquisitionLoop:
                 time.sleep(SAMPLE_INTERVAL)
                 continue
 
+            sample = self._hampel.apply(sample)
             self._sample_count += 1
             frame = {
                 "t": round(time.time(), 6),

@@ -4,6 +4,7 @@ import type {
   UseEEGReturn,
   RecordResult,
   SpikeConfig,
+  HampelConfig,
   WSMessage,
   WSRecordStatusMessage,
   WSSampleMessage,
@@ -27,6 +28,7 @@ export function useEEG(timeWindowSec = 4): UseEEGReturn {
   const [recordElapsed, setRecordElapsed] = useState(0);
   const [recordResult, setRecordResult] = useState<RecordResult | null>(null);
   const [spikeConfig, setSpikeConfig] = useState<SpikeConfig>({ threshold: 5000, reset_after: 50 });
+  const [hampelConfig, setHampelConfig] = useState<HampelConfig>({ enabled: true, window_size: 5, n_sigma: 3.0, replaced_count: 0 });
   const [mock, setMock] = useState(false);
   const recordStartRef = useRef<number | null>(null);
   const recordTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -197,6 +199,12 @@ export function useEEG(timeWindowSec = 4): UseEEGReturn {
           if (sc) setSpikeConfig(sc);
         }
 
+        // Handle Hampel filter config updates
+        if ("hampel_config" in msg) {
+          const hc = (msg as Record<string, unknown>).hampel_config as HampelConfig;
+          if (hc) setHampelConfig(hc);
+        }
+
         if ("status" in msg) {
           // Welcome message — read channel count and mock flag from server
           const welcome = msg as Record<string, unknown>;
@@ -298,6 +306,7 @@ export function useEEG(timeWindowSec = 4): UseEEGReturn {
     recordElapsed,
     recordResult,
     spikeConfig,
+    hampelConfig,
     data,
     dismissRecordResult,
     setPaused,
