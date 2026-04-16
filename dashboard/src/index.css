@@ -1053,6 +1053,78 @@ body {
   background: rgba(251, 146, 60, 0.25);
 }
 
+/* ── Spike Rejection collapsible group ─────────────────────────────── */
+.spike-group {
+  position: relative;
+}
+
+.spike-group-toggle {
+  gap: 6px;
+}
+
+.spike-badge {
+  font-size: 10px;
+  font-weight: 600;
+  opacity: 0.8;
+}
+
+.spike-caret {
+  font-size: 10px;
+  transition: transform 0.15s ease;
+  display: inline-block;
+}
+.spike-caret.open {
+  transform: rotate(180deg);
+}
+
+.spike-group-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 50;
+  background: var(--surface);
+  border: 1px solid var(--border-hover);
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
+  box-shadow: var(--shadow-xl);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 280px;
+  animation: scale-in 0.1s ease-out;
+}
+
+.spike-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.spike-section-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.spike-hint {
+  font-size: 11px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.spike-section-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-left: 4px;
+}
+
+.btn-sm {
+  height: 24px;
+  padding: 0 8px;
+  font-size: 11px;
+}
+
 .xr-overlay {
   position: fixed;
   inset: 0;
