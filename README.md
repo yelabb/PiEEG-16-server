@@ -213,7 +213,7 @@ That's it. Every frame is plain JSON — no SDK, no binary protocol, works in an
 | **Self-update** | Detects pip/git install; checks PyPI or remote; one-click upgrade from dashboard |
 | **Systemd service** | Auto-starts on boot; standard `systemctl` management |
 | **Zero-dep GPIO** | Direct Linux chardev v1 ioctl; stable ABI since Linux 4.8 |
-| **Spike rejection** | Auto-resets after sustained electrode contact changes |
+| **Spike rejection** | Two-layer: hardware delta-threshold + device-agnostic Hampel filter (per-channel median-based replacement) |
 | **Cloud-ready** | Dockerfile + Fly.io config for mock-mode demo hosting |
 
 <sup>[↑ Navigation](#nav)</sup>

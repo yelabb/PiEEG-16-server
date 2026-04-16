@@ -22,7 +22,7 @@ import { useWebhooks } from "./hooks/useWebhooks";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { NUM_CHANNELS } from "./types";
 import { GUIDED_PRESETS } from "./types";
-import type { SelectOption, GuidedPreset } from "./types";
+import type { SelectOption, GuidedPreset, HampelConfig } from "./types";
 
 const DEFAULT_MOBILE = new Set([0, 1, 2, 3]);
 const isDemo = !!import.meta.env.VITE_SERVER_URL;
@@ -43,12 +43,172 @@ const TIME_OPTIONS: SelectOption<number>[] = [
   { value: 16, label: "16s" },
 ];
 
+/* ── Spike Rejection collapsible group ─────────────────────────────── */
+function SpikeRejectionGroup({
+  spikeEnabled, spikeThreshold, spikeResetAfter, lastSpikeThreshold,
+  setSpikeThreshold, setSpikeResetAfter, spikeUserAction,
+  hampelConfig, sendCommand, mock,
+}: {
+  spikeEnabled: boolean;
+  spikeThreshold: number | string;
+  spikeResetAfter: number | string;
+  lastSpikeThreshold: React.MutableRefObject<number>;
+  setSpikeThreshold: (v: number | string) => void;
+  setSpikeResetAfter: (v: number | string) => void;
+  spikeUserAction: React.MutableRefObject<boolean>;
+  hampelConfig: HampelConfig;
+  sendCommand: (msg: Record<string, unknown>) => void;
+  mock: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const anyActive = spikeEnabled || hampelConfig.enabled;
+  const totalReplaced = hampelConfig.replaced_count;
+
+  return (
+    <div className="spike-group">
+      <button
+        className={`btn spike-group-toggle${anyActive ? " active" : ""}`}
+        onClick={() => setOpen((v) => !v)}
+      >
+        Spike Rejection {anyActive ? "ON" : "OFF"}
+        {totalReplaced > 0 && <span className="spike-badge">🛡 {totalReplaced.toLocaleString()}</span>}
+        <span className={`spike-caret${open ? " open" : ""}`}>▾</span>
+      </button>
+
+      {open && (
+        <div className="spike-group-panel">
+          {/* ── Hardware (delta-threshold) ── */}
+          <div className="spike-section">
+            <div className="spike-section-head">
+              <button
+                className={`btn btn-sm${spikeEnabled ? " active" : ""}`}
+                onClick={() => {
+                  spikeUserAction.current = true;
+                  if (spikeEnabled) {
+                    lastSpikeThreshold.current = Math.max(1, Number(spikeThreshold));
+                    setSpikeThreshold(-1);
+                    sendCommand({ cmd: "spike_config", config: { threshold: -1 } });
+                  } else {
+                    const restore = lastSpikeThreshold.current;
+                    setSpikeThreshold(restore);
+                    sendCommand({ cmd: "spike_config", config: { threshold: restore } });
+                  }
+                }}
+              >
+                Hardware
+              </button>
+              <span className="spike-hint">SPI delta-threshold</span>
+            </div>
+            <div className="spike-section-controls">
+              <div className="control-group">
+                <label>Threshold</label>
+                <input
+                  type="number"
+                  value={spikeEnabled ? spikeThreshold : lastSpikeThreshold.current}
+                  min={1} max={100000} step={500}
+                  disabled={!spikeEnabled}
+                  style={{ width: "5.5em" }}
+                  title="Max allowed jump in raw ADC value between consecutive samples"
+                  onChange={(e: ChangeEvent<HTMLInputElement>) => {
+                    setSpikeThreshold(e.target.value);
+                    const v = parseInt(e.target.value);
+                    if (v > 0) {
+                      lastSpikeThreshold.current = v;
+                      sendCommand({ cmd: "spike_config", config: { threshold: v } });
+                    }
+                  }}
+                />
+              </div>
+              <div className="control-group">
+                <label>Reset</label>
+                <input
+                  type="number"
+                  value={spikeResetAfter}
+                  min={1} max={1000} step={5}
+                  disabled={!spikeEnabled}
+                  style={{ width: "4em" }}
+                  title="Re-sync baseline after this many consecutive rejected frames"
+                  onChange={(e: ChangeEvent<HTMLInputElement>) => {
+                    setSpikeResetAfter(e.target.value);
+                    const v = parseInt(e.target.value);
+                    if (v > 0) sendCommand({ cmd: "spike_config", config: { reset_after: v } });
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* ── Hampel (median-based) ── */}
+          <div className="spike-section">
+            <div className="spike-section-head">
+              <button
+                className={`btn btn-sm${hampelConfig.enabled ? " active" : ""}`}
+                onClick={() => sendCommand({ cmd: "hampel_config", config: { enabled: !hampelConfig.enabled } })}
+              >
+                Hampel
+              </button>
+              <span className="spike-hint">per-channel median (all devices)</span>
+            </div>
+            <div className="spike-section-controls">
+              <div className="control-group">
+                <label>Window</label>
+                <select
+                  value={hampelConfig.window_size}
+                  disabled={!hampelConfig.enabled}
+                  title="Sliding window size (samples)"
+                  onChange={(e: ChangeEvent<HTMLSelectElement>) =>
+                    sendCommand({ cmd: "hampel_config", config: { window_size: parseInt(e.target.value) } })
+                  }
+                >
+                  <option value={3}>3</option>
+                  <option value={5}>5</option>
+                  <option value={7}>7</option>
+                  <option value={9}>9</option>
+                  <option value={11}>11</option>
+                </select>
+              </div>
+              <div className="control-group">
+                <label>σ</label>
+                <select
+                  value={hampelConfig.n_sigma}
+                  disabled={!hampelConfig.enabled}
+                  title="Deviation threshold in standard deviations"
+                  onChange={(e: ChangeEvent<HTMLSelectElement>) =>
+                    sendCommand({ cmd: "hampel_config", config: { n_sigma: parseFloat(e.target.value) } })
+                  }
+                >
+                  <option value={2}>2.0</option>
+                  <option value={2.5}>2.5</option>
+                  <option value={3}>3.0</option>
+                  <option value={4}>4.0</option>
+                  <option value={5}>5.0</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* Inject button (mock only) */}
+          {mock && (
+            <button
+              className="btn btn-inject-spike btn-sm"
+              onClick={() => sendCommand({ cmd: "inject_spike", count: 1 })}
+              title="Inject a synthetic spike into the mock data stream (testing only)"
+            >
+              ⚡ Inject Spike
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function App() {
   const [view, setView] = useState<ViewState>("live");
   const [selectedSession, setSelectedSession] = useState<string | null>(null);
   const [paused, setPaused] = useState(false);
   const [showFFT, setShowFFT] = useState(true);
-  const [filterEnabled, setFilterEnabled] = useState(false);
+  const [filterEnabled, setFilterEnabled] = useState(true);
   const [lowcut, setLowcut] = useState<number | string>(1);
   const [highcut, setHighcut] = useState<number | string>(40);
   const [timeWindow, setTimeWindow] = useState(4);
@@ -407,7 +567,7 @@ export default function App() {
           className={`btn${filterEnabled ? " active" : ""}`}
           onClick={toggleFilter}
         >
-          Filter: {filterEnabled ? "ON" : "OFF"}
+          Bandpass: {filterEnabled ? "ON" : "OFF"}
         </button>
         <button
           className={`btn${showFFT ? " active" : ""}`}
@@ -550,71 +710,18 @@ export default function App() {
           </select>
         </div>
         <div className="sep" />
-        <button
-          className={`btn${spikeEnabled ? " active" : ""}`}
-          onClick={() => {
-            spikeUserAction.current = true;
-            if (spikeEnabled) {
-              lastSpikeThreshold.current = Math.max(1, Number(spikeThreshold));
-              setSpikeThreshold(-1);
-              eeg.sendCommand({ cmd: "spike_config", config: { threshold: -1 } });
-            } else {
-              const restore = lastSpikeThreshold.current;
-              setSpikeThreshold(restore);
-              eeg.sendCommand({ cmd: "spike_config", config: { threshold: restore } });
-            }
-          }}
-        >
-          Spike Filter: {spikeEnabled ? "ON" : "OFF"}
-        </button>
-        <div className="control-group">
-          <label>Spike</label>
-          <input
-            type="number"
-            value={spikeEnabled ? spikeThreshold : lastSpikeThreshold.current}
-            min={1}
-            max={100000}
-            step={500}
-            disabled={!spikeEnabled}
-            style={{ width: "5.5em" }}
-            title="Max allowed jump in raw ADC value between consecutive samples"
-            onChange={(e: ChangeEvent<HTMLInputElement>) => {
-              setSpikeThreshold(e.target.value);
-              const v = parseInt(e.target.value);
-              if (v > 0) {
-                lastSpikeThreshold.current = v;
-                eeg.sendCommand({ cmd: "spike_config", config: { threshold: v } });
-              }
-            }}
-          />
-        </div>
-        <div className="control-group">
-          <label>Reset</label>
-          <input
-            type="number"
-            value={spikeResetAfter}
-            min={1}
-            max={1000}
-            step={5}
-            disabled={!spikeEnabled}
-            style={{ width: "4em" }}
-            title="Re-sync baseline after this many consecutive rejected frames"
-            onChange={(e: ChangeEvent<HTMLInputElement>) => {
-              setSpikeResetAfter(e.target.value);
-              const v = parseInt(e.target.value);
-              if (v > 0) eeg.sendCommand({ cmd: "spike_config", config: { reset_after: v } });
-            }}
-          />
-        </div>
-        {eeg.mock && (
-          <button
-            className="btn btn-inject-spike"
-            onClick={() => eeg.sendCommand({ cmd: "inject_spike", count: 1 })}
-            title="Inject a synthetic spike into the mock data stream (testing only)"
-          >
-            ⚡ Inject Spike
-          </button>
-        )}
+        <SpikeRejectionGroup
+          spikeEnabled={spikeEnabled}
+          spikeThreshold={spikeThreshold}
+          spikeResetAfter={spikeResetAfter}
+          lastSpikeThreshold={lastSpikeThreshold}
+          setSpikeThreshold={setSpikeThreshold}
+          setSpikeResetAfter={setSpikeResetAfter}
+          spikeUserAction={spikeUserAction}
+          hampelConfig={eeg.hampelConfig}
+          sendCommand={eeg.sendCommand}
+          mock={eeg.mock}
+        />
       </div>
 
       {/* Channel selector */}

@@ -53,6 +53,7 @@ class PiEEGServer:
         self._num_channels = num_channels
         self._clients: set[websockets.WebSocketServerProtocol] = set()
         self._filter: MultichannelFilter | None = None
+        self.enable_filter()  # filter on by default
         self._queue = acquisition.subscribe()
         self._recorder: Recorder | None = None
         self._recorder_task: asyncio.Task | None = None
@@ -151,6 +152,7 @@ class PiEEGServer:
             "mock": self._acq._mock,
             "lsl_status": self._lsl_bridge.status() if self._lsl_bridge else {"running": False},
             "spike_config": self._get_spike_config(),
+            "hampel_config": self._get_hampel_config(),
         }
         welcome.update(self._get_record_status())
         await ws.send(json.dumps(welcome))
@@ -221,6 +223,8 @@ class PiEEGServer:
             await self._ws_spike_config(ws, msg)
         elif cmd == "inject_spike":
             await self._ws_inject_spike(ws, msg)
+        elif cmd == "hampel_config":
+            await self._ws_hampel_config(ws, msg)
         # ── Register / noise test commands ─────────────────────────────────
         elif cmd == "reg_write":
             await self._ws_reg_write(ws, msg)
@@ -296,6 +300,8 @@ class PiEEGServer:
     async def _broadcast_loop(self):
         """Continuously read frames from the acquisition queue and broadcast."""
         queue = self._queue
+        _hampel_frame = 0
+        _hampel_last_count = 0
 
         while True:
             frame = await queue.get()
@@ -317,6 +323,20 @@ class PiEEGServer:
                     stale.add(ws)
 
             self._clients -= stale
+
+            # Emit Hampel replaced_count at ~1 Hz (every 250 frames)
+            _hampel_frame += 1
+            if _hampel_frame >= 250:
+                _hampel_frame = 0
+                count = self._acq.hampel.replaced_count
+                if count != _hampel_last_count:
+                    _hampel_last_count = count
+                    hpayload = json.dumps({"hampel_config": self._get_hampel_config()})
+                    for ws in list(self._clients):
+                        try:
+                            await ws.send(hpayload)
+                        except websockets.ConnectionClosed:
+                            pass
 
     # ── Webhook WebSocket handlers ─────────────────────────────
 
@@ -562,6 +582,37 @@ class PiEEGServer:
         self._acq._hw.inject_spike(count)
         logger.info("Injected %d synthetic spike(s)", count)
         await ws.send(json.dumps({"inject_spike": {"ok": True, "count": count}}))
+
+    # ── Hampel filter config ───────────────────────────────────────────
+
+    def _get_hampel_config(self) -> dict:
+        return self._acq.hampel.config()
+
+    async def _ws_hampel_config(self, ws, msg: dict):
+        """Get or set Hampel spike filter parameters."""
+        hampel = self._acq.hampel
+        config = msg.get("config")
+        if config and isinstance(config, dict):
+            if "enabled" in config:
+                hampel.enabled = bool(config["enabled"])
+            if "window_size" in config:
+                hampel.window_size = int(config["window_size"])
+            if "n_sigma" in config:
+                hampel.n_sigma = float(config["n_sigma"])
+            logger.info("Hampel config updated: enabled=%s, window=%d, n_sigma=%.1f",
+                        hampel.enabled, hampel.window_size, hampel.n_sigma)
+        await self._broadcast_hampel_config()
+
+    async def _broadcast_hampel_config(self):
+        """Push current Hampel config to all connected clients."""
+        payload = json.dumps({"hampel_config": self._get_hampel_config()})
+        stale = set()
+        for ws in list(self._clients):
+            try:
+                await ws.send(payload)
+            except websockets.ConnectionClosed:
+                stale.add(ws)
+        self._clients -= stale
 
     # ── Register / noise test handlers ─────────────────────────────────
 

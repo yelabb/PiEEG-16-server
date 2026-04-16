@@ -112,7 +112,7 @@ The dashboard includes a visual **Register panel** for register configuration wi
 3. Acquisition thread pauses gracefully
 4. SPI sequence: `STOP` → `SDATAC` → register writes → `RDATAC` → `START`
 5. First 25 frames (~100 ms) discarded for ADC settling
-6. Spike filter baseline resets to avoid false rejections
+6. Spike filter baseline resets to avoid false rejections; Hampel filter buffers are cleared
 7. Updated register state broadcast to all connected clients
 
 <Callout type="warning">

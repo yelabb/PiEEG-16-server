@@ -91,6 +91,32 @@ async function connectAuthenticated(code: string): Promise<WebSocket> {
 {"cmd": "lsl_status"}
 ```
 
+### Spike Filter
+
+Configure the hardware delta-threshold spike rejection (SPI boards only):
+
+```json
+{"cmd": "spike_config"}
+{"cmd": "spike_config", "config": {"threshold": 200, "reset_after": 50}}
+```
+
+### Hampel Filter
+
+Device-agnostic per-channel Hampel spike filter (works on all devices):
+
+```json
+{"cmd": "hampel_config"}
+{"cmd": "hampel_config", "config": {"enabled": true, "window_size": 5, "n_sigma": 3.0}}
+```
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `enabled` | bool | `true` | Toggle the filter on/off |
+| `window_size` | int | `5` | Sliding window length (odd, ≥ 3) |
+| `n_sigma` | float | `3.0` | Outlier threshold in MAD units (≥ 1.0) |
+
+Server responds with the current config including `replaced_count`.
+
 ### ADS1299 Registers
 
 Real-time register configuration for PiEEG boards. See [Register Configuration](/features/registers) for full details.
@@ -124,7 +150,9 @@ Sent on connect:
   "sample_rate": 250,
   "channels": 16,
   "filter": false,
-  "recording": false
+  "recording": false,
+  "spike_config": { "enabled": true, "threshold": 200 },
+  "hampel_config": { "enabled": true, "window_size": 5, "n_sigma": 3.0, "replaced_count": 0 }
 }
 ```
 

@@ -1,6 +1,6 @@
 import { useRef, useEffect, useState, memo, useCallback } from "react";
 import type { EEGData } from "../types";
-import { NUM_CHANNELS, SAMPLE_RATE, TRACE_COLORS } from "../types";
+import { SAMPLE_RATE, TRACE_COLORS } from "../types";
 
 const UPDATE_INTERVAL_MS = 500;
 
@@ -94,10 +94,11 @@ const StatsPanel = memo(function StatsPanel({ eegData }: StatsPanelProps) {
       const wi = eegData.writeIndex.current;
       const count = eegData.samplesInBuffer.current;
       const bufSize = eegData.bufferSize;
+      const nCh = eegData.numChannels;
       if (!bufs || count < 10) return;
 
       const newRows: ChannelStatsRow[] = [];
-      for (let ch = 0; ch < NUM_CHANNELS; ch++) {
+      for (let ch = 0; ch < nCh; ch++) {
         const stats = computeStats(bufs[ch], count, wi, bufSize);
         stats.ch = ch;
         newRows.push(stats);
@@ -174,7 +175,7 @@ const StatsPanel = memo(function StatsPanel({ eegData }: StatsPanelProps) {
       <div className="stats-toolbar">
         <span className="stats-title">Signal Statistics</span>
         <span className="stats-meta">
-          16 channels · {SAMPLE_RATE} Hz · 2s window
+          {eegData.numChannels} channels · {SAMPLE_RATE} Hz · 2s window
         </span>
         <button className="btn stats-btn-export" onClick={downloadCSV} title="Download stats as CSV">
           ⬇ CSV

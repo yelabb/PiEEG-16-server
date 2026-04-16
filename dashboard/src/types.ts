@@ -163,6 +163,13 @@ export interface SpikeConfig {
   reset_after: number;
 }
 
+export interface HampelConfig {
+  enabled: boolean;
+  window_size: number;
+  n_sigma: number;
+  replaced_count: number;
+}
+
 // ── useEEG hook return type ──────────────────────────────────────────────
 
 export interface UseEEGReturn {
@@ -176,6 +183,7 @@ export interface UseEEGReturn {
   recordElapsed: number;
   recordResult: RecordResult | null;
   spikeConfig: SpikeConfig;
+  hampelConfig: HampelConfig;
   data: EEGData;
   dismissRecordResult: () => void;
   setPaused: (v: boolean) => void;
