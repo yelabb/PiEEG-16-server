@@ -1,4 +1,4 @@
-import { useState, useCallback, type FormEvent, type KeyboardEvent } from "react";
+import { useState, useCallback, useEffect, type FormEvent, type KeyboardEvent } from "react";
 
 /** Compute the default WS URL the same way useEEG does. */
 function defaultWsUrl(): string {
@@ -21,6 +21,14 @@ interface Props {
 export default function SessionLobby({ onConnect }: Props) {
   const [serverUrl, setServerUrl] = useState(defaultWsUrl);
   const [sessionCode, setSessionCode] = useState("");
+  const [serverInfo, setServerInfo] = useState<{ version: string; branch: string | null } | null>(null);
+
+  useEffect(() => {
+    fetch("/api/info")
+      .then((r) => r.json())
+      .then((d) => { if (d.version) setServerInfo(d); })
+      .catch(() => {});
+  }, []);
 
   const handleCreate = useCallback(() => {
     const url = serverUrl.trim();
@@ -53,10 +61,17 @@ export default function SessionLobby({ onConnect }: Props) {
     <div className="lobby-backdrop">
       <div className="lobby-card">
         {/* Logo */}
-        <div className="lobby-logo">
-          <span className="lobby-logo-pi">Pi</span>
-          <span className="lobby-logo-eeg">EEG</span>
-        </div>
+        <img
+          src="/logo.png"
+          alt="PiEEG"
+          className="lobby-logo-img"
+        />
+        <div className="lobby-title">PiEEG-server</div>
+        {serverInfo && (
+          <span className="lobby-version">
+            v{serverInfo.version}{serverInfo.branch ? ` · ${serverInfo.branch}` : ""}
+          </span>
+        )}
         <p className="lobby-subtitle">
           
         </p>

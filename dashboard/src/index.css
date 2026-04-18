@@ -4745,6 +4745,28 @@ body {
   margin-bottom: 4px;
 }
 
+.lobby-logo-img {
+  width: 120px;
+  height: 120px;
+  object-fit: contain;
+  margin-bottom: 8px;
+}
+
+.lobby-title {
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--text);
+  margin-bottom: 2px;
+}
+
+.lobby-version {
+  font-size: 12px;
+  font-family: var(--mono);
+  color: var(--text-dim);
+  margin-bottom: 4px;
+}
+
 .lobby-logo-pi { color: var(--text); }
 .lobby-logo-eeg { color: var(--accent); }
 
