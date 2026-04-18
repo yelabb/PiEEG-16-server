@@ -15,7 +15,9 @@ interface Props {
 }
 
 export default function SessionLobby({ onConnect }: Props) {
-  const [serverUrl, setServerUrl] = useState(defaultWsUrl);
+  const [serverUrl, setServerUrl] = useState(
+    () => import.meta.env.VITE_SERVER_URL ? FLY_DEMO_URL : defaultWsUrl()
+  );
   const [sessionCode, setSessionCode] = useState("");
   const [serverInfo, setServerInfo] = useState<{ version: string; branch: string | null } | null>(null);
 
