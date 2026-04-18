@@ -294,10 +294,22 @@ def _setup_rich_logging(verbose=False, default_level=logging.INFO):
     return console
 
 
+_LOGO = r"""[bold cyan]
+    ████  █  ████ ████  █████
+    █  █     █    █     █
+    ████  █  ███  ███   █  ██
+    █     █  █    █     █   █
+    █     █  ████ ████  █████[/bold cyan]
+                [dim]s e r v e r[/dim]"""
+
+
 def _print_startup_panel(console, args, device_label, num_ch, local_ip, hostname):
     """Print a rich panel with server info and endpoints."""
     from rich.panel import Panel
     from rich.table import Table
+    from rich.text import Text
+
+    console.print(_LOGO, highlight=False)
 
     table = Table(show_header=False, box=None, padding=(0, 1), expand=True)
     table.add_column("label", style="dim", width=12, no_wrap=True)
