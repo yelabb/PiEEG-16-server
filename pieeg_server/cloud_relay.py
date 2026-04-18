@@ -18,6 +18,7 @@ import asyncio
 import json
 import logging
 import time
+from urllib.parse import urlparse, urlencode, urlunparse, parse_qs
 
 import websockets
 
@@ -65,7 +66,12 @@ class CloudRelayBridge:
         """
         self._running = True
         self._error = None
-        url = f"{self._upstream_url}?token={self._token}"
+
+        # Build URL safely, merging token into query params
+        parsed = urlparse(self._upstream_url)
+        qs = parse_qs(parsed.query)
+        qs["token"] = [self._token]
+        url = urlunparse(parsed._replace(query=urlencode(qs, doseq=True)))
 
         logger.info("Cloud relay connecting to %s", self._upstream_url)
 

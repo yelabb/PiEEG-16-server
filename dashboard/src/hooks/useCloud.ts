@@ -16,6 +16,7 @@ import type {
 
 const CLOUD_URL = "https://pieeg-cloud.fly.dev";
 const STORAGE_KEY = "pieeg_cloud_tokens";
+const EMAIL_STORAGE_KEY = "pieeg_cloud_email";
 export const RELAY_MAX_MINUTES = 30;
 
 export interface UseCloudReturn {
@@ -32,7 +33,7 @@ export interface UseCloudReturn {
   sessions: CloudSession[];
   sessionsLoading: boolean;
   refreshSessions: () => Promise<void>;
-  uploadSession: (filename: string, downloadUrl: string) => Promise<void>;
+  uploadSession: (filename: string, downloadUrl: string, meta?: { channels?: number; sampleRate?: number; duration?: number }) => Promise<void>;
   deleteSession: (id: string) => Promise<void>;
   downloadSession: (id: string) => Promise<void>;
   uploading: boolean;
@@ -73,7 +74,7 @@ function clearTokens() {
 export function useCloud(
   sendCommand: (cmd: Record<string, unknown>) => void,
 ): UseCloudReturn {
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(() => localStorage.getItem(EMAIL_STORAGE_KEY) || "");
   const [authStep, setAuthStep] = useState<"idle" | "otp_sent" | "verifying" | "logged_in">("idle");
   const [authError, setAuthError] = useState<string | null>(null);
   const [tokens, setTokens] = useState<CloudTokens | null>(loadTokens);
@@ -88,6 +89,7 @@ export function useCloud(
   const relayInfoRef = useRef<CloudRelayInfo | null>(null);
   const relayStartRef = useRef<number | null>(null);
   const relayTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const stopRelayRef = useRef<() => void>(() => {});
 
   const loggedIn = authStep === "logged_in";
 
@@ -100,7 +102,7 @@ export function useCloud(
         setRelayElapsed(elapsed);
         if (elapsed >= RELAY_MAX_MINUTES * 60) {
           // Auto-stop: max session length reached
-          stopRelay();
+          stopRelayRef.current();
         }
       }, 1000);
     } else {
@@ -114,7 +116,7 @@ export function useCloud(
     return () => {
       if (relayTimerRef.current) clearInterval(relayTimerRef.current);
     };
-  }, [relayStatus.running]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [relayStatus.running]);
 
   // ── Restore session on mount ────────────────────────────────────────
   useEffect(() => {
@@ -230,7 +232,9 @@ export function useCloud(
       }).catch(() => {});
     }
     clearTokens();
+    localStorage.removeItem(EMAIL_STORAGE_KEY);
     setTokens(null);
+    setEmail("");
     setAuthStep("idle");
     setSessions([]);
     setRelayShareUrl(null);
@@ -258,7 +262,7 @@ export function useCloud(
     if (loggedIn) refreshSessions();
   }, [loggedIn, refreshSessions]);
 
-  const uploadSession = useCallback(async (filename: string, downloadUrl: string) => {
+  const uploadSession = useCallback(async (filename: string, downloadUrl: string, meta?: { channels?: number; sampleRate?: number; duration?: number }) => {
     if (!tokens?.access.token) return;
     setUploading(true);
     setUploadError(null);
@@ -273,9 +277,9 @@ export function useCloud(
         method: "POST",
         body: JSON.stringify({
           label: filename.replace(/\.csv$/i, ""),
-          channels: 16,
-          sampleRate: 250,
-          duration: 0,
+          channels: meta?.channels ?? 16,
+          sampleRate: meta?.sampleRate ?? 250,
+          duration: meta?.duration ?? 0,
           fileBytes: csvBlob.size,
         }),
       });
@@ -371,6 +375,9 @@ export function useCloud(
       relayInfoRef.current = null;
     }
   }, [sendCommand, tokens?.access.token]);
+
+  // Keep stopRelayRef in sync so timer effect always calls latest closure
+  stopRelayRef.current = stopRelay;
 
   return {
     email,

@@ -22,7 +22,7 @@ import ExperiencesPage from "./components/ExperiencesPage";
 import { useWebhooks } from "./hooks/useWebhooks";
 import { useCloud, RELAY_MAX_MINUTES } from "./hooks/useCloud";
 import ErrorBoundary from "./components/ErrorBoundary";
-import { NUM_CHANNELS } from "./types";
+import { NUM_CHANNELS, SAMPLE_RATE } from "./types";
 import { GUIDED_PRESETS } from "./types";
 import type { SelectOption, GuidedPreset, HampelConfig } from "./types";
 
@@ -973,7 +973,11 @@ export default function App({ wsUrl, onDisconnect }: { wsUrl?: string; onDisconn
                   disabled={cloud.uploading}
                   onClick={() => {
                     const r = eeg.recordResult!;
-                    cloud.uploadSession(r.filename, r.downloadUrl);
+                    cloud.uploadSession(r.filename, r.downloadUrl, {
+                      channels: eeg.numChannels,
+                      sampleRate: SAMPLE_RATE,
+                      duration: r.duration,
+                    });
                   }}
                 >
                   {cloud.uploading ? "Uploading…" : "Upload to Cloud"}

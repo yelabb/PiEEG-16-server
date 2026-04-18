@@ -38,12 +38,7 @@ export default function SessionLobby({ onConnect }: Props) {
       e?.preventDefault();
       const code = sessionCode.trim();
       if (!code) return;
-      // If it looks like a full URL, use as-is; otherwise treat as session code
-      if (/^wss?:\/\//.test(code)) {
-        onConnect(code);
-      } else {
-        onConnect(code);
-      }
+      onConnect(code);
     },
     [sessionCode, onConnect],
   );
@@ -70,9 +65,6 @@ export default function SessionLobby({ onConnect }: Props) {
             v{serverInfo.version}{serverInfo.branch ? ` · ${serverInfo.branch}` : ""}
           </span>
         )}
-        <p className="lobby-subtitle">
-          
-        </p>
 
         {/* ── Connect ───────────────────────────────────── */}
         <div className="lobby-section">

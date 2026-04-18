@@ -98,14 +98,22 @@ export function useEEG(timeWindowSec = 4, wsUrl?: string): UseEEGReturn {
 
     if (wsUrl) {
       // Explicit URL from session lobby
-      wsBase = wsUrl;
+      let parsed: URL;
       try {
-        const parsed = new URL(wsUrl);
-        const httpScheme = parsed.protocol === "wss:" ? "https" : "http";
-        tokenUrl = `${httpScheme}://${parsed.host}/auth/ws-token`;
+        parsed = new URL(wsUrl);
       } catch {
-        tokenUrl = `/auth/ws-token`;
+        console.error("Invalid wsUrl provided to useEEG:", wsUrl);
+        return;
       }
+
+      if (parsed.protocol !== "ws:" && parsed.protocol !== "wss:") {
+        console.error("Unsupported wsUrl protocol provided to useEEG:", parsed.protocol);
+        return;
+      }
+
+      wsBase = parsed.toString();
+      const httpScheme = parsed.protocol === "wss:" ? "https" : "http";
+      tokenUrl = `${httpScheme}://${parsed.host}/auth/ws-token`;
     } else {
       const serverUrl = import.meta.env.VITE_SERVER_URL as string | undefined;
 

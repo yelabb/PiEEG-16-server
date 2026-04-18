@@ -573,8 +573,16 @@ class PiEEGServer:
             self._cloud_relay.stop()
             try:
                 await asyncio.wait_for(self._cloud_relay_task, timeout=2.0)
-            except (asyncio.TimeoutError, asyncio.CancelledError):
+            except asyncio.TimeoutError:
+                self._cloud_relay_task.cancel()
+                try:
+                    await self._cloud_relay_task
+                except (asyncio.CancelledError, Exception):
+                    pass
+            except asyncio.CancelledError:
                 pass
+            self._cloud_relay = None
+            self._cloud_relay_task = None
 
         self._cloud_relay = CloudRelayBridge(self._acq, upstream_url, token)
         self._cloud_relay_task = asyncio.create_task(self._cloud_relay.run())
@@ -588,9 +596,17 @@ class PiEEGServer:
             self._cloud_relay.stop()
             try:
                 await asyncio.wait_for(self._cloud_relay_task, timeout=2.0)
-            except (asyncio.TimeoutError, asyncio.CancelledError):
+            except asyncio.TimeoutError:
+                self._cloud_relay_task.cancel()
+                try:
+                    await self._cloud_relay_task
+                except (asyncio.CancelledError, Exception):
+                    pass
+            except asyncio.CancelledError:
                 pass
             logger.info("Cloud relay stopped via WebSocket command")
+        self._cloud_relay = None
+        self._cloud_relay_task = None
         await self._broadcast_cloud_relay_status()
 
     async def _broadcast_cloud_relay_status(self):
