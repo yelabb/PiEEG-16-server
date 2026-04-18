@@ -34,6 +34,8 @@ from .webhooks import WebhookStore
 from .osc_vrchat import VRChatOSCBridge, OSCConfig
 from .lsl import LSLBridge, LSLConfig  # LSLBridge defers pylsl import to run()
 
+RELAY_MAX_SECONDS = 30 * 60  # 30-minute hard cap, server-side
+
 logger = logging.getLogger("pieeg.server")
 
 DEFAULT_HOST = "0.0.0.0"
@@ -67,6 +69,8 @@ class PiEEGServer:
         self._lsl_task: asyncio.Task | None = None
         self._cloud_relay: CloudRelayBridge | None = None
         self._cloud_relay_task: asyncio.Task | None = None
+        self._cloud_relay_timeout_task: asyncio.Task | None = None
+        self._cloud_relay_meta: dict | None = None  # {relay_id, share_url}
         self._noise_test_running = False
 
     def enable_filter(self, lowcut: float = 1.0, highcut: float = 40.0):
@@ -154,7 +158,7 @@ class PiEEGServer:
             "filter": self._filter is not None,
             "mock": self._acq._mock,
             "lsl_status": self._lsl_bridge.status() if self._lsl_bridge else {"running": False},
-            "cloud_relay_status": self._cloud_relay.status() if self._cloud_relay else {"running": False},
+            "cloud_relay_status": self._get_cloud_relay_status(),
             "spike_config": self._get_spike_config(),
             "hampel_config": self._get_hampel_config(),
         }
@@ -553,10 +557,16 @@ class PiEEGServer:
 
     # ── Cloud Relay WebSocket handlers ─────────────────────────────────
 
+    def _get_cloud_relay_status(self) -> dict:
+        """Build relay status dict including stored meta (relay_id, share_url)."""
+        status = self._cloud_relay.status() if self._cloud_relay else {"running": False}
+        if self._cloud_relay_meta and status.get("running"):
+            status.update(self._cloud_relay_meta)
+        return status
+
     async def _ws_cloud_relay_status(self, ws):
         """Send current cloud relay status to the requesting client."""
-        status = self._cloud_relay.status() if self._cloud_relay else {"running": False}
-        await ws.send(json.dumps({"cloud_relay_status": status}))
+        await ws.send(json.dumps({"cloud_relay_status": self._get_cloud_relay_status()}))
 
     async def _ws_cloud_relay_start(self, ws, msg: dict):
         """Start the cloud relay bridge."""
@@ -569,29 +579,27 @@ class PiEEGServer:
             return
 
         # Stop existing relay if running
-        if self._cloud_relay_task and not self._cloud_relay_task.done():
-            self._cloud_relay.stop()
-            try:
-                await asyncio.wait_for(self._cloud_relay_task, timeout=2.0)
-            except asyncio.TimeoutError:
-                self._cloud_relay_task.cancel()
-                try:
-                    await self._cloud_relay_task
-                except (asyncio.CancelledError, Exception):
-                    pass
-            except asyncio.CancelledError:
-                pass
-            self._cloud_relay = None
-            self._cloud_relay_task = None
+        await self._stop_cloud_relay(broadcast=False)
+
+        # Store meta so all clients can recover share_url after refresh
+        self._cloud_relay_meta = {
+            "relay_id": msg.get("relay_id"),
+            "share_url": msg.get("share_url"),
+        }
 
         self._cloud_relay = CloudRelayBridge(self._acq, upstream_url, token)
         self._cloud_relay_task = asyncio.create_task(self._cloud_relay.run())
+        self._cloud_relay_timeout_task = asyncio.create_task(self._relay_auto_timeout())
         await asyncio.sleep(0)
         logger.info("Cloud relay started via WebSocket command")
         await self._broadcast_cloud_relay_status()
 
     async def _ws_cloud_relay_stop(self, ws):
         """Stop the cloud relay bridge."""
+        await self._stop_cloud_relay()
+
+    async def _stop_cloud_relay(self, *, broadcast: bool = True):
+        """Internal: stop relay, cancel timeout, clear meta, optionally broadcast."""
         if self._cloud_relay and self._cloud_relay_task and not self._cloud_relay_task.done():
             self._cloud_relay.stop()
             try:
@@ -604,15 +612,28 @@ class PiEEGServer:
                     pass
             except asyncio.CancelledError:
                 pass
-            logger.info("Cloud relay stopped via WebSocket command")
+            logger.info("Cloud relay stopped")
+        if self._cloud_relay_timeout_task and not self._cloud_relay_timeout_task.done():
+            self._cloud_relay_timeout_task.cancel()
         self._cloud_relay = None
         self._cloud_relay_task = None
-        await self._broadcast_cloud_relay_status()
+        self._cloud_relay_timeout_task = None
+        self._cloud_relay_meta = None
+        if broadcast:
+            await self._broadcast_cloud_relay_status()
+
+    async def _relay_auto_timeout(self):
+        """Server-side hard cap: stop relay after RELAY_MAX_SECONDS."""
+        try:
+            await asyncio.sleep(RELAY_MAX_SECONDS)
+            logger.info("Cloud relay auto-timeout reached (%d min)", RELAY_MAX_SECONDS // 60)
+            await self._stop_cloud_relay()
+        except asyncio.CancelledError:
+            pass
 
     async def _broadcast_cloud_relay_status(self):
         """Push current cloud relay status to all connected clients."""
-        status = self._cloud_relay.status() if self._cloud_relay else {"running": False}
-        payload = json.dumps({"cloud_relay_status": status})
+        payload = json.dumps({"cloud_relay_status": self._get_cloud_relay_status()})
         stale = set()
         for ws in list(self._clients):
             try:

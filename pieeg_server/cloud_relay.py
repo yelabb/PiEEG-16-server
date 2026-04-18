@@ -44,6 +44,7 @@ class CloudRelayBridge:
         # Telemetry
         self._send_count: int = 0
         self._last_send: float = 0.0
+        self._started_at: float = 0.0
         self._error: str | None = None
 
     def status(self) -> dict:
@@ -52,6 +53,7 @@ class CloudRelayBridge:
             "upstream_url": self._upstream_url,
             "send_count": self._send_count,
             "last_send": self._last_send,
+            "started_at": self._started_at,
             "error": self._error,
         }
 
@@ -66,6 +68,7 @@ class CloudRelayBridge:
         """
         self._running = True
         self._error = None
+        self._started_at = time.time()
 
         # Build URL safely, merging token into query params
         parsed = urlparse(self._upstream_url)

@@ -87,36 +87,49 @@ export function useCloud(
   const [relayLoading, setRelayLoading] = useState(false);
   const [relayElapsed, setRelayElapsed] = useState(0);
   const relayInfoRef = useRef<CloudRelayInfo | null>(null);
-  const relayStartRef = useRef<number | null>(null);
   const relayTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const stopRelayRef = useRef<() => void>(() => {});
 
   const loggedIn = authStep === "logged_in";
 
-  // ── Relay elapsed timer & auto-timeout ──────────────────────────────
+  // ── Relay elapsed timer (seeded from backend started_at) ────────────
   useEffect(() => {
     if (relayStatus.running) {
-      if (!relayStartRef.current) relayStartRef.current = Date.now();
-      relayTimerRef.current = setInterval(() => {
-        const elapsed = Math.floor((Date.now() - relayStartRef.current!) / 1000);
-        setRelayElapsed(elapsed);
-        if (elapsed >= RELAY_MAX_MINUTES * 60) {
-          // Auto-stop: max session length reached
-          stopRelayRef.current();
-        }
-      }, 1000);
+      // Use server timestamp if available (survives refresh), else fall back
+      const startSec = relayStatus.started_at || Date.now() / 1000;
+      const tick = () => {
+        const elapsed = Math.floor(Date.now() / 1000 - startSec);
+        setRelayElapsed(Math.max(0, elapsed));
+      };
+      tick(); // immediate first tick
+      relayTimerRef.current = setInterval(tick, 1000);
+
+      // Recover share_url from backend status after refresh
+      if (!relayShareUrl && relayStatus.share_url) {
+        setRelayShareUrl(relayStatus.share_url);
+      }
+      // Recover relayInfoRef so stopRelay can clean up cloud-side
+      if (!relayInfoRef.current && relayStatus.relay_id && relayStatus.share_url) {
+        relayInfoRef.current = {
+          relayId: relayStatus.relay_id,
+          upstreamUrl: relayStatus.upstream_url ?? "",
+          shareUrl: relayStatus.share_url,
+        };
+      }
     } else {
-      relayStartRef.current = null;
       setRelayElapsed(0);
       if (relayTimerRef.current) {
         clearInterval(relayTimerRef.current);
         relayTimerRef.current = null;
       }
+      setRelayShareUrl(null);
+      relayInfoRef.current = null;
     }
     return () => {
       if (relayTimerRef.current) clearInterval(relayTimerRef.current);
     };
-  }, [relayStatus.running]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [relayStatus.running, relayStatus.started_at]);
 
   // ── Restore session on mount ────────────────────────────────────────
   useEffect(() => {
@@ -357,6 +370,8 @@ export function useCloud(
         cmd: "cloud_relay_start",
         upstream_url: info.upstreamUrl,
         token: tokens.access.token,
+        relay_id: info.relayId,
+        share_url: info.shareUrl,
       });
     } catch (err: unknown) {
       setRelayStatus({ running: false, error: err instanceof Error ? err.message : "Relay failed" });

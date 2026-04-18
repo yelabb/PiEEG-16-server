@@ -4798,6 +4798,27 @@ body {
   font-size: 12px;
 }
 
+.cloud-relay-timer {
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--text-dim);
+  margin-bottom: 12px;
+}
+
+.cloud-relay-elapsed {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.cloud-relay-limit {
+  color: var(--text-dim);
+}
+
+.cloud-relay-warning {
+  color: #f85149;
+  font-weight: 600;
+}
+
 .cloud-dot {
   display: inline-block;
   width: 8px;

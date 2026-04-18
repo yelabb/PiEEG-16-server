@@ -1,5 +1,6 @@
 import { useState, useCallback } from "react";
 import type { UseCloudReturn } from "../hooks/useCloud";
+import { RELAY_MAX_MINUTES } from "../hooks/useCloud";
 import CloudTerms, { hasAcceptedTerms } from "./CloudTerms";
 
 interface Props {
@@ -124,6 +125,18 @@ export default function CloudPanel({ open, onClose, cloud }: Props) {
                       {cloud.relayStatus.send_count?.toLocaleString() ?? 0} frames
                     </span>
                   </div>
+
+                  <div className="cloud-relay-timer">
+                    <span className="cloud-relay-elapsed">
+                      {Math.floor(cloud.relayElapsed / 60).toString().padStart(2, "0")}:
+                      {(cloud.relayElapsed % 60).toString().padStart(2, "0")}
+                    </span>
+                    <span className="cloud-relay-limit"> / {RELAY_MAX_MINUTES}:00</span>
+                    {cloud.relayElapsed >= (RELAY_MAX_MINUTES - 5) * 60 && (
+                      <span className="cloud-relay-warning"> — stopping soon</span>
+                    )}
+                  </div>
+
                   {cloud.relayShareUrl && (
                     <div className="cloud-share">
                       <label className="cloud-label">Share URL</label>
@@ -140,9 +153,9 @@ export default function CloudPanel({ open, onClose, cloud }: Props) {
                         Copy
                       </button>
                       <p className="cloud-hint" style={{ marginTop: 8 }}>
-                        Send this link to anyone — they can open it in their browser
-                        to watch your brainwaves live from anywhere on the internet.
-                        No login required for viewers.
+                        Open this link on <strong>pieeg.vercel.app</strong> or
+                        any local PiEEG dashboard to watch live. No login required
+                        for viewers.
                       </p>
                     </div>
                   )}
@@ -157,13 +170,12 @@ export default function CloudPanel({ open, onClose, cloud }: Props) {
                     <ol className="cloud-relay-steps">
                       <li>Click <strong>Start Live Relay</strong> below</li>
                       <li>Copy the <strong>Share URL</strong> that appears</li>
-                      <li>Send it to anyone (friend, colleague, chat, etc.)</li>
-                      <li>They open the link in any browser — no account needed</li>
-                      <li>They see your live EEG stream in real-time</li>
+                      <li>Open it on <strong>pieeg.vercel.app</strong> or any PiEEG dashboard</li>
+                      <li>Anyone with the link sees your live EEG — no account needed</li>
                     </ol>
                     <p className="cloud-hint">
-                      Your data is streamed in transit only — nothing is recorded
-                      on the server. The relay stops automatically after 30 minutes.
+                      Your data is streamed in transit only — nothing is recorded.
+                      The relay stops automatically after {RELAY_MAX_MINUTES} minutes.
                     </p>
                   </div>
 

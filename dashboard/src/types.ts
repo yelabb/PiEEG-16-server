@@ -383,7 +383,10 @@ export interface CloudRelayStatus {
   upstream_url?: string;
   send_count?: number;
   last_send?: number;
+  started_at?: number;
   error?: string | null;
+  relay_id?: string;
+  share_url?: string;
 }
 
 export interface WSCloudRelayMessage {
