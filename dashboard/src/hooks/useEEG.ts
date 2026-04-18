@@ -112,8 +112,14 @@ export function useEEG(timeWindowSec = 4, wsUrl?: string): UseEEGReturn {
       }
 
       wsBase = parsed.toString();
-      const httpScheme = parsed.protocol === "wss:" ? "https" : "http";
-      tokenUrl = `${httpScheme}://${parsed.host}/auth/ws-token`;
+      // Only fetch a WS token for PiEEG servers (no query params = local server).
+      // Cloud relay share URLs already carry auth in query params.
+      if (parsed.search) {
+        tokenUrl = "";  // skip token fetch
+      } else {
+        const httpScheme = parsed.protocol === "wss:" ? "https" : "http";
+        tokenUrl = `${httpScheme}://${parsed.host}/auth/ws-token`;
+      }
     } else {
       const serverUrl = import.meta.env.VITE_SERVER_URL as string | undefined;
 
@@ -136,6 +142,7 @@ export function useEEG(timeWindowSec = 4, wsUrl?: string): UseEEGReturn {
     }
 
     async function fetchWsToken(): Promise<string | null> {
+      if (!tokenUrl) return null; // cloud relay URLs carry their own auth
       try {
         const res = await fetch(tokenUrl, { credentials: "include" });
         if (!res.ok) return null;
