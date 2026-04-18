@@ -115,11 +115,6 @@ export default function CloudPanel({ open, onClose, cloud }: Props) {
           {/* ── Relay tab ────────────────────────────────────────────── */}
           {tab === "relay" && (
             <div className="cloud-relay">
-              <p className="cloud-hint">
-                Stream live EEG to the cloud so anyone with the share link can
-                watch in real-time.
-              </p>
-
               {cloud.relayStatus.running ? (
                 <>
                   <div className="cloud-relay-live">
@@ -144,6 +139,11 @@ export default function CloudPanel({ open, onClose, cloud }: Props) {
                       >
                         Copy
                       </button>
+                      <p className="cloud-hint" style={{ marginTop: 8 }}>
+                        Send this link to anyone — they can open it in their browser
+                        to watch your brainwaves live from anywhere on the internet.
+                        No login required for viewers.
+                      </p>
                     </div>
                   )}
                   <button className="btn cloud-btn-stop" onClick={cloud.stopRelay}>
@@ -152,6 +152,21 @@ export default function CloudPanel({ open, onClose, cloud }: Props) {
                 </>
               ) : (
                 <>
+                  <div className="cloud-relay-guide">
+                    <p className="cloud-hint"><strong>How it works</strong></p>
+                    <ol className="cloud-relay-steps">
+                      <li>Click <strong>Start Live Relay</strong> below</li>
+                      <li>Copy the <strong>Share URL</strong> that appears</li>
+                      <li>Send it to anyone (friend, colleague, chat, etc.)</li>
+                      <li>They open the link in any browser — no account needed</li>
+                      <li>They see your live EEG stream in real-time</li>
+                    </ol>
+                    <p className="cloud-hint">
+                      Your data is streamed in transit only — nothing is recorded
+                      on the server. The relay stops automatically after 30 minutes.
+                    </p>
+                  </div>
+
                   {cloud.relayStatus.error && (
                     <p className="cloud-error">{cloud.relayStatus.error}</p>
                   )}

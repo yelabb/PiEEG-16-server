@@ -4803,6 +4803,25 @@ body {
   margin-bottom: 6px;
 }
 
+/* Relay guide */
+
+.cloud-relay-guide {
+  margin-bottom: 14px;
+}
+
+.cloud-relay-steps {
+  margin: 8px 0 12px;
+  padding-left: 20px;
+  list-style: decimal;
+}
+
+.cloud-relay-steps li {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.7;
+  margin-bottom: 2px;
+}
+
 /* Sessions section */
 
 .cloud-sessions {
