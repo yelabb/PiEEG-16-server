@@ -321,10 +321,14 @@ def _print_startup_panel(console, args, device_label, num_ch, local_ip, hostname
         table.add_row("Filter", f"{args.lowcut}–{args.highcut} Hz bandpass")
 
     table.add_row("", "")
-    table.add_row("WebSocket", f"[bold]ws://{local_ip}:{args.port}[/bold]")
+    table.add_row("WebSocket", f"[bold]ws://localhost:{args.port}[/bold]")
+    if local_ip not in ("127.0.0.1", "localhost"):
+        table.add_row("", f"ws://{local_ip}:{args.port}  [dim](LAN)[/dim]")
     table.add_row("", f"ws://{hostname}.local:{args.port}  [dim](mDNS)[/dim]")
     if not args.no_dashboard:
-        table.add_row("Dashboard", f"[bold]http://{local_ip}:{args.dashboard_port}[/bold]")
+        table.add_row("Dashboard", f"[bold]http://localhost:{args.dashboard_port}[/bold]")
+        if local_ip not in ("127.0.0.1", "localhost"):
+            table.add_row("", f"http://{local_ip}:{args.dashboard_port}  [dim](LAN)[/dim]")
         table.add_row("", f"http://{hostname}.local:{args.dashboard_port}  [dim](mDNS)[/dim]")
 
     features = []
