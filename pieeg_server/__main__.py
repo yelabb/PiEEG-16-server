@@ -24,12 +24,15 @@ def _check_update():
         with urlopen(url, timeout=3) as resp:
             latest = json.loads(resp.read())["info"]["version"]
         if latest != __version__:
-            print(
-                f"\n  ╔══════════════════════════════════════════════════╗"
-                f"\n  ║  Update available: {__version__} → {latest:<26s}║"
-                f"\n  ║  Run: pip install --upgrade pieeg-server        ║"
-                f"\n  ╚══════════════════════════════════════════════════╝\n"
-            )
+            from rich.console import Console
+            from rich.panel import Panel
+            Console().print(Panel(
+                f"[bold]{__version__}[/bold] → [bold green]{latest}[/bold green]\n"
+                f"Run: [cyan]pip install --upgrade pieeg-server[/cyan]",
+                title="[yellow]Update available[/yellow]",
+                border_style="yellow",
+                padding=(1, 2),
+            ))
     except Exception:
         pass  # no network / not published yet — silently skip
 
@@ -271,6 +274,74 @@ def _device_label(device: str) -> str:
     return f"{prefix}-{num_ch}"
 
 
+def _setup_rich_logging(verbose=False, default_level=logging.INFO):
+    """Configure Rich-enhanced logging. Returns the Console instance."""
+    from rich.console import Console
+    from rich.logging import RichHandler
+
+    console = Console()
+    logging.basicConfig(
+        level=logging.DEBUG if verbose else default_level,
+        format="%(message)s",
+        datefmt="[%X]",
+        handlers=[RichHandler(
+            console=console,
+            rich_tracebacks=True,
+            show_path=False,
+        )],
+    )
+    logging.getLogger("websockets").setLevel(logging.WARNING)
+    return console
+
+
+def _print_startup_panel(console, args, device_label, num_ch, local_ip, hostname):
+    """Print a rich panel with server info and endpoints."""
+    from rich.panel import Panel
+    from rich.table import Table
+
+    table = Table(show_header=False, box=None, padding=(0, 1), expand=True)
+    table.add_column("label", style="dim", width=12, no_wrap=True)
+    table.add_column("value")
+
+    mode = "[yellow]MOCK[/yellow]" if args.mock else "[green]LIVE[/green]"
+    table.add_row("Mode", f"{mode} · {num_ch} channels · 250 Hz")
+    if args.filter:
+        table.add_row("Filter", f"{args.lowcut}–{args.highcut} Hz bandpass")
+
+    table.add_row("", "")
+    table.add_row("WebSocket", f"[bold]ws://{local_ip}:{args.port}[/bold]")
+    table.add_row("", f"ws://{hostname}.local:{args.port}  [dim](mDNS)[/dim]")
+    if not args.no_dashboard:
+        table.add_row("Dashboard", f"[bold]http://{local_ip}:{args.dashboard_port}[/bold]")
+        table.add_row("", f"http://{hostname}.local:{args.dashboard_port}  [dim](mDNS)[/dim]")
+
+    features = []
+    if not getattr(args, 'no_webhooks', False):
+        features.append("webhooks")
+    if getattr(args, 'osc', False):
+        features.append("osc")
+    if getattr(args, 'lsl', False):
+        features.append("lsl")
+    if args.record:
+        features.append(f"rec → {args.record}")
+    if args.monitor:
+        features.append("monitor")
+    if args.auth:
+        features.append("auth")
+    if features:
+        table.add_row("", "")
+        table.add_row("Features", " · ".join(features))
+
+    console.print()
+    console.print(Panel(
+        table,
+        title=f"[bold cyan]🧠 {device_label}[/bold cyan] [dim]v{__version__}[/dim]",
+        border_style="cyan",
+        padding=(1, 2),
+    ))
+    console.print()
+
+
 def _make_hardware(args, logger):
     """Create and open the hardware backend (real, BLE, or mock)."""
     device = getattr(args, "device", "pieeg16")
@@ -383,11 +454,7 @@ def main():
         from .acquisition import AcquisitionLoop
         from .recorder import Recorder
 
-        logging.basicConfig(
-            level=logging.DEBUG if args.verbose else logging.INFO,
-            format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
-            datefmt="%H:%M:%S",
-        )
+        _setup_rich_logging(verbose=args.verbose)
         logger = logging.getLogger("pieeg")
 
         hw = _make_hardware(args, logger)
@@ -419,11 +486,7 @@ def main():
         from .acquisition import AcquisitionLoop
         from .monitor import TerminalMonitor
 
-        logging.basicConfig(
-            level=logging.DEBUG if args.verbose else logging.WARNING,
-            format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
-            datefmt="%H:%M:%S",
-        )
+        _setup_rich_logging(verbose=args.verbose, default_level=logging.WARNING)
         logger = logging.getLogger("pieeg")
 
         hw = _make_hardware(args, logger)
@@ -454,11 +517,7 @@ def main():
     from .server import PiEEGServer, DEFAULT_HOST, DEFAULT_PORT
     from .dashboard import DashboardServer, DEFAULT_DASHBOARD_PORT
 
-    logging.basicConfig(
-        level=logging.DEBUG if args.verbose else logging.INFO,
-        format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
-        datefmt="%H:%M:%S",
-    )
+    console = _setup_rich_logging(verbose=args.verbose)
     logger = logging.getLogger("pieeg")
 
     # --- Hardware ---
@@ -491,7 +550,6 @@ def main():
     # --- Webhooks ---
     if not getattr(args, 'no_webhooks', False):
         server.enable_webhooks()
-        logger.info("Webhooks enabled")
 
     # --- VRChat OSC bridge (optional, auto-starts with --osc) ---
     if getattr(args, 'osc', False):
@@ -585,16 +643,7 @@ def main():
     except socket.gaierror:
         local_ip = "127.0.0.1"
 
-    logger.info("%s server ready:", device_label)
-    logger.info("  WebSocket: ws://%s:%d", local_ip, args.port)
-    logger.info("  WebSocket: ws://%s.local:%d  (mDNS)", hostname, args.port)
-    if not args.no_dashboard:
-        logger.info("  Dashboard: http://%s:%d", local_ip, args.dashboard_port)
-        logger.info("  Dashboard: http://%s.local:%d  (mDNS)", hostname, args.dashboard_port)
-    if args.record:
-        logger.info("  Recording: %s", args.record)
-    if args.monitor:
-        logger.info("  Monitor:   terminal (live)")
+    _print_startup_panel(console, args, device_label, num_ch, local_ip, hostname)
 
     # --- Show access code ---
     if not args.no_dashboard and auth:

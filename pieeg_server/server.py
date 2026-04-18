@@ -52,7 +52,7 @@ class PiEEGServer:
         self._port = port
         self._auth = auth
         self._num_channels = num_channels
-        self._clients: set[websockets.WebSocketServerProtocol] = set()
+        self._clients: set[websockets.ServerConnection] = set()
         self._filter: MultichannelFilter | None = None
         self.enable_filter()  # filter on by default
         self._queue = acquisition.subscribe()
@@ -121,7 +121,7 @@ class PiEEGServer:
             process_request=self._health_check,
         ):
             logger.info(
-                "PiEEG streaming on ws://%s:%d", self._host, self._port
+                "Streaming · ws://%s:%d", self._host, self._port
             )
             # Auto-start bridges if pre-configured (via CLI flags)
             if self._osc_bridge:
@@ -130,7 +130,7 @@ class PiEEGServer:
                 await self._lsl_autostart()
             await self._broadcast_loop()
 
-    async def _handle_client(self, ws: websockets.WebSocketServerProtocol):
+    async def _handle_client(self, ws: websockets.ServerConnection):
         """Handle a new WebSocket connection."""
         peer = ws.remote_address
 
