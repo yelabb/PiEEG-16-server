@@ -50,14 +50,19 @@ export default function SessionLobby({ onConnect }: Props) {
 
   return (
     <div className="lobby-backdrop">
+      <div className="lobby-glow" aria-hidden="true" />
       <div className="lobby-card">
         {/* Logo */}
-        <img
-          src="/logo.png"
-          alt="PiEEG"
-          className="lobby-logo-img"
-        />
-        <div className="lobby-title">PiEEG-server</div>
+        <div className="lobby-logo-wrap">
+          <img
+            src="/logo.png"
+            alt="PiEEG"
+            className="lobby-logo-img"
+          />
+        </div>
+        <div className="lobby-title">
+          Pi<span className="lobby-title-accent">EEG</span>-server
+        </div>
         {serverInfo && (
           <span className="lobby-version">
             v{serverInfo.version}{serverInfo.branch ? ` · ${serverInfo.branch}` : ""}
@@ -67,7 +72,7 @@ export default function SessionLobby({ onConnect }: Props) {
         {/* ── Connect ───────────────────────────────────── */}
         <div className="lobby-section">
           <h2 className="lobby-section-title">
-            <span className="lobby-dot lobby-dot--green" />
+            <span className="lobby-dot lobby-dot--green lobby-dot--pulse" />
             Connect to Server
           </h2>
 
@@ -82,15 +87,25 @@ export default function SessionLobby({ onConnect }: Props) {
           />
 
           <button className="lobby-btn lobby-btn--connect" onClick={handleCreate}>
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{marginRight: 6}}>
+              <path d="M2 8h12M10 4l4 4-4 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
             Connect
           </button>
+
+          <div className="lobby-divider">
+            <span>or</span>
+          </div>
 
           <button
             className="lobby-btn lobby-btn--demo"
             type="button"
             onClick={() => setServerUrl(FLY_DEMO_URL)}
           >
-            ▶ Use Demo Server
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" style={{marginRight: 6}}>
+              <path d="M4 2l10 6-10 6V2z" fill="currentColor"/>
+            </svg>
+            Try Demo Server
           </button>
         </div>
 
@@ -116,23 +131,36 @@ export default function SessionLobby({ onConnect }: Props) {
           </div>
         </div>
 
-        {/* ── Footer ───────────────────────────────────────── */}
-        <div className="lobby-footer">
-          <span className="lobby-footer-dot lobby-dot--yellow" /> Visualization
-          <span className="lobby-footer-dot lobby-dot--blue" /> Neural Decoders
-          <span className="lobby-footer-dot lobby-dot--green" /> Real-time Metrics
+        {/* ── Feature pills ─────────────────────────────────── */}
+        <div className="lobby-pills">
+          <span className="lobby-pill lobby-pill--yellow">
+            <span className="lobby-dot lobby-dot--yellow" />
+            Visualization
+          </span>
+          <span className="lobby-pill lobby-pill--blue">
+            <span className="lobby-dot lobby-dot--blue" />
+            Neural Decoders
+          </span>
+          <span className="lobby-pill lobby-pill--green">
+            <span className="lobby-dot lobby-dot--green" />
+            Real-time Metrics
+          </span>
         </div>
-        <p className="lobby-footer-hint">
-          Press Enter to connect after entering a server URL
-        </p>
-        <a
-          className="lobby-gh-link"
-          href="https://github.com/pieeg-club/PiEEG-server"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          ◔ Submit an issue on GitHub
-        </a>
+
+        {/* ── Footer ───────────────────────────────────────── */}
+        <div className="lobby-footer-row">
+          <a
+            className="lobby-gh-link"
+            href="https://github.com/pieeg-club/PiEEG-server"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" style={{marginRight: 6}}>
+              <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
+            </svg>
+            Submit an issue
+          </a>
+        </div>
       </div>
     </div>
   );
