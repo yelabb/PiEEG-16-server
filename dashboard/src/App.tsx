@@ -1059,7 +1059,7 @@ export default function App({ wsUrl, onDisconnect }: { wsUrl?: string; onDisconn
 
       {/* Footer */}
       <footer className="footer">
-        <span style={{ fontFamily: "var(--mono)", letterSpacing: "-0.01em" }}>PiEEG {numCh}ch</span>
+        <span className="footer-brand">PiEEG {numCh}ch</span>
         <span className="kbd-hints">
           <kbd>Space</kbd> Pause
           <kbd>R</kbd> Record
@@ -1074,7 +1074,7 @@ export default function App({ wsUrl, onDisconnect }: { wsUrl?: string; onDisconn
           <kbd>Esc</kbd> Close
           <kbd>P</kbd> Perf
         </span>
-        <span>Not a medical device</span>
+        <span className="footer-disclaimer">Not a medical device</span>
       </footer>
     </AuthGate>
   );

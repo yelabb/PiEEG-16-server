@@ -75,6 +75,17 @@ body {
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
   z-index: 10;
+  position: relative;
+}
+
+.header::after {
+  content: "";
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(0, 112, 243, 0.2) 20%, rgba(0, 200, 83, 0.15) 80%, transparent);
 }
 
 .header h1 {
@@ -87,7 +98,10 @@ body {
 }
 
 .header h1 span {
-  color: var(--accent);
+  background: linear-gradient(135deg, var(--accent-light), var(--green));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
 .header h1 small {
@@ -97,6 +111,7 @@ body {
   padding-left: 8px;
   border-left: 1px solid var(--border-strong);
   font-size: 12px;
+  -webkit-text-fill-color: unset;
 }
 
 .demo-badge {
@@ -125,8 +140,10 @@ body {
   letter-spacing: 0.02em;
   color: #999;
   background: rgba(255,255,255,0.06);
-  border-radius: 4px;
+  border-radius: 999px;
   text-decoration: none;
+  transition: all 0.15s;
+  -webkit-text-fill-color: unset;
 }
 .version-badge:hover {
   color: #ccc;
@@ -155,24 +172,32 @@ body {
 .status-dot.connected {
   background: var(--green);
   box-shadow: 0 0 0 3px var(--green-soft);
+  animation: status-connected-pulse 2s ease-in-out infinite;
+}
+
+@keyframes status-connected-pulse {
+  0%, 100% { box-shadow: 0 0 0 3px var(--green-soft); }
+  50% { box-shadow: 0 0 0 5px rgba(0, 200, 83, 0.05); }
 }
 
 .disconnect-btn {
   background: transparent;
-  border: 1px solid var(--red);
+  border: 1px solid rgba(238, 68, 68, 0.3);
   color: var(--red);
   font-size: 11px;
   font-family: var(--sans);
-  padding: 3px 10px;
-  border-radius: var(--radius-sm);
+  padding: 3px 12px;
+  border-radius: 999px;
   cursor: pointer;
-  transition: all 0.15s;
+  transition: all 0.2s;
   margin-left: auto;
 }
 
 .disconnect-btn:hover {
   background: var(--red);
+  border-color: var(--red);
   color: #fff;
+  box-shadow: 0 0 12px rgba(238, 68, 68, 0.2);
 }
 
 .live-badge {
@@ -180,7 +205,7 @@ body {
   font-weight: 600;
   letter-spacing: 0.05em;
   text-transform: uppercase;
-  padding: 2px 8px;
+  padding: 2px 10px;
   border-radius: 999px;
   background: var(--green-soft);
   color: var(--green);
@@ -297,7 +322,7 @@ body {
 .btn {
   height: 30px;
   padding: 0 12px;
-  border-radius: var(--radius-sm);
+  border-radius: 999px;
   border: 1px solid var(--border-hover);
   background: transparent;
   color: var(--text-secondary);
@@ -305,7 +330,7 @@ body {
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all 0.2s ease;
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -313,13 +338,13 @@ body {
 }
 
 .btn:hover {
-  background: rgba(255, 255, 255, 0.04);
+  background: rgba(255, 255, 255, 0.06);
   border-color: var(--border-strong);
   color: var(--text);
 }
 
 .btn:active {
-  transform: scale(0.98);
+  transform: scale(0.97);
 }
 
 .btn.active {
@@ -327,6 +352,7 @@ body {
   border-color: var(--text);
   color: var(--bg);
   font-weight: 600;
+  box-shadow: 0 0 12px rgba(255, 255, 255, 0.06);
 }
 
 .btn.active:hover {
@@ -355,6 +381,7 @@ body {
   border-color: var(--red);
   color: #fff;
   font-weight: 600;
+  box-shadow: 0 0 16px rgba(238, 68, 68, 0.2);
 }
 
 .btn-record.recording .rec-dot {
@@ -571,16 +598,16 @@ body {
   font-size: 10px;
   font-family: var(--mono);
   padding: 0;
-  border-radius: var(--radius-xs);
+  border-radius: 999px;
   cursor: pointer;
-  transition: all 0.12s;
+  transition: all 0.15s;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
 .cs-ch:hover {
-  background: rgba(255, 255, 255, 0.04);
+  background: rgba(255, 255, 255, 0.06);
   color: var(--text);
   border-color: var(--border-strong);
 }
@@ -590,6 +617,7 @@ body {
   border-color: var(--text);
   color: var(--bg);
   font-weight: 700;
+  box-shadow: 0 0 8px rgba(255, 255, 255, 0.06);
 }
 
 .cs-count {
@@ -728,7 +756,7 @@ body {
   background: var(--bg);
   overflow: hidden;
   cursor: pointer;
-  transition: background 0.15s;
+  transition: background 0.15s, box-shadow 0.15s;
 }
 
 .channel-cell.inactive {
@@ -750,8 +778,9 @@ body {
 }
 
 .channel-cell:hover {
-  background: rgba(255, 255, 255, 0.015);
+  background: rgba(255, 255, 255, 0.02);
   z-index: 1;
+  box-shadow: inset 0 0 0 1px rgba(0, 112, 243, 0.15);
 }
 
 .channel-label {
@@ -832,12 +861,27 @@ body {
   justify-content: space-between;
   align-items: center;
   flex-shrink: 0;
+  position: relative;
+}
+
+.footer::before {
+  content: "";
+  position: absolute;
+  top: -1px;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(0, 112, 243, 0.15) 20%, rgba(0, 200, 83, 0.1) 80%, transparent);
 }
 
 .kbd-hints {
   font-size: 10px;
   color: var(--text-dim);
   opacity: 0.6;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex-wrap: wrap;
 }
 
 .kbd-hints kbd {
@@ -850,8 +894,33 @@ body {
   font-family: var(--mono);
   line-height: 18px;
   vertical-align: middle;
-  margin-right: 1px;
+  margin-left: 6px;
+  margin-right: 2px;
   color: var(--text-secondary);
+  transition: all 0.15s;
+}
+
+.kbd-hints kbd:first-child {
+  margin-left: 0;
+}
+
+.kbd-hints kbd:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.footer-brand {
+  font-family: var(--mono);
+  letter-spacing: -0.01em;
+  font-weight: 500;
+}
+
+.footer-disclaimer {
+  font-size: 10px;
+  color: var(--text-dim);
+  opacity: 0.5;
+  letter-spacing: 0.02em;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -949,6 +1018,7 @@ body {
   flex-direction: column;
   background: var(--bg);
   border-top: 1px solid var(--border);
+  position: relative;
 }
 
 .spectral-toolbar {
@@ -958,6 +1028,7 @@ body {
   padding: 5px 12px;
   border-bottom: 1px solid var(--border);
   flex-wrap: wrap;
+  background: rgba(255, 255, 255, 0.01);
 }
 
 .spectral-title {
@@ -967,6 +1038,10 @@ body {
   letter-spacing: 0.05em;
   color: var(--text-secondary);
   white-space: nowrap;
+  background: linear-gradient(135deg, var(--text-secondary), var(--accent-light));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
 .spectral-channels {
@@ -1580,10 +1655,16 @@ body {
    ═══════════════════════════════════════════════════════════════════════ */
 
 .update-banner {
-  background: var(--accent-soft);
+  background: linear-gradient(90deg, var(--accent-soft), rgba(0, 200, 83, 0.04));
   border-bottom: 1px solid var(--accent-border);
   padding: 8px 20px;
   flex-shrink: 0;
+  animation: update-banner-in 0.4s ease-out;
+}
+
+@keyframes update-banner-in {
+  from { opacity: 0; transform: translateY(-100%); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .update-banner-content {
@@ -1609,16 +1690,18 @@ body {
   font-size: 12px;
   padding: 0 14px;
   height: 28px;
-  border-radius: var(--radius-sm);
+  border-radius: 999px;
   border: none;
   cursor: pointer;
   white-space: nowrap;
   display: inline-flex;
   align-items: center;
+  transition: all 0.15s;
 }
 
 .update-btn:hover {
   opacity: 0.85;
+  box-shadow: 0 0 12px rgba(255, 255, 255, 0.1);
 }
 
 .update-btn-secondary {
@@ -2075,6 +2158,7 @@ body {
   padding: 5px 12px;
   border-bottom: 1px solid var(--border);
   flex-wrap: wrap;
+  background: rgba(255, 255, 255, 0.01);
 }
 
 .topomap-title {
@@ -2084,6 +2168,10 @@ body {
   letter-spacing: 0.05em;
   color: var(--text-secondary);
   white-space: nowrap;
+  background: linear-gradient(135deg, var(--text-secondary), var(--green));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
 .topomap-metrics {
@@ -2199,23 +2287,36 @@ body {
 .latency-badge {
   font-size: 11px;
   font-family: var(--mono);
-  padding: 1px 7px;
+  padding: 1px 8px;
   border-radius: 999px;
   background: var(--green-soft);
   color: var(--green);
   border: 1px solid rgba(0, 200, 83, 0.1);
+  transition: all 0.3s;
 }
 
 .latency-badge.warn {
   background: var(--yellow-soft);
   color: var(--yellow);
   border-color: rgba(234, 179, 8, 0.1);
+  animation: latency-warn-pulse 2s ease-in-out infinite;
+}
+
+@keyframes latency-warn-pulse {
+  0%, 100% { box-shadow: none; }
+  50% { box-shadow: 0 0 8px rgba(234, 179, 8, 0.15); }
 }
 
 .latency-badge.critical {
   background: var(--red-soft);
   color: var(--red);
   border-color: rgba(238, 68, 68, 0.1);
+  animation: latency-critical-pulse 1s ease-in-out infinite;
+}
+
+@keyframes latency-critical-pulse {
+  0%, 100% { box-shadow: none; }
+  50% { box-shadow: 0 0 8px rgba(238, 68, 68, 0.2); }
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -2409,6 +2510,10 @@ body {
   letter-spacing: 0.05em;
   color: var(--text-secondary);
   white-space: nowrap;
+  background: linear-gradient(135deg, var(--text-secondary), var(--yellow));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
 .filter-preview-meta {
