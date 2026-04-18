@@ -280,7 +280,7 @@ function SpikeRejectionGroup({
   );
 }
 
-export default function App() {
+export default function App({ wsUrl }: { wsUrl?: string }) {
   const [view, setView] = useState<ViewState>("live");
   const [selectedSession, setSelectedSession] = useState<string | null>(null);
   const [paused, setPaused] = useState(false);
@@ -305,7 +305,7 @@ export default function App() {
   const [webhooksEnabled, setWebhooksEnabled] = useState(
     () => localStorage.getItem("pieeg_webhooks_enabled") === "true"
   );
-  const eeg = useEEG(timeWindow);
+  const eeg = useEEG(timeWindow, wsUrl);
   const numCh = eeg.numChannels;
 
   const [serverInfo, setServerInfo] = useState<{ version: string; branch: string | null } | null>(null);
