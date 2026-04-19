@@ -25,8 +25,7 @@ Reads at 250 Hz · streams over WebSocket · live dashboard with spectral analys
 ```bash
 curl -sSL https://raw.githubusercontent.com/pieeg-club/PiEEG-server/main/install.sh | bash
 ```
-
-<img width="100%" alt="PiEEG dashboard" src="https://github.com/user-attachments/assets/6172a2cd-c7fc-4a77-8b7f-644a2e177826" />
+<img width="100%" alt="PiEEG dashboard" src="https://github.com/user-attachments/assets/0556e2b9-2ae2-4864-84d0-267abfedc177" />
 
 <p>
   <img width="15%" alt="Mobile view" src="https://github.com/user-attachments/assets/395f1c53-88ff-4728-8cd9-b06b80bc82de" />
