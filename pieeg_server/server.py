@@ -213,7 +213,8 @@ class PiEEGServer:
         """Process a client command."""
         try:
             msg = json.loads(raw)
-        except (json.JSONDecodeError, TypeError):
+        except (json.JSONDecodeError, TypeError) as exc:
+            logger.warning("Invalid JSON from client: %s", exc)
             return
 
         if not isinstance(msg, dict):
@@ -222,8 +223,15 @@ class PiEEGServer:
         cmd = msg.get("cmd")
         if cmd == "set_filter":
             if msg.get("enabled", True):
-                lowcut = float(msg.get("lowcut", 1.0))
-                highcut = float(msg.get("highcut", 40.0))
+                try:
+                    lowcut = float(msg.get("lowcut", 1.0))
+                    highcut = float(msg.get("highcut", 40.0))
+                except (ValueError, TypeError) as exc:
+                    logger.warning("Invalid filter params: %s", exc)
+                    return
+                if not (0 < lowcut < highcut <= 125):
+                    logger.warning("Filter bounds out of range: %.1f-%.1f", lowcut, highcut)
+                    return
                 self.enable_filter(lowcut, highcut)
                 logger.info("Filter enabled: %.1f-%.1f Hz", lowcut, highcut)
             else:
@@ -357,6 +365,7 @@ class PiEEGServer:
             frame = await queue.get()
 
             if self._filter:
+                frame = frame.copy()
                 frame["channels"] = self._filter.apply_sample(frame["channels"])
 
             if not self._clients:
