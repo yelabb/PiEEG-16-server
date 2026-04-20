@@ -379,3 +379,44 @@ export interface CloudRelayStatus {
 export interface WSCloudRelayMessage {
   cloud_relay_status?: CloudRelayStatus;
 }
+
+// ── Viewer / Share types ─────────────────────────────────────────────────
+
+export interface ViewerInfo {
+  id: string;
+  name: string;
+  color: string;
+}
+
+export interface ChatMessage {
+  from: ViewerInfo;
+  text: string;
+  ts: number;
+}
+
+export interface RelayWelcome {
+  type: "welcome";
+  viewerId: string;
+  color: string;
+  viewers: ViewerInfo[];
+}
+
+export interface RelayViewerList {
+  type: "viewers";
+  list: ViewerInfo[];
+}
+
+export interface RelayChatMessage {
+  type: "chat";
+  from: ViewerInfo;
+  text: string;
+  ts: number;
+}
+
+export interface RelaySignal {
+  type: "signal";
+  from: string;
+  data: unknown;
+}
+
+export type RelayControlMessage = RelayWelcome | RelayViewerList | RelayChatMessage | RelaySignal;

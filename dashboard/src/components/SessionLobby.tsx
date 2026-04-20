@@ -8,6 +8,8 @@ const FLY_DEMO_URL = "wss://pieeg-server--mock.fly.dev";
 /** Compute the default WS URL from the current page location. */
 function defaultWsUrl(): string {
   const host = location.hostname || "localhost";
+  // If the host looks like a real domain (has a valid TLD), don't prefill
+  if (/\.[a-z]{2,}$/i.test(host) && host !== "localhost") return "";
   const port = import.meta.env.DEV ? 1616 : parseInt(location.port || "1617") - 1;
   const scheme = location.protocol === "https:" ? "wss" : "ws";
   return `${scheme}://${host}:${port}`;

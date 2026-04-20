@@ -5371,32 +5371,192 @@ body {
   animation: wh-pulse 2s ease-in-out infinite;
 }
 
-.cloud-share {
+/* ── Cloud share card ─────────────────────────────────── */
+
+.cloud-share-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px;
+  margin: 12px 0;
+}
+.cloud-share-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  font-size: 13px;
+  margin-bottom: 6px;
+  color: var(--text);
+}
+.cloud-share-desc {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin: 0 0 10px;
+}
+.cloud-share-url-row {
+  display: flex;
+  gap: 6px;
+  align-items: stretch;
+  margin-bottom: 8px;
+}
+.cloud-share-url {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  font-family: var(--mono);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 7px 10px;
+  color: var(--accent);
+  outline: none;
+}
+.cloud-share-url:focus {
+  border-color: var(--accent);
+}
+.cloud-share-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 0 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.cloud-share-copy:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.cloud-share-copy.copied {
+  background: #3fb950;
+  border-color: #3fb950;
+  color: #000;
+}
+.cloud-share-actions {
+  display: flex;
+  gap: 6px;
   margin-bottom: 10px;
 }
-
-.cloud-share .cloud-input {
+.cloud-share-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   font-size: 12px;
-  margin-bottom: 6px;
+  color: var(--text-secondary);
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 10px;
+  cursor: pointer;
+  text-decoration: none;
+  transition: all 0.15s ease;
+}
+.cloud-share-action:hover {
+  color: var(--text);
+  border-color: var(--text-secondary);
+}
+.cloud-share-features {
+  display: flex;
+  gap: 12px;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.cloud-share-feat {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.cloud-share-feat-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
 }
 
-/* Relay guide */
+/* ── Cloud relay guide (Go Live) ─────────────────────── */
 
 .cloud-relay-guide {
   margin-bottom: 14px;
 }
-
-.cloud-relay-steps {
-  margin: 8px 0 12px;
-  padding-left: 20px;
-  list-style: decimal;
+.cloud-relay-hero {
+  text-align: center;
+  padding: 18px 10px 14px;
 }
-
-.cloud-relay-steps li {
-  font-size: 12px;
+.cloud-relay-hero-icon {
+  font-size: 36px;
+  margin-bottom: 6px;
+}
+.cloud-relay-hero h3 {
+  margin: 0 0 4px;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text);
+}
+.cloud-relay-hero p {
+  margin: 0;
+  font-size: 13px;
   color: var(--text-secondary);
-  line-height: 1.7;
-  margin-bottom: 2px;
+}
+.cloud-relay-features {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 14px 0;
+}
+.cloud-relay-feature {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 12px;
+}
+.cloud-relay-feature-icon {
+  font-size: 18px;
+  line-height: 1;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+.cloud-relay-feature strong {
+  display: block;
+  color: var(--text);
+  font-weight: 600;
+  margin-bottom: 1px;
+}
+.cloud-relay-feature span {
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+.cloud-btn-go-live {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  padding: 12px 0;
+  background: linear-gradient(135deg, #3fb950 0%, #238636 100%);
+  border: none;
+  border-radius: 8px;
+  color: #fff;
+  cursor: pointer;
+  transition: opacity 0.15s;
+  width: 100%;
+}
+.cloud-btn-go-live:hover { opacity: 0.9; }
+.cloud-go-live-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #fff;
+  animation: wh-pulse 1.5s ease-in-out infinite;
 }
 
 /* Sessions section */
@@ -5970,6 +6130,32 @@ body {
   color: #000;
 }
 
+/* --- Go Live button --- */
+.btn-go-live {
+  background: linear-gradient(135deg, #e63946 0%, #d62839 100%);
+  border: none;
+  color: #fff;
+  padding: 4px 12px;
+  border-radius: 14px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+.btn-go-live:hover {
+  background: linear-gradient(135deg, #ff4d5a 0%, #e63946 100%);
+  transform: scale(1.05);
+}
+.btn-go-live.active {
+  background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+  animation: pulse-live 1.5s infinite;
+}
+@keyframes pulse-live {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.5); }
+  50% { box-shadow: 0 0 0 6px rgba(34, 197, 94, 0); }
+}
+
 /* --- Theme toggle button --- */
 .theme-toggle {
   background: transparent;
@@ -6014,4 +6200,50 @@ body {
 }
 [data-theme="light"] .lobby-btn--accent {
   color: #000;
+}
+
+/* ==========================================================================
+   ShareView — minimal layout additions for /live/:id viewer
+   ========================================================================== */
+
+.sv-root {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+}
+
+/* Fullscreen centered state (connecting / ended) */
+.sv-fullscreen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  width: 100vw;
+  background: var(--bg);
+  color: var(--text);
+}
+.sv-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 32px 40px;
+  max-width: 380px;
+  text-align: center;
+}
+.sv-card h2 { margin: 0 0 8px; font-size: 18px; }
+
+/* Viewer count badge in header */
+.sv-viewer-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-family: var(--mono);
+  color: var(--text-secondary);
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--border);
 }

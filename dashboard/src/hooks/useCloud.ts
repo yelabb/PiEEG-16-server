@@ -14,9 +14,20 @@ import type {
 } from "../types";
 
 const CLOUD_URL = "https://pieeg-cloud.fly.dev";
+const CANONICAL_DASHBOARD = "https://pieeg.vercel.app";
 const STORAGE_KEY = "pieeg_cloud_tokens";
 const EMAIL_STORAGE_KEY = "pieeg_cloud_email";
 export const RELAY_MAX_MINUTES = 30;
+
+function buildShareLink(relayId: string): string {
+  const host = location.hostname;
+  const isLocal =
+    host === "localhost" ||
+    host === "127.0.0.1" ||
+    /^(192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)/.test(host);
+  const base = isLocal ? CANONICAL_DASHBOARD : location.origin;
+  return `${base}/live/${relayId}`;
+}
 
 export interface UseCloudReturn {
   // Auth
@@ -31,6 +42,7 @@ export interface UseCloudReturn {
   // Relay
   relayStatus: CloudRelayStatus;
   relayShareUrl: string | null;
+  shareLink: string | null;
   startRelay: () => Promise<void>;
   stopRelay: () => void;
   relayLoading: boolean;
@@ -71,6 +83,7 @@ export function useCloud(
   const [tokens, setTokens] = useState<CloudTokens | null>(loadTokens);
   const [relayStatus, setRelayStatus] = useState<CloudRelayStatus>({ running: false });
   const [relayShareUrl, setRelayShareUrl] = useState<string | null>(null);
+  const [shareLink, setShareLink] = useState<string | null>(null);
   const [relayLoading, setRelayLoading] = useState(false);
   const [relayStopping, setRelayStopping] = useState(false);
   const [relayElapsed, setRelayElapsed] = useState(0);
@@ -103,6 +116,7 @@ export function useCloud(
           upstreamUrl: relayStatus.upstream_url ?? "",
           shareUrl: relayStatus.share_url,
         };
+        if (!shareLink) setShareLink(buildShareLink(relayStatus.relay_id));
       }
     } else {
       setRelayElapsed(0);
@@ -112,6 +126,7 @@ export function useCloud(
         relayTimerRef.current = null;
       }
       setRelayShareUrl(null);
+      setShareLink(null);
       relayInfoRef.current = null;
     }
     return () => {
@@ -241,6 +256,7 @@ export function useCloud(
     setEmail("");
     setAuthStep("idle");
     setRelayShareUrl(null);
+    setShareLink(null);
   }, [tokens]);
 
   // ── Relay ───────────────────────────────────────────────────────────
@@ -258,6 +274,7 @@ export function useCloud(
       const info: CloudRelayInfo = await res.json();
       relayInfoRef.current = info;
       setRelayShareUrl(info.shareUrl);
+      setShareLink(buildShareLink(info.relayId));
 
       // 2. Tell Python server to start forwarding frames
       sendCommand({
@@ -278,6 +295,7 @@ export function useCloud(
     setRelayStopping(true);
     sendCommand({ cmd: "cloud_relay_stop" });
     setRelayShareUrl(null);
+    setShareLink(null);
 
     // Clean up cloud-side relay
     if (relayInfoRef.current && tokens?.access.token) {
@@ -300,6 +318,7 @@ export function useCloud(
     logout,
     relayStatus,
     relayShareUrl,
+    shareLink,
     startRelay,
     stopRelay,
     relayLoading,
