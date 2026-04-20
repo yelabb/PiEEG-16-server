@@ -5,6 +5,7 @@
   "installCommand": "npm install",
   "rewrites": [
     { "source": "/api/:path*", "destination": "https://pieeg-server--mock.fly.dev/api/:path*" },
-    { "source": "/auth/:path*", "destination": "https://pieeg-server--mock.fly.dev/auth/:path*" }
+    { "source": "/auth/:path*", "destination": "https://pieeg-server--mock.fly.dev/auth/:path*" },
+    { "source": "/live/:path*", "destination": "/index.html" }
   ]
 }
