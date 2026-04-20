@@ -230,7 +230,10 @@ const MentalStatePanel = memo(function MentalStatePanel({
   return (
     <div className="ms-panel">
       <div className="ms-toolbar">
-        <span className="ms-title">Mental State</span>
+        <span className="ms-title">
+          Mental State
+          <span className="ms-info" title="Focus measures cortical engagement using the (Beta+Gamma)/(Alpha+Theta+Delta) power ratio. Relax measures alpha-band dominance and theta/beta ratio. Both are normalised 0–100%.">ⓘ</span>
+        </span>
         <span className="ms-dominant">
           {dominant && (
             <>

@@ -2848,6 +2848,22 @@ body {
   letter-spacing: 0.05em;
   color: var(--text-secondary);
   white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.ms-info {
+  font-size: 12px;
+  color: var(--text-dim);
+  cursor: help;
+  user-select: none;
+  opacity: 0.6;
+  transition: opacity 0.15s;
+}
+
+.ms-info:hover {
+  opacity: 1;
 }
 
 .ms-dominant {
