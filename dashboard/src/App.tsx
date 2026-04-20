@@ -11,6 +11,7 @@ import TopoMap from "./components/TopoMap";
 import Spectrogram from "./components/Spectrogram";
 import FilterPreview from "./components/FilterPreview";
 import StatsPanel from "./components/StatsPanel";
+import MentalStatePanel from "./components/MentalStatePanel";
 import UpdateBanner from "./components/UpdateBanner";
 import ChannelMismatchBanner from "./components/ChannelMismatchBanner";
 import ShortcutHelp from "./components/ShortcutHelp";
@@ -315,6 +316,7 @@ export default function App({ wsUrl, onDisconnect }: { wsUrl?: string; onDisconn
   const [expandedCh, setExpandedCh] = useState<number | null>(null);
   const [showSpectrogram, setShowSpectrogram] = useState(false);
   const [showStats, setShowStats] = useState(false);
+  const [showMentalState, setShowMentalState] = useState(false);
   const [showChat, setShowChat] = useState(false);
   const [showDocs, setShowDocs] = useState(false);
   const [showRegisters, setShowRegisters] = useState(false);
@@ -542,6 +544,9 @@ export default function App({ wsUrl, onDisconnect }: { wsUrl?: string; onDisconn
         case "KeyG":
           setShowSpectrogram((v) => !v);
           break;
+        case "KeyM":
+          setShowMentalState((v) => !v);
+          break;
         case "KeyD":
           setShowDocs((v) => !v);
           break;
@@ -729,6 +734,12 @@ export default function App({ wsUrl, onDisconnect }: { wsUrl?: string; onDisconn
                 onClick={() => setShowStats((v) => !v)}
               >
                 Stats
+              </button>
+              <button
+                className={`btn${showMentalState ? " active" : ""}`}
+                onClick={() => setShowMentalState((v) => !v)}
+              >
+                Mental State
               </button>
             </div>
           </div>
@@ -987,10 +998,11 @@ export default function App({ wsUrl, onDisconnect }: { wsUrl?: string; onDisconn
             highcut={parseFloat(String(highcut)) || 40}
           />
         )}
-        {(showSpectrogram || showStats) && (
+        {(showSpectrogram || showStats || showMentalState) && (
           <div className="analysis-area">
             {showSpectrogram && <Spectrogram eegData={eeg.data} />}
             {showStats && <StatsPanel eegData={eeg.data} />}
+            {showMentalState && <MentalStatePanel eegData={eeg.data} />}
           </div>
         )}
         </div>

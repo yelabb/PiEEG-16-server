@@ -2813,6 +2813,208 @@ body {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
+   Mental State Panel
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.ms-panel {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  border-top: 1px solid var(--border);
+  max-height: 100%;
+  overflow: hidden;
+}
+
+.analysis-area .ms-panel {
+  flex: 1 1 50%;
+  min-width: 0;
+  border-top: none;
+  border-left: 1px solid var(--border);
+}
+
+.ms-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 5px 12px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.ms-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.ms-dominant {
+  font-size: 10px;
+  font-family: var(--mono);
+  color: var(--text-dim);
+  flex: 1;
+  text-align: right;
+}
+
+.ms-freq {
+  opacity: 0.6;
+}
+
+.ms-body {
+  flex: 1;
+  overflow: auto;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* ── Gauges ──────────────────────────────────────────────────────────── */
+
+.ms-gauges {
+  display: flex;
+  justify-content: center;
+  gap: 24px;
+}
+
+.ms-gauge {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100px;
+}
+
+.ms-gauge-svg {
+  width: 100%;
+  height: auto;
+}
+
+.ms-gauge-value {
+  font-size: 16px;
+  font-weight: 700;
+  font-family: var(--mono);
+  fill: var(--text);
+}
+
+.ms-gauge-label {
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  fill: var(--text-secondary);
+}
+
+.ms-gauge-sub {
+  font-size: 9px;
+  color: var(--text-dim);
+  margin-top: -4px;
+}
+
+/* ── Sparklines ─────────────────────────────────────────────────────── */
+
+.ms-sparks {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ms-spark-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ms-spark-label {
+  font-size: 10px;
+  font-weight: 600;
+  width: 40px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.ms-spark {
+  flex: 1;
+  height: 32px;
+  min-width: 0;
+}
+
+/* ── Band power bars ────────────────────────────────────────────────── */
+
+.ms-bands {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ms-band-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ms-band-label {
+  font-size: 10px;
+  font-weight: 600;
+  width: 60px;
+  text-align: right;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.ms-band-track {
+  flex: 1;
+  height: 8px;
+  background: var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.ms-band-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.15s ease;
+}
+
+.ms-band-pct {
+  font-size: 10px;
+  font-family: var(--mono);
+  color: var(--text-dim);
+  width: 28px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+/* ── Secondary metrics ──────────────────────────────────────────────── */
+
+.ms-metrics {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.ms-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.ms-metric-label {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+}
+
+.ms-metric-value {
+  font-size: 12px;
+  font-family: var(--mono);
+  font-weight: 600;
+  color: var(--text);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
    Chat Panel
    ═══════════════════════════════════════════════════════════════════════ */
 
