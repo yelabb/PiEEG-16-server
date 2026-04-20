@@ -254,20 +254,6 @@ export default function CloudPanel({ open, onClose, cloud }: Props) {
                         </div>
                       </div>
                       <div className="cloud-relay-feature">
-                        <span className="cloud-relay-feature-icon">💬</span>
-                        <div>
-                          <strong>Live Chat</strong>
-                          <span>Viewers can discuss in real-time</span>
-                        </div>
-                      </div>
-                      <div className="cloud-relay-feature">
-                        <span className="cloud-relay-feature-icon">🎤</span>
-                        <div>
-                          <strong>Voice Chat</strong>
-                          <span>Talk with viewers, Figma-style</span>
-                        </div>
-                      </div>
-                      <div className="cloud-relay-feature">
                         <span className="cloud-relay-feature-icon">🔒</span>
                         <div>
                           <strong>Private & Secure</strong>

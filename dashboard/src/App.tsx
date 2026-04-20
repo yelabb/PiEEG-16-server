@@ -648,6 +648,13 @@ export default function App({ wsUrl, onDisconnect }: { wsUrl?: string; onDisconn
           </span>
           <span style={{ fontFamily: "var(--mono)" }}>{eeg.hz ? `${eeg.hz} Hz` : "— Hz"}</span>
           <span style={{ fontFamily: "var(--mono)" }}>{eeg.sampleCount.toLocaleString()} samples</span>
+          <button
+            className={`btn btn-go-live${cloud.relayStatus.running ? " active" : ""}`}
+            onClick={() => setShowCloud(true)}
+            title="Share your live EEG stream"
+          >
+            {cloud.relayStatus.running ? "● LIVE" : "Go Live"}
+          </button>
           <button className="theme-toggle" onClick={toggleTheme} title={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}>
             {theme === "dark" ? "☀" : "☾"}
           </button>
