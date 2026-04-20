@@ -26,13 +26,12 @@ function Gauge({
   sublabel?: string;
 }) {
   const pct = Math.round(value * 100);
-  const r = 38;
-  const stroke = 7;
+  const r = 40;
+  const stroke = 8;
   const cx = 50;
-  const cy = 52;
-  const startAngle = 135;
-  const sweep = 270;
-  const endAngle = startAngle + sweep;
+  const cy = 50;
+  const startAngle = 140;
+  const sweep = 260;
 
   const arcPath = (frac: number) => {
     const a1 = ((startAngle - 90) * Math.PI) / 180;
@@ -47,14 +46,17 @@ function Gauge({
 
   return (
     <div className="ms-gauge">
-      <svg viewBox="0 0 100 90" className="ms-gauge-svg">
+      <svg viewBox="0 0 100 100" className="ms-gauge-svg">
+        {/* Track */}
         <path
           d={arcPath(1)}
           fill="none"
           stroke="var(--border)"
           strokeWidth={stroke}
           strokeLinecap="round"
+          opacity="0.5"
         />
+        {/* Filled arc */}
         <path
           d={arcPath(Math.max(0.01, value))}
           fill="none"
@@ -62,20 +64,31 @@ function Gauge({
           strokeWidth={stroke}
           strokeLinecap="round"
         />
+        {/* Percentage */}
         <text
           x={cx}
-          y={cy - 2}
+          y={cy - 3}
           textAnchor="middle"
           dominantBaseline="central"
           className="ms-gauge-value"
         >
-          {pct}%
+          {pct}
         </text>
         <text
           x={cx}
-          y={cy + 13}
+          y={cy + 12}
+          textAnchor="middle"
+          className="ms-gauge-unit"
+        >
+          %
+        </text>
+        {/* Label inside arc */}
+        <text
+          x={cx}
+          y={cy + 24}
           textAnchor="middle"
           className="ms-gauge-label"
+          fill={color}
         >
           {label}
         </text>
@@ -90,26 +103,65 @@ function Gauge({
 function Sparkline({
   data,
   color,
-  height = 32,
+  label,
+  height = 40,
 }: {
   data: number[];
   color: string;
+  label: string;
   height?: number;
 }) {
   if (data.length < 2) return null;
   const w = 200;
   const h = height;
+  const pad = 2;
   const step = w / (HISTORY_LEN - 1);
-  let d = "";
+
+  // Line path
+  let linePath = "";
   for (let i = 0; i < data.length; i++) {
     const x = i * step;
-    const y = h - data[i] * h;
-    d += i === 0 ? `M${x},${y}` : `L${x},${y}`;
+    const y = pad + (h - 2 * pad) * (1 - data[i]);
+    linePath += i === 0 ? `M${x},${y}` : `L${x},${y}`;
   }
+
+  // Area fill (close path at bottom)
+  const lastX = (data.length - 1) * step;
+  const areaPath = `${linePath}L${lastX},${h}L0,${h}Z`;
+
+  // Current value badge
+  const current = data[data.length - 1];
+  const pct = Math.round(current * 100);
+
   return (
-    <svg viewBox={`0 0 ${w} ${h}`} className="ms-spark" preserveAspectRatio="none">
-      <path d={d} fill="none" stroke={color} strokeWidth="1.5" />
-    </svg>
+    <div className="ms-spark-wrap">
+      <div className="ms-spark-header">
+        <span className="ms-spark-label" style={{ color }}>{label}</span>
+        <span className="ms-spark-current" style={{ color }}>{pct}%</span>
+      </div>
+      <svg viewBox={`0 0 ${w} ${h}`} className="ms-spark" preserveAspectRatio="none">
+        {/* Horizontal grid lines at 25%, 50%, 75% */}
+        {[0.25, 0.5, 0.75].map((v) => {
+          const gy = pad + (h - 2 * pad) * (1 - v);
+          return (
+            <line
+              key={v}
+              x1={0}
+              y1={gy}
+              x2={w}
+              y2={gy}
+              stroke="var(--border)"
+              strokeWidth="0.5"
+              strokeDasharray="3,3"
+            />
+          );
+        })}
+        {/* Filled area */}
+        <path d={areaPath} fill={color} opacity="0.1" />
+        {/* Line */}
+        <path d={linePath} fill="none" stroke={color} strokeWidth="1.5" />
+      </svg>
+    </div>
   );
 }
 
@@ -118,9 +170,10 @@ function Sparkline({
 function BandBar({ name, label, pct, color }: { name: string; label: string; pct: number; color: string }) {
   return (
     <div className="ms-band-row">
-      <span className="ms-band-label" style={{ color }}>{label}</span>
+      <span className="ms-band-dot" style={{ background: color }} />
+      <span className="ms-band-label">{label}</span>
       <div className="ms-band-track">
-        <div className="ms-band-fill" style={{ width: `${pct * 100}%`, background: color }} />
+        <div className="ms-band-fill" style={{ width: `${Math.max(1, pct * 100)}%`, background: color }} />
       </div>
       <span className="ms-band-pct">{(pct * 100).toFixed(0)}%</span>
     </div>
@@ -192,59 +245,68 @@ const MentalStatePanel = memo(function MentalStatePanel({
 
       <div className="ms-body">
         {/* Gauges */}
-        <div className="ms-gauges">
-          <Gauge
-            value={fs.focus}
-            label="Focus"
-            color="#3b82f6"
-            sublabel={fs.calibrated ? "calibrated" : undefined}
-          />
-          <Gauge
-            value={rs.relaxation}
-            label="Relax"
-            color="#22c55e"
-            sublabel={rs.calibrated ? "calibrated" : undefined}
-          />
+        <div className="ms-section">
+          <div className="ms-gauges">
+            <Gauge
+              value={fs.focus}
+              label="Focus"
+              color="#3b82f6"
+              sublabel={fs.calibrated ? "calibrated" : undefined}
+            />
+            <Gauge
+              value={rs.relaxation}
+              label="Relax"
+              color="#22c55e"
+              sublabel={rs.calibrated ? "calibrated" : undefined}
+            />
+          </div>
         </div>
 
         {/* Sparklines */}
-        <div className="ms-sparks">
-          <div className="ms-spark-row">
-            <span className="ms-spark-label" style={{ color: "#3b82f6" }}>Focus</span>
-            <Sparkline data={focusHistory.current} color="#3b82f6" />
-          </div>
-          <div className="ms-spark-row">
-            <span className="ms-spark-label" style={{ color: "#22c55e" }}>Relax</span>
-            <Sparkline data={relaxHistory.current} color="#22c55e" />
+        <div className="ms-section">
+          <div className="ms-section-label">Timeline</div>
+          <div className="ms-sparks">
+            <Sparkline data={focusHistory.current} color="#3b82f6" label="Focus" />
+            <Sparkline data={relaxHistory.current} color="#22c55e" label="Relax" />
           </div>
         </div>
 
         {/* Band power bars */}
-        <div className="ms-bands">
-          {FREQUENCY_BANDS.map((band) => (
-            <BandBar
-              key={band.name}
-              name={band.name}
-              label={band.label}
-              pct={bp.relative[band.name] ?? 0}
-              color={band.color}
+        <div className="ms-section">
+          <div className="ms-section-label">Band Power</div>
+          <div className="ms-bands">
+            {FREQUENCY_BANDS.map((band) => (
+              <BandBar
+                key={band.name}
+                name={band.name}
+                label={band.label}
+                pct={bp.relative[band.name] ?? 0}
+                color={band.color}
             />
           ))}
+          </div>
         </div>
 
         {/* Secondary metrics */}
-        <div className="ms-metrics">
-          <div className="ms-metric">
-            <span className="ms-metric-label">α Relative</span>
-            <span className="ms-metric-value">{(rs.alphaRelative * 100).toFixed(1)}%</span>
-          </div>
-          <div className="ms-metric">
-            <span className="ms-metric-label">θ/β Ratio</span>
-            <span className="ms-metric-value">{rs.thetaBetaRatio.toFixed(2)}</span>
-          </div>
-          <div className="ms-metric">
-            <span className="ms-metric-label">Total Power</span>
-            <span className="ms-metric-value">{bp.totalPower.toFixed(1)} µV²</span>
+        <div className="ms-section">
+          <div className="ms-section-label">Metrics</div>
+          <div className="ms-metrics">
+            <div className="ms-metric">
+              <span className="ms-metric-value">{(rs.alphaRelative * 100).toFixed(1)}%</span>
+              <span className="ms-metric-label">α Relative</span>
+            </div>
+            <div className="ms-metric">
+              <span className="ms-metric-value">{rs.thetaBetaRatio.toFixed(2)}</span>
+              <span className="ms-metric-label">θ/β Ratio</span>
+            </div>
+            <div className="ms-metric">
+              <span className="ms-metric-value">{bp.totalPower.toFixed(1)}</span>
+              <span className="ms-metric-label">Total µV²</span>
+            </div>
+            <div className="ms-metric">
+              <span className="ms-metric-value">{bp.dominantFrequency.toFixed(1)} Hz</span>
+              <span className="ms-metric-label">Peak Freq</span>
+            </div>
           </div>
         </div>
       </div>

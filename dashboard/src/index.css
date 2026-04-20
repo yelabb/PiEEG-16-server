@@ -2865,10 +2865,30 @@ body {
 .ms-body {
   flex: 1;
   overflow: auto;
-  padding: 10px 12px;
+  padding: 8px 0;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 0;
+}
+
+/* ── Sections ───────────────────────────────────────────────────────── */
+
+.ms-section {
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.ms-section:last-child {
+  border-bottom: none;
+}
+
+.ms-section-label {
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+  margin-bottom: 8px;
 }
 
 /* ── Gauges ──────────────────────────────────────────────────────────── */
@@ -2876,40 +2896,46 @@ body {
 .ms-gauges {
   display: flex;
   justify-content: center;
-  gap: 24px;
+  gap: 40px;
 }
 
 .ms-gauge {
   display: flex;
   flex-direction: column;
   align-items: center;
-  width: 100px;
+  width: 110px;
 }
 
 .ms-gauge-svg {
   width: 100%;
   height: auto;
+  overflow: visible;
 }
 
 .ms-gauge-value {
-  font-size: 16px;
+  font-size: 20px;
   font-weight: 700;
   font-family: var(--mono);
   fill: var(--text);
 }
 
+.ms-gauge-unit {
+  font-size: 10px;
+  font-weight: 500;
+  fill: var(--text-dim);
+}
+
 .ms-gauge-label {
-  font-size: 9px;
-  font-weight: 600;
+  font-size: 10px;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
-  fill: var(--text-secondary);
+  letter-spacing: 0.08em;
 }
 
 .ms-gauge-sub {
   font-size: 9px;
   color: var(--text-dim);
-  margin-top: -4px;
+  margin-top: -2px;
 }
 
 /* ── Sparklines ─────────────────────────────────────────────────────── */
@@ -2917,27 +2943,37 @@ body {
 .ms-sparks {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
 }
 
-.ms-spark-row {
+.ms-spark-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.ms-spark-header {
   display: flex;
   align-items: center;
-  gap: 8px;
+  justify-content: space-between;
 }
 
 .ms-spark-label {
   font-size: 10px;
   font-weight: 600;
-  width: 40px;
-  text-align: right;
-  flex-shrink: 0;
+}
+
+.ms-spark-current {
+  font-size: 10px;
+  font-family: var(--mono);
+  font-weight: 600;
 }
 
 .ms-spark {
-  flex: 1;
-  height: 32px;
-  min-width: 0;
+  width: 100%;
+  height: 40px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.02);
 }
 
 /* ── Band power bars ────────────────────────────────────────────────── */
@@ -2945,7 +2981,7 @@ body {
 .ms-bands {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 5px;
 }
 
 .ms-band-row {
@@ -2954,34 +2990,42 @@ body {
   gap: 6px;
 }
 
+.ms-band-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
 .ms-band-label {
   font-size: 10px;
-  font-weight: 600;
-  width: 60px;
-  text-align: right;
-  flex-shrink: 0;
+  font-weight: 500;
+  width: 56px;
+  color: var(--text-secondary);
   white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .ms-band-track {
   flex: 1;
-  height: 8px;
-  background: var(--border);
-  border-radius: 4px;
+  height: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 5px;
   overflow: hidden;
 }
 
 .ms-band-fill {
   height: 100%;
-  border-radius: 4px;
+  border-radius: 5px;
   transition: width 0.15s ease;
+  min-width: 3px;
 }
 
 .ms-band-pct {
   font-size: 10px;
   font-family: var(--mono);
   color: var(--text-dim);
-  width: 28px;
+  width: 30px;
   text-align: right;
   flex-shrink: 0;
 }
@@ -2990,14 +3034,25 @@ body {
 
 .ms-metrics {
   display: flex;
-  gap: 16px;
+  gap: 0;
   flex-wrap: wrap;
 }
 
 .ms-metric {
+  flex: 1 1 0;
+  min-width: 70px;
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 0;
+}
+
+.ms-metric-value {
+  font-size: 14px;
+  font-family: var(--mono);
+  font-weight: 700;
+  color: var(--text);
 }
 
 .ms-metric-label {
@@ -3005,13 +3060,6 @@ body {
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--text-dim);
-}
-
-.ms-metric-value {
-  font-size: 12px;
-  font-family: var(--mono);
-  font-weight: 600;
-  color: var(--text);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
