@@ -28,6 +28,7 @@ curl -sSL https://raw.githubusercontent.com/pieeg-club/PiEEG-server/main/install
 <img width="100%" alt="PiEEG dashboard" src="https://github.com/user-attachments/assets/0556e2b9-2ae2-4864-84d0-267abfedc177" />
 
 <p>
+  <img width="15%" alt="Light view" alt="image" src="https://github.com/user-attachments/assets/d4562702-25ea-45b1-b310-56bb79021650" />
   <img width="15%" alt="Mobile view" src="https://github.com/user-attachments/assets/395f1c53-88ff-4728-8cd9-b06b80bc82de" />
   <img width="15%" alt="Dashboard overview" src="https://github.com/user-attachments/assets/6e88f47c-f17e-47f8-a088-771f1a064d43" />
   <img width="15%" alt="Spectral analysis" src="https://github.com/user-attachments/assets/e9255668-05dd-4738-80b5-7c2a18411f65" />
