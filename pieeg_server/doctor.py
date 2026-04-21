@@ -126,6 +126,20 @@ def run_doctor(quiet: bool = False) -> int:
     if not quiet:
         print()
 
+    # ── 2b. DSP engine (native accelerator) ──
+    if not quiet:
+        print(f"{_BOLD}DSP Engine{_RESET}")
+    try:
+        import pieeg_core  # noqa: F401
+        ver = getattr(pieeg_core, "__version__", "?")
+        ok(f"pieeg-core {ver} — native accelerator (Rust) active")
+    except ImportError:
+        ok("python — pure-Python reference implementation (fallback)")
+        ok("  Optional speedup: pip install 'pieeg-server[fast]'")
+
+    if not quiet:
+        print()
+
     # ── 3. SPI ──
     if not quiet:
         print(f"{_BOLD}SPI Interface{_RESET}")

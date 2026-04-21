@@ -14,7 +14,11 @@ import statistics
 
 import pytest
 
-from pieeg_server.filters import BandpassFilter, MultichannelFilter
+# These tests validate the pure-Python reference implementation. The native
+# accelerator (pieeg-core) is exercised separately in
+# ``test_native_integration.py``; when installed it produces numerically
+# similar but not bit-identical output.
+from pieeg_server.filters import BandpassFilter, _PyMultichannelFilter as MultichannelFilter
 
 SAMPLE_RATE = 250.0
 

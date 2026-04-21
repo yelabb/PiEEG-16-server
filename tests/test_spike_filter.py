@@ -2,7 +2,10 @@
 
 import pytest
 
-from pieeg_server.spike_filter import HampelFilter
+# These tests validate the pure-Python reference implementation. The native
+# accelerator (pieeg-core) is exercised separately in
+# ``test_native_integration.py``.
+from pieeg_server.spike_filter import _PyHampelFilter as HampelFilter
 
 
 class TestHampelBasics:

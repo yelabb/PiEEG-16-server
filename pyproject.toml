@@ -43,6 +43,12 @@ rpi = [
 ironbci = [
     "bleak>=0.21",
 ]
+fast = [
+    # Native (Rust) accelerator for the DSP hot paths.
+    # Optional — pieeg-server runs in pure Python when this is absent.
+    # See: https://github.com/pieeg-club/PiEEG-core
+    "pieeg-core>=0.1.1",
+]
 dev = [
     "pytest>=7.0",
     "pytest-asyncio>=0.21",

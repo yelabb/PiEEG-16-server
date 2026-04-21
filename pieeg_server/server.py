@@ -34,6 +34,7 @@ from .webhooks import WebhookStore
 from .osc_vrchat import VRChatOSCBridge, OSCConfig
 from .lsl import LSLBridge, LSLConfig  # LSLBridge defers pylsl import to run()
 from . import __version__
+from . import _native
 
 RELAY_MAX_SECONDS = 30 * 60  # 30-minute hard cap, server-side
 
@@ -192,6 +193,7 @@ class PiEEGServer:
             "channels": self._num_channels,
             "filter": self._filter is not None,
             "mock": self._acq._mock,
+            "engine": _native.engine_info(),
             "lsl_status": self._lsl_bridge.status() if self._lsl_bridge else {"running": False},
             "cloud_relay_status": self._get_cloud_relay_status(),
             "spike_config": self._get_spike_config(),

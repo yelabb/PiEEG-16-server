@@ -320,6 +320,12 @@ def _print_startup_panel(console, args, device_label, num_ch, local_ip, hostname
     if args.filter:
         table.add_row("Filter", f"{args.lowcut}–{args.highcut} Hz bandpass")
 
+    from . import _native
+    if _native.HAS_NATIVE:
+        table.add_row("Engine", f"[green]pieeg-core {_native.NATIVE_VERSION}[/green] [dim](native)[/dim]")
+    else:
+        table.add_row("Engine", "python [dim](pip install pieeg-server[fast] for native)[/dim]")
+
     table.add_row("", "")
     table.add_row("WebSocket", f"[bold]ws://localhost:{args.port}[/bold]")
     if local_ip not in ("127.0.0.1", "localhost"):
@@ -535,6 +541,16 @@ def main():
 
     console = _setup_rich_logging(verbose=args.verbose)
     logger = logging.getLogger("pieeg")
+
+    # --- DSP engine banner (native accelerator, if installed) ---
+    from . import _native
+    if _native.HAS_NATIVE:
+        logger.info("DSP engine: pieeg-core %s (native)", _native.NATIVE_VERSION)
+    else:
+        logger.info(
+            "DSP engine: python (install 'pieeg-server[fast]' for the "
+            "native accelerator)"
+        )
 
     # --- Hardware ---
     hw = _make_hardware(args, logger)

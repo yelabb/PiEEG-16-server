@@ -20,9 +20,16 @@ standard deviation for normally distributed data.
 
 Complexity: O(k log k) per sample per channel where k = window size.
 At 250 Hz × 16 channels with k=5 this is negligible.
+
+If the optional ``pieeg-core`` package is installed, ``HampelFilter`` is
+transparently swapped for the compiled Rust implementation (~20× faster).
+The public API is identical; the pure-Python class below remains the
+reference implementation and fallback.
 """
 
 import logging
+
+from . import _native
 
 logger = logging.getLogger("pieeg.spike_filter")
 
@@ -176,3 +183,16 @@ class HampelFilter:
         if n % 2 == 1:
             return deviations[n // 2]
         return (deviations[n // 2 - 1] + deviations[n // 2]) / 2.0
+
+
+# ── Native accelerator swap ─────────────────────────────────────────
+# When ``pieeg-core`` is installed, the Rust ``HampelFilter`` has an
+# identical signature and behavior. Swap the class binding so callers get
+# the fast path automatically. The Python class above remains available as
+# :class:`_PyHampelFilter` for tests and explicit fallback use.
+
+_PyHampelFilter = HampelFilter
+
+if _native.HAS_NATIVE:  # pragma: no cover - exercised only with the wheel
+    HampelFilter = _native.HampelFilter  # type: ignore[misc,assignment]
+

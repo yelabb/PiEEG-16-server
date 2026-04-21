@@ -109,6 +109,28 @@ curl -sSL https://raw.githubusercontent.com/pieeg-club/PiEEG-server/main/install
 > ```
 > Then run with `pieeg-server --device ironbci8`. See [CLI Reference](#cli-reference) for BLE options.
 
+### Optional: native accelerator (`pieeg-core`)
+
+`pieeg-server` ships with a pure-Python reference implementation for every
+DSP hot path (24-bit ADC decode, Butterworth bandpass, Hampel spike
+rejection). Installing the optional [`pieeg-core`](https://github.com/pieeg-club/PiEEG-core)
+Rust accelerator transparently swaps those hot paths for compiled
+equivalents (~15–30× faster) — no config, no code changes:
+
+```bash
+pip install 'pieeg-server[fast]'
+```
+
+The active engine is announced on startup and reported in the WebSocket
+`connected` message as `"engine": {"native": true, "engine": "pieeg-core", "version": "..."}`,
+and `pieeg-server doctor` prints a **DSP Engine** section. If the wheel
+is missing or fails to import, `pieeg-server` falls back to the Python
+implementation automatically — nothing breaks.
+
+`pieeg-core` is licensed AGPL-3.0-or-later; installing it is strictly
+opt-in so the default MIT-licensed `pieeg-server` install stays
+license-clean.
+
 <sup>[↑ Navigation](#nav)</sup>
 
 ---

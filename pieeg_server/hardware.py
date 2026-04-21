@@ -18,6 +18,8 @@ try:
 except ImportError:
     fcntl = None  # not on Linux — hardware methods will fail, mock mode still works
 
+from . import _native
+
 logger = logging.getLogger("pieeg.hardware")
 
 try:
@@ -456,7 +458,15 @@ class PiEEGHardware:
 
         Bytes 0-2: status
         Bytes 3-26: 8 channels × 3 bytes (24-bit signed, MSB first)
+
+        Uses the compiled ``pieeg_core.decode_channels`` (~30× faster) when
+        available, with the pure-Python implementation below as the
+        reference and fallback.
         """
+        if _native.HAS_NATIVE:
+            # Native path: Rust consumes the spidev byte list directly.
+            return _native.decode_channels(raw)
+
         channels = []
         for i in range(3, 25, 3):
             raw_val = (raw[i] << 16) | (raw[i + 1] << 8) | raw[i + 2]

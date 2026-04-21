@@ -2,10 +2,17 @@
 Optional server-side Butterworth bandpass filter for EEG data.
 
 Clients can request raw or filtered data via the WebSocket API.
+
+If the optional ``pieeg-core`` package is installed, ``MultichannelFilter``
+is transparently swapped for the compiled Rust implementation (~15× faster).
+The public API is identical; the pure-Python classes below remain the
+reference implementation and fallback.
 """
 
 import numpy as np
 from scipy import signal
+
+from . import _native
 
 
 class BandpassFilter:
@@ -74,3 +81,16 @@ class MultichannelFilter:
             [filtered_by_channel[ch][i] for ch in range(num_channels)]
             for i in range(len(block))
         ]
+
+
+# ── Native accelerator swap ─────────────────────────────────────────
+# When ``pieeg-core`` is installed, the Rust ``MultichannelFilter`` has an
+# identical signature and behavior. Swap the class binding so callers get
+# the fast path automatically. The Python class above remains available as
+# :class:`_PyMultichannelFilter` for tests and explicit fallback use.
+
+_PyMultichannelFilter = MultichannelFilter
+
+if _native.HAS_NATIVE:  # pragma: no cover - exercised only with the wheel
+    MultichannelFilter = _native.MultichannelFilter  # type: ignore[misc,assignment]
+
