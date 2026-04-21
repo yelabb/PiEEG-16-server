@@ -937,6 +937,42 @@ body {
   overflow: hidden;
 }
 
+/* ── Vertical resize handle ── */
+.v-resize-handle {
+  flex-shrink: 0;
+  height: 5px;
+  cursor: row-resize;
+  background: transparent;
+  border-top: 1px solid var(--border);
+  position: relative;
+  z-index: 5;
+  transition: background 0.15s;
+}
+
+.v-resize-handle::after {
+  content: '';
+  position: absolute;
+  inset: -5px 0;
+}
+
+.v-resize-handle:hover {
+  background: var(--accent-soft);
+  border-top-color: var(--accent-border);
+}
+
+.v-resize-handle:hover::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 32px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--accent-light);
+  opacity: 0.6;
+}
+
 .main-area .grid {
   flex: 1;
 }
@@ -2675,7 +2711,7 @@ body {
 
 .filter-preview-canvas-wrap {
   position: relative;
-  height: 160px;
+  height: 100px;
   background: var(--bg);
 }
 

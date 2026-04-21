@@ -317,6 +317,9 @@ export default function App({ wsUrl, onDisconnect }: { wsUrl?: string; onDisconn
   const [showSpectrogram, setShowSpectrogram] = useState(false);
   const [showStats, setShowStats] = useState(false);
   const [showMentalState, setShowMentalState] = useState(false);
+  const mainAreaRef = useRef<HTMLDivElement>(null);
+  const [gridPct, setGridPct] = useState(30);
+  const [analysisPct, setAnalysisPct] = useState(35);
   const [showChat, setShowChat] = useState(false);
   const [showDocs, setShowDocs] = useState(false);
   const [showRegisters, setShowRegisters] = useState(false);
@@ -493,6 +496,48 @@ export default function App({ wsUrl, onDisconnect }: { wsUrl?: string; onDisconn
     });
   }
 
+  function startGridDrag(e: React.MouseEvent) {
+    e.preventDefault();
+    const startY = e.clientY;
+    const startPct = gridPct;
+    const h = mainAreaRef.current?.clientHeight || 700;
+    document.body.style.cursor = "row-resize";
+    document.body.style.userSelect = "none";
+    function onMove(ev: MouseEvent) {
+      const delta = ((ev.clientY - startY) / h) * 100;
+      setGridPct(Math.max(10, Math.min(75, startPct + delta)));
+    }
+    function onUp() {
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    }
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }
+
+  function startAnalysisDrag(e: React.MouseEvent) {
+    e.preventDefault();
+    const startY = e.clientY;
+    const startPct = analysisPct;
+    const h = mainAreaRef.current?.clientHeight || 700;
+    document.body.style.cursor = "row-resize";
+    document.body.style.userSelect = "none";
+    function onMove(ev: MouseEvent) {
+      const delta = ((ev.clientY - startY) / h) * 100;
+      setAnalysisPct(Math.max(10, Math.min(60, startPct + delta)));
+    }
+    function onUp() {
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    }
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }
+
   const toggleExpandCh = useCallback((i: number) => {
     if (!activeChRef.current.has(i)) {
       setActiveChannels((prev) => {
@@ -609,6 +654,7 @@ export default function App({ wsUrl, onDisconnect }: { wsUrl?: string; onDisconn
 
   // Suspend grid RAF loops while expanded overlay covers them
   eeg.data.gridSuspended = expandedCh !== null && activeChannels.has(expandedCh);
+  const showAnalysis = showSpectrogram || showStats || showMentalState;
 
   return (
     <AuthGate skipAuth={skipLocalAuth}>
@@ -971,7 +1017,10 @@ export default function App({ wsUrl, onDisconnect }: { wsUrl?: string; onDisconn
 
       {/* Main area */}
       <ErrorBoundary>
-        <div className={`main-area${showFFT ? " with-fft" : ""}${showSpectrogram || showStats || filterEnabled ? " with-analysis" : ""}`}>
+        <div
+          ref={mainAreaRef}
+          className={`main-area${showFFT ? " with-fft" : ""}${showAnalysis || filterEnabled ? " with-analysis" : ""}`}
+        >
         {expandedCh !== null && activeChannels.has(expandedCh) && (
           <ChannelDetailPanel
             chIdx={expandedCh}
@@ -980,7 +1029,10 @@ export default function App({ wsUrl, onDisconnect }: { wsUrl?: string; onDisconn
             onClose={() => setExpandedCh(null)}
           />
         )}
-        <div className="grid">
+        <div
+          className="grid"
+          style={(showFFT || showAnalysis) ? { flex: `0 0 ${gridPct}%` } : undefined}
+        >
           {Array.from({ length: numCh }, (_, i) => (
             <ChannelCanvas
               key={i}
@@ -992,6 +1044,9 @@ export default function App({ wsUrl, onDisconnect }: { wsUrl?: string; onDisconn
             />
           ))}
         </div>
+        {(showFFT || showAnalysis) && (
+          <div className="v-resize-handle" onMouseDown={startGridDrag} title="Drag to resize" />
+        )}
         {showFFT && (
           <div className="fft-area">
             <SpectralPanel eegData={eeg.data} />
@@ -1005,8 +1060,14 @@ export default function App({ wsUrl, onDisconnect }: { wsUrl?: string; onDisconn
             highcut={parseFloat(String(highcut)) || 40}
           />
         )}
-        {(showSpectrogram || showStats || showMentalState) && (
-          <div className="analysis-area">
+        {showFFT && showAnalysis && (
+          <div className="v-resize-handle" onMouseDown={startAnalysisDrag} title="Drag to resize" />
+        )}
+        {showAnalysis && (
+          <div
+            className="analysis-area"
+            style={showFFT ? { flex: `0 0 ${analysisPct}%` } : undefined}
+          >
             {showSpectrogram && <Spectrogram eegData={eeg.data} />}
             {showStats && <StatsPanel eegData={eeg.data} />}
             {showMentalState && <MentalStatePanel eegData={eeg.data} />}
