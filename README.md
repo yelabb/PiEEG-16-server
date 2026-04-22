@@ -131,6 +131,25 @@ implementation automatically — nothing breaks.
 opt-in so the default MIT-licensed `pieeg-server` install stays
 license-clean.
 
+**Benchmark the two engines side-by-side** with the bundled script:
+
+```bash
+python -m scripts.bench_native --seconds 5
+```
+
+Sample results (Windows, 5 s @ 250 Hz × 16 ch):
+
+| Hot path                                   |          Python |       pieeg-core | Speedup     |
+| ------------------------------------------ | --------------: | ---------------: | ----------- |
+| `MultichannelFilter` (bandpass 1–40 Hz)    |     992 samples/s | 1,048,658 samples/s | **~1057×** |
+| `HampelFilter` (spike removal)             |  24,619 samples/s |   358,361 samples/s | **~15×**   |
+| `decode_channels` (24-bit SPI → µV)        | 121,352 samples/s | 1,134,301 samples/s | **~9×**    |
+
+Real-time streaming at 250 Hz × 16 ch requires 4,000 samples/s — the
+pure-Python `MultichannelFilter` is below that threshold, so installing
+`pieeg-core` is effectively required when server-side filtering is
+enabled on 16-channel rigs.
+
 <sup>[↑ Navigation](#nav)</sup>
 
 ---
