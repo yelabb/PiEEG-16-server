@@ -4,4 +4,5 @@ export default {
   'vrchat-osc': 'VRChat OSC',
   lsl: 'Lab Streaming Layer',
   notebooks: 'Jupyter Notebooks',
+  'pieeg-core': 'Native accelerator',
 }
