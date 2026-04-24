@@ -19,17 +19,31 @@ import type {
   SessionRecord,
 } from "../types";
 
+interface CapturedEpoch {
+  marker_id: number;
+  data: Float32Array[];
+  quality: number;
+  sample_rate: number;
+  /** Epoch start time in seconds (EEG clock). */
+  start_ts: number;
+}
+
 export class SessionRecorder {
   private markers: StimulusMarker[] = [];
   private predictions: CandidatePrediction[] = [];
-  private epochs: { marker_id: number; data: Float32Array[]; quality: number }[] = [];
+  private epochs: CapturedEpoch[] = [];
   private startedAt = new Date().toISOString();
-  private sessionId = `p300-${Date.now().toString(36)}`;
+  private _sessionId = `p300-${Date.now().toString(36)}`;
 
   constructor(
     public subject_id: string,
     public theme: string,
   ) {}
+
+  /** Public, stable handle to the session id for filename generation etc. */
+  get sessionId(): string {
+    return this._sessionId;
+  }
 
   onMarker(m: StimulusMarker): void {
     this.markers.push(m);
@@ -41,6 +55,8 @@ export class SessionRecorder {
         marker_id: e.marker.marker_id,
         data: e.data.map((ch) => new Float32Array(ch)),
         quality: e.quality,
+        sample_rate: e.sample_rate,
+        start_ts: e.marker.timestamp - e.baseline_samples / e.sample_rate,
       });
     }
   }
@@ -51,7 +67,7 @@ export class SessionRecorder {
 
   toRecord(includeEeg = false): SessionRecord {
     const rec: SessionRecord = {
-      session_id: this.sessionId,
+      session_id: this._sessionId,
       subject_id: this.subject_id,
       started_at: this.startedAt,
       theme: this.theme,
@@ -59,16 +75,16 @@ export class SessionRecorder {
       predictions: this.predictions.slice(),
     };
     if (includeEeg && this.epochs.length > 0) {
-      // Represent epochs as a flat sample matrix keyed by marker_id.
-      // (Lossy vs the raw stream, but sufficient for explainability.)
-      const sr = this.epochs[0].data[0]?.length
-        ? Math.round(1000 / 16) // placeholder — actual rate comes from epoch
-        : 50;
+      // Export a flat sample matrix shaped as [t, ch0, ch1, …] rows, where
+      // `t` is the sample's timestamp in seconds on the EEG clock. All
+      // epochs share the first epoch's sample rate (decimation is constant).
+      const sr = this.epochs[0].sample_rate;
       const samples: number[][] = [];
       for (const ep of this.epochs) {
         const nS = ep.data[0]?.length ?? 0;
         for (let i = 0; i < nS; i++) {
-          const row: number[] = [ep.marker_id, i];
+          const t = ep.start_ts + i / ep.sample_rate;
+          const row: number[] = [t];
           for (const ch of ep.data) row.push(ch[i]);
           samples.push(row);
         }
@@ -89,7 +105,7 @@ export class SessionRecorder {
     this.predictions = [];
     this.epochs = [];
     this.startedAt = new Date().toISOString();
-    this.sessionId = `p300-${Date.now().toString(36)}`;
+    this._sessionId = `p300-${Date.now().toString(36)}`;
   }
 
   getMarkerCount(): number { return this.markers.length; }

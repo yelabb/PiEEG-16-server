@@ -29,7 +29,7 @@ export function ReviewPanel({ runtime }: { runtime: P300Runtime }) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `p300-session-${runtime.recorder["sessionId"] ?? "export"}.json`;
+    a.download = `p300-session-${runtime.recorder.sessionId}.json`;
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }

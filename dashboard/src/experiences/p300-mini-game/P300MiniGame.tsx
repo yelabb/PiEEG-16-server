@@ -68,7 +68,7 @@ export default function P300MiniGame({ eegData, onExit }: ExperienceProps) {
 
   // Keep the runtime's theme tag in sync so sessions export with the right name.
   useEffect(() => {
-    if (runtimeRef.current) runtimeRef.current.opts.theme = theme;
+    if (runtimeRef.current) runtimeRef.current.setTheme(theme);
   }, [theme]);
 
   const runtime = runtimeRef.current;

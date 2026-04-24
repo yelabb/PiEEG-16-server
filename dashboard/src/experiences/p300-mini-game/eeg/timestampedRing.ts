@@ -95,11 +95,11 @@ export class TimestampedRing implements EegClock {
     }
 
     // Sanity-check the start timestamp falls near startTs (guard against
-    // dropped frames that would silently shift the window).
+    // dropped frames that would silently shift the window). Tolerate up to
+    // ~16 ms drift (4 samples at 250 Hz) before dropping the epoch.
     const actualStartTs = this.timestamps[startRingIdx];
-    if (Math.abs(actualStartTs - startTs) > 2.0 / this.sampleRate * 4) {
-      // Tolerate up to ~16 ms drift (4 samples at 250 Hz) before bailing.
-      // This guards against silent dropouts.
+    if (Math.abs(actualStartTs - startTs) > (2.0 / this.sampleRate) * 4) {
+      return null;
     }
 
     const out: Float32Array[] = channels.map(() => new Float32Array(targetCount));

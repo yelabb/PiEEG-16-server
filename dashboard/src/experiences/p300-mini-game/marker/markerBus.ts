@@ -74,8 +74,10 @@ export class MarkerBus {
         // Interpolate: EEG timestamp is in seconds, perf is in ms.
         ts = lastEeg + (perfNow - lastEegPerf) / 1000;
       } else {
-        // Fall back to wall-clock seconds — still monotonically ordered.
-        ts = Date.now() / 1000;
+        // Fall back to a monotonic wall-ish timestamp derived from
+        // performance.timeOrigin + performance.now() (in seconds). Unlike
+        // Date.now(), this is immune to NTP jumps and sleep-wake skew.
+        ts = (performance.timeOrigin + perfNow) / 1000;
       }
     }
 

@@ -108,7 +108,7 @@ export function StimulusGrid({
           setCue(null);
           await sleep(300);
           const pred = await runTrial(target);
-          onTrialEnd?.(pred!, target);
+          if (pred) onTrialEnd?.(pred, target);
           await sleep(600);
         }
         setStatus("Calibration complete.");

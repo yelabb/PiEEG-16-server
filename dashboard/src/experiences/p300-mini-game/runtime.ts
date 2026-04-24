@@ -56,6 +56,10 @@ export class P300Runtime {
   decoder: Decoder;
 
   private sampleTapInstalled = false;
+  private installedSampleHandler?: (t: number, channels: number[]) => void;
+  private previousSampleHandler: unknown = undefined;
+  private busUnsubscribe: (() => void) | null = null;
+  private extractorUnsubscribe: (() => void) | null = null;
   private currentAcc: EvidenceAccumulator | null = null;
   private trialCounter = 0;
   private handlers: { [K in keyof RuntimeEventMap]?: Set<Handler<K>> } = {};
@@ -94,8 +98,8 @@ export class P300Runtime {
   /** Start all subscriptions. Must be called before any markers are emitted. */
   start(): void {
     this.extractor.start();
-    this.extractor.subscribe((e) => this.onEpoch(e));
-    this.bus.subscribe((m) => {
+    this.extractorUnsubscribe = this.extractor.subscribe((e) => this.onEpoch(e));
+    this.busUnsubscribe = this.bus.subscribe((m) => {
       this.recorder.onMarker(m);
       this.emit("marker", m);
     });
@@ -104,7 +108,19 @@ export class P300Runtime {
 
   stop(): void {
     this.extractor.stop();
+    if (this.busUnsubscribe) { this.busUnsubscribe(); this.busUnsubscribe = null; }
+    if (this.extractorUnsubscribe) { this.extractorUnsubscribe(); this.extractorUnsubscribe = null; }
     this.removeSampleTap();
+  }
+
+  /**
+   * Update the theme tag associated with this runtime. Keeps the runtime
+   * options and the session recorder's theme metadata in sync so exported
+   * sessions reflect the theme the user is actually playing.
+   */
+  setTheme(theme: string): void {
+    this.opts.theme = theme;
+    this.recorder.theme = theme;
   }
 
   /** Begin a new decoding trial over the given candidate set. */
@@ -206,7 +222,12 @@ export class P300Runtime {
   }
 
   private onEpoch(e: Epoch): void {
-    this.recorder.onEpoch(e, false);
+    // Capture raw epoch data whenever it is labelled (calibration) so the
+    // session exporter can include EEG windows for offline training. Free
+    // operation only needs markers + predictions, not raw samples.
+    const captureData =
+      e.marker.target_label === "target" || e.marker.target_label === "nontarget";
+    this.recorder.onEpoch(e, captureData);
     this.emit("epoch", e);
 
     // Calibration: accumulate labelled epochs.
@@ -231,20 +252,29 @@ export class P300Runtime {
   private installSampleTap(): void {
     if (this.sampleTapInstalled) return;
     const w = window as unknown as Record<string, unknown>;
-    const prev = w.__p300SampleHandler;
-    w.__p300SampleHandler = (t: number, channels: number[]) => {
+    this.previousSampleHandler = w.__p300SampleHandler;
+    const prev = this.previousSampleHandler;
+    this.installedSampleHandler = (t: number, channels: number[]) => {
       this.ring.push(t, channels);
       if (typeof prev === "function") {
         try { (prev as (t: number, c: number[]) => void)(t, channels); } catch { /* ignore */ }
       }
     };
+    w.__p300SampleHandler = this.installedSampleHandler;
     this.sampleTapInstalled = true;
   }
 
   private removeSampleTap(): void {
     if (!this.sampleTapInstalled) return;
     const w = window as unknown as Record<string, unknown>;
-    w.__p300SampleHandler = undefined;
+    // Only restore the previous handler if we're still the installed one —
+    // otherwise another runtime (or consumer) has chained on top of us and
+    // we must leave their handler in place.
+    if (w.__p300SampleHandler === this.installedSampleHandler) {
+      w.__p300SampleHandler = this.previousSampleHandler;
+    }
+    this.installedSampleHandler = undefined;
+    this.previousSampleHandler = undefined;
     this.sampleTapInstalled = false;
   }
 }
