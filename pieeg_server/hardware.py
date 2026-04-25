@@ -79,7 +79,7 @@ DRDY_PIN = 26      # DRDY chip 1
 DRDY_PIN_2 = 13    # DRDY chip 2
 
 # --- SPI settings ---
-SPI_SPEED_HZ = 4_000_000
+SPI_SPEED_HZ = 600_000  # 600 kHz — matches the reference PiEEG script; 4 MHz causes bit errors on Pi GPIO traces
 SPI_MODE = 0b01
 SPI_BITS = 8
 BYTES_PER_READ = 27  # 3 status + 8 channels * 3 bytes
