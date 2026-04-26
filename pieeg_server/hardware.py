@@ -79,7 +79,7 @@ DRDY_PIN = 26      # DRDY chip 1
 DRDY_PIN_2 = 13    # DRDY chip 2
 
 # --- SPI settings ---
-SPI_SPEED_HZ = 4_000_000
+SPI_SPEED_HZ = 2_000_000 # Works better with ADS1299 chip
 SPI_MODE = 0b01
 SPI_BITS = 8
 BYTES_PER_READ = 27  # 3 status + 8 channels * 3 bytes
@@ -319,9 +319,10 @@ class PiEEGHardware:
 
     def _cs_set(self, value: int):
         """Set chip-select line: 1 = high (deselect), 0 = low (select)."""
-        buf = bytearray(_HANDLE_DATA_SIZE)
-        buf[0] = value & 1
-        fcntl.ioctl(self._cs_fd, _GPIOHANDLE_SET_VALUES, buf)
+        pass # SPI driver automatically pulses pin 8
+        #buf = bytearray(_HANDLE_DATA_SIZE)
+        #buf[0] = value & 1
+        #fcntl.ioctl(self._cs_fd, _GPIOHANDLE_SET_VALUES, buf)
 
     def _drdy_get(self) -> int:
         """Read chip 1 data-ready line. Returns 1 when high."""
@@ -350,9 +351,10 @@ class PiEEGHardware:
         self._chip_fd = os.open(self._gpio_chip_name, os.O_RDWR | os.O_CLOEXEC)
 
         # Chip-select line (output, default high)
-        self._cs_fd = self._request_line(
-            self._chip_fd, CS_PIN, _GPIOHANDLE_REQUEST_OUTPUT,
-            default_value=1, consumer=b"pieeg_cs")
+        self._cs_fd = -1 # The Pi5 kernel already assigns pin 8 to SPI driver, so asking for this pin throws an error
+        #self._cs_fd = self._request_line(
+        #    self._chip_fd, CS_PIN, _GPIOHANDLE_REQUEST_OUTPUT,
+        #    default_value=1, consumer=b"pieeg_cs")
 
         # Data-ready line chip 1 (input)
         self._drdy_fd = self._request_line(
