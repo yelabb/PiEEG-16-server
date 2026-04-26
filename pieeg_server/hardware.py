@@ -192,10 +192,18 @@ class PiEEGHardware:
         """
         Read one sample from the ADC (8 or 16 channels).
 
-        Returns None on status header mismatch.
+        Returns None on status header mismatch (16-ch only).
         Returns a list of floats (microvolts) on success.
 
-        Caller (acquisition loop) is responsible for DRDY polling.
+        Caller (acquisition loop) is responsible for DRDY polling on
+        chip 1.  This method handles chip 2 DRDY internally for 16-ch.
+
+        NOTE: matches the reference scripts in pieeg-club/PiEEG and
+        pieeg-club/PiEEG-16 exactly — pure read + decode, no
+        sample-to-sample comparison and no frame drops.  The legacy
+        ``_is_valid_frame`` delta-threshold filter is no longer applied
+        here because it created gaps that caused causal-filter ringing
+        downstream (the very "spikes" it was meant to suppress).
         """
         # Read 27 bytes from ADC chip 1
         raw1 = self._spi1.readbytes(BYTES_PER_READ)
@@ -207,11 +215,9 @@ class PiEEGHardware:
             raw2 = self._spi2.readbytes(BYTES_PER_READ)
             self._cs_set(1)
 
-            # Spike detection: check last channel of chip 2 (bytes 24-26)
-            if not self._is_valid_frame(raw2):
-                return None
-
-            # Validate status bytes from chip 2
+            # Validate status bytes from chip 2 (matches reference).
+            # On mismatch, drop the frame — the reference simply skips
+            # the conversion-and-append for that iteration.
             if (raw2[0], raw2[1], raw2[2]) != EXPECTED_STATUS:
                 return None
 
@@ -220,19 +226,22 @@ class PiEEGHardware:
             channels.extend(self._decode_channels(raw2))
             return channels
         else:
-            # 8-channel mode: spike detection on chip 1
-            if not self._is_valid_frame(raw1):
-                return None
+            # 8-channel: pure read + decode (reference does no validation
+            # for the single-chip case either).
             return self._decode_channels(raw1)
 
     def _is_valid_frame(self, raw: list[int]) -> bool:
-        """Spike detection matching the original not_spike script.
+        """Legacy delta-threshold spike detector (NO LONGER ON THE READ PATH).
 
-        Checks the last 3 bytes (bytes 24-26) of the SPI read as a signed
-        24-bit integer. If the jump from the previous valid value exceeds
-        SPIKE_THRESHOLD, the frame is considered corrupted.
+        Kept for backward-compatibility with the ``spike_threshold`` /
+        ``spike_reset_after`` settings exposed via the dashboard and tests.
+        ``read_sample`` no longer calls this method, because dropping whole
+        8/16-channel frames creates gaps that ring through downstream
+        causal filters and look like spikes — the very thing this filter
+        was meant to suppress.  The reference scripts in pieeg-club do
+        nothing of the sort; they just read every frame.
 
-        A threshold of -1 disables spike rejection entirely.
+        A threshold of -1 disables the filter entirely (returns True).
         """
         if self._spike_threshold == -1:
             return True

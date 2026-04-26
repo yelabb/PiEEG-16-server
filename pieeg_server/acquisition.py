@@ -34,8 +34,13 @@ class AcquisitionLoop:
         self._thread: threading.Thread | None = None
         self._sample_count = 0
         self._settle_remaining = 0
-        # Device-agnostic Hampel spike filter (runs in acquisition thread)
-        self._hampel = HampelFilter(num_channels=hardware.num_channels)
+        # Device-agnostic Hampel spike filter (runs in acquisition thread).
+        # Disabled by default to match the reference pieeg-club scripts
+        # exactly — they do NO per-sample filtering at acquisition time.
+        # Users can opt-in via the dashboard / API if desired.
+        self._hampel = HampelFilter(
+            num_channels=hardware.num_channels, enabled=False
+        )
         # Default subscriber for backward compat (.queue property)
         self._default_queue = self.subscribe()
 
