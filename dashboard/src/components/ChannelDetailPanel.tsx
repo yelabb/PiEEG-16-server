@@ -1,7 +1,7 @@
 import { useRef, useEffect, useState, memo, useMemo } from "react";
 import { FftEngine, FREQUENCY_BANDS } from "../lib/fftEngine";
 import type { EEGData, BandPowers, CanvasSize, ChannelStats } from "../types";
-import { NUM_CHANNELS, TRACE_COLORS, SAMPLE_RATE } from "../types";
+import { TRACE_COLORS, SAMPLE_RATE } from "../types";
 
 const FFT_SIZE = 256;
 const FFT_EVERY_FRAMES = 8;

@@ -1,11 +1,14 @@
 import { useRef, useEffect, useCallback, useState } from "react";
 import * as THREE from "three";
 import type { EEGData } from "../types";
-import { NUM_CHANNELS } from "../types";
 
 const MAX_POINTS = 300;
 
 const CHANNEL_HUES = [
+  0.50, 0.80, 0.95, 0.60,
+  0.38, 0.14, 0.05, 0.55,
+  0.50, 0.80, 0.95, 0.60,
+  0.38, 0.14, 0.05, 0.55,
   0.50, 0.80, 0.95, 0.60,
   0.38, 0.14, 0.05, 0.55,
   0.50, 0.80, 0.95, 0.60,
@@ -137,11 +140,12 @@ export default function XRWaveView({ eegData, yScale, onExit }: XRWaveViewProps)
     // Channel wave lines — no labels, no glow planes
     const lines: ChannelLine[] = [];
     const tempColor = new THREE.Color();
-    for (let ch = 0; ch < NUM_CHANNELS; ch++) {
-      const t = NUM_CHANNELS > 1 ? ch / (NUM_CHANNELS - 1) : 0.5;
+    const channelCount = eegRef.current.numChannels;
+    for (let ch = 0; ch < channelCount; ch++) {
+      const t = channelCount > 1 ? ch / (channelCount - 1) : 0.5;
       const angle = -PANEL_ARC / 2 + t * PANEL_ARC;
       const yPos = PANEL_Y_CENTER + PANEL_HEIGHT / 2 - t * PANEL_HEIGHT;
-      const baseHue = CHANNEL_HUES[ch];
+      const baseHue = CHANNEL_HUES[ch % CHANNEL_HUES.length];
 
       const positions = new Float32Array(MAX_POINTS * 3);
       const colors = new Float32Array(MAX_POINTS * 3);
@@ -182,7 +186,7 @@ export default function XRWaveView({ eegData, yScale, onExit }: XRWaveViewProps)
       const drawCount = Math.min(MAX_POINTS, Math.ceil(count / skip));
       const range = yScaleRef.current || 100;
 
-      for (let ch = 0; ch < NUM_CHANNELS; ch++) {
+      for (let ch = 0; ch < lines.length; ch++) {
         const { positions, colors, geometry, angle, yPos, baseHue } = lines[ch];
         const buf = bufs[ch];
         if (!buf) continue;
