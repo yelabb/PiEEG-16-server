@@ -73,6 +73,7 @@ Every frame is plain JSON — no SDK, no binary protocol, works in any language 
 pieeg-server                        # stream 16 ch (default)
 pieeg-server --device pieeg8        # 8-channel shield
 pieeg-server --device ironbci8      # IronBCI / EAREEG via Bluetooth LE
+pieeg-server --device ironbci32 --serial-port /dev/ttyACM0  # IronBCI-32 via USB serial
 pieeg-server --filter               # 1–40 Hz bandpass
 pieeg-server --monitor              # terminal sparklines
 pieeg-server --mock                 # synthetic data, no hardware
@@ -91,4 +92,15 @@ pieeg-server --device ironbci8 --ble-address A1:B2:C3:D4:E5:F6  # skip scan
 
 <Callout type="info">
   IronBCI requires the BLE extra: `pip install pieeg-server[ironbci]`. No SPI or GPIO needed — works on any platform with Bluetooth.
+</Callout>
+
+### IronBCI-32 (USB serial)
+
+```bash
+pieeg-server --device ironbci32 --serial-port /dev/ttyACM0   # Linux/macOS
+pieeg-server --device ironbci32 --serial-port COM3           # Windows
+```
+
+<Callout type="info">
+  IronBCI-32 requires the serial extra: `pip install pieeg-server[ironbci32]`. Pure-Python pyserial driver — no BrainFlow required. 32 channels at 250 Hz over USB CDC, FreeEEG wire protocol at 921600 baud.
 </Callout>

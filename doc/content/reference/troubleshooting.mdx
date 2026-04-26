@@ -71,6 +71,14 @@ kill $(lsof -t -i:1616)
 5. If scan times out, try passing the MAC address directly with `--ble-address`
 6. On Linux, ensure your user has permissions for Bluetooth (or run with `sudo`)
 
+#### IronBCI-32 (USB serial)
+
+1. Device enumerated by the OS: `ls /dev/ttyACM*` (Linux/macOS) or check Device Manager → Ports (Windows)
+2. Correct flags: `--device ironbci32 --serial-port /dev/ttyACM0` (or `COM3` on Windows)
+3. Serial extra installed: `pip install pieeg-server[ironbci32]`
+4. On Linux, add your user to the `dialout` group for serial access: `sudo usermod -aG dialout $USER` (then log out/in)
+5. If frames are dropped, check the `dropped_frames` counter — usually indicates a USB cable or hub issue at 921600 baud
+
 ### Dashboard not loading
 
 **Check:**

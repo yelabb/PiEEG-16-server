@@ -24,11 +24,12 @@ class AcquisitionLoop:
     """Runs the SPI read loop in a background thread, feeds async queues."""
 
     def __init__(self, hardware, loop: asyncio.AbstractEventLoop,
-                 mock: bool = False, ble: bool = False):
+                 mock: bool = False, ble: bool = False, serial: bool = False):
         self._hw = hardware
         self._loop = loop
         self._mock = mock
         self._ble = ble
+        self._serial = serial
         self._subscribers: list[asyncio.Queue] = []
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
@@ -101,6 +102,8 @@ class AcquisitionLoop:
             self._run_mock()
         elif self._ble:
             self._run_ble()
+        elif self._serial:
+            self._run_serial()
         else:
             self._run_hardware()
 
@@ -207,6 +210,28 @@ class AcquisitionLoop:
             )
             return
 
+        while not self._stop_event.is_set():
+            sample = self._hw.read_sample()
+            if sample is None:
+                time.sleep(SAMPLE_INTERVAL)
+                continue
+
+            sample = self._hampel.apply(sample)
+            self._sample_count += 1
+            frame = {
+                "t": round(time.time(), 6),
+                "n": self._sample_count,
+                "channels": sample,
+            }
+            self._loop.call_soon_threadsafe(self._enqueue, frame)
+
+    def _run_serial(self):
+        """Serial acquisition (IronBCI-32 / FreeEEG32-style USB-CDC boards).
+
+        The hardware driver opens its own reader thread on `open()` and feeds
+        an internal buffer; we drain it here at the sample rate, matching the
+        same timing contract as `_run_hardware()` and `_run_ble()`.
+        """
         while not self._stop_event.is_set():
             sample = self._hw.read_sample()
             if sample is None:

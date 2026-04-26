@@ -83,9 +83,12 @@ def parse_args():
     # Shared device flag (top-level, inherited by subcommands)
     device_kwargs = dict(
         type=str,
-        choices=["pieeg8", "pieeg16", "ironbci8"],
+        choices=["pieeg8", "pieeg16", "ironbci8", "ironbci32"],
         default="pieeg16",
-        help="Hardware profile: pieeg8/16 (SPI), ironbci8 (BLE) — default: pieeg16",
+        help=(
+            "Hardware profile: pieeg8/16 (SPI), ironbci8 (BLE), "
+            "ironbci32 (USB serial) — default: pieeg16"
+        ),
     )
     def _add_ble_args(parser):
         """Add BLE arguments to a parser (IronBCI / EAREEG compatible)."""
@@ -96,6 +99,13 @@ def parse_args():
         parser.add_argument(
             "--ble-address", default=None,
             help="BLE MAC address to connect directly (skip scan)",
+        )
+
+    def _add_serial_args(parser):
+        """Add serial-port arguments (IronBCI-32 / FreeEEG32 compatible)."""
+        parser.add_argument(
+            "--serial-port", default=None, metavar="PORT",
+            help="Serial device for ironbci32 (e.g. COM3, /dev/ttyACM0)",
         )
 
     sub = p.add_subparsers(dest="command")
@@ -134,6 +144,7 @@ def parse_args():
         help="GPIO chip device path (default: '/dev/gpiochip4' for Pi 5)",
     )
     _add_ble_args(rec)
+    _add_serial_args(rec)
     rec.add_argument(
         "--verbose", "-v", action="store_true",
         help="Enable debug logging",
@@ -156,6 +167,7 @@ def parse_args():
         help="GPIO chip device path (default: '/dev/gpiochip4' for Pi 5)",
     )
     _add_ble_args(mon)
+    _add_serial_args(mon)
     mon.add_argument(
         "--verbose", "-v", action="store_true",
         help="Enable debug logging",
@@ -226,6 +238,7 @@ def parse_args():
         help="Show live terminal monitor (requires 'rich')",
     )
     _add_ble_args(p)
+    _add_serial_args(p)
     p.add_argument(
         "--osc", action="store_true",
         help="Enable VRChat OSC bridge on startup (sends EEG band powers via UDP)",
@@ -258,20 +271,30 @@ def parse_args():
 
 
 def _is_ble_device(device: str) -> bool:
-    """Check if the selected device uses BLE transport."""
-    return device.startswith("ironbci")
+    """Check if the selected device uses BLE transport (IronBCI 8-ch)."""
+    return device == "ironbci8"
+
+
+def _is_serial_device(device: str) -> bool:
+    """Check if the selected device uses USB-serial transport (IronBCI-32)."""
+    return device == "ironbci32"
 
 
 def _num_channels_from_device(device: str) -> int:
     """Map --device flag to channel count."""
-    return 8 if device in ("pieeg8", "ironbci8") else 16  # ironbci is always 8ch
+    if device == "ironbci32":
+        return 32
+    if device in ("pieeg8", "ironbci8"):
+        return 8
+    return 16  # pieeg16 default
 
 
 def _device_label(device: str) -> str:
-    """Human-readable label from --device flag, e.g. 'IronBCI-8' or 'PiEEG-16'."""
+    """Human-readable label from --device flag, e.g. 'IronBCI-32' or 'PiEEG-16'."""
     num_ch = _num_channels_from_device(device)
-    prefix = "IronBCI" if _is_ble_device(device) else "PiEEG"
-    return f"{prefix}-{num_ch}"
+    if device.startswith("ironbci"):
+        return f"IronBCI-{num_ch}"
+    return f"PiEEG-{num_ch}"
 
 
 def _setup_rich_logging(verbose=False, default_level=logging.INFO):
@@ -388,13 +411,25 @@ def _make_hardware(args, logger):
         hw = IronBCIHardware(
             ble_name=ble_name, ble_address=ble_addr, num_channels=num_ch,
         )
+    elif _is_serial_device(device):
+        from .ironbci_32 import IronBCI32Hardware
+        port = getattr(args, "serial_port", None)
+        if not port:
+            print(
+                "\n  ERROR: --serial-port is required for ironbci32 "
+                "(e.g. --serial-port COM3 or /dev/ttyACM0)\n",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        logger.info("Initializing IronBCI-32 (serial port=%s)...", port)
+        hw = IronBCI32Hardware(serial_port=port, num_channels=num_ch)
     else:
         from .hardware import PiEEGHardware
         logger.info("Initializing PiEEG-%d hardware (GPIO chip: %s)...",
                     num_ch, args.gpio_chip)
         hw = PiEEGHardware(gpio_chip=args.gpio_chip, num_channels=num_ch)
     hw.open()
-    if not args.mock and not _is_ble_device(device):
+    if not args.mock and not _is_ble_device(device) and not _is_serial_device(device):
         logger.info("Hardware initialized - ADCs configured, LEDs should be ON")
     return hw
 
@@ -482,8 +517,10 @@ def main():
         hw = _make_hardware(args, logger)
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
+        _device = getattr(args, "device", "pieeg16")
         acq = AcquisitionLoop(hw, loop, mock=args.mock,
-                              ble=_is_ble_device(getattr(args, "device", "pieeg16")))
+                              ble=_is_ble_device(_device),
+                              serial=_is_serial_device(_device))
         acq.start()
         recorder = Recorder(acq, output=args.output, duration=args.duration,
                             num_channels=acq.num_channels)
@@ -514,8 +551,10 @@ def main():
         hw = _make_hardware(args, logger)
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
+        _device = getattr(args, "device", "pieeg16")
         acq = AcquisitionLoop(hw, loop, mock=args.mock,
-                              ble=_is_ble_device(getattr(args, "device", "pieeg16")))
+                              ble=_is_ble_device(_device),
+                              serial=_is_serial_device(_device))
         acq.start()
         monitor = TerminalMonitor(acq, num_channels=acq.num_channels)
 
@@ -565,7 +604,8 @@ def main():
     asyncio.set_event_loop(loop)
 
     acq = AcquisitionLoop(hw, loop, mock=args.mock,
-                           ble=_is_ble_device(getattr(args, "device", "pieeg16")))
+                           ble=_is_ble_device(getattr(args, "device", "pieeg16")),
+                           serial=_is_serial_device(getattr(args, "device", "pieeg16")))
     acq.start()
     num_ch = acq.num_channels
     device_label = _device_label(getattr(args, "device", "pieeg16"))
