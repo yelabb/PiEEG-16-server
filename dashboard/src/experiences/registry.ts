@@ -65,6 +65,9 @@ const NorthernLightsExperience = lazy(
 const MindCastExperience = lazy(
   () => import("./mindcast/MindCast"),
 );
+const P300MiniGameExperience = lazy(
+  () => import("./p300-mini-game/P300MiniGame"),
+);
 
 export const EXPERIENCES: ExperienceEntry[] = [
   {
@@ -159,6 +162,16 @@ export const EXPERIENCES: ExperienceEntry[] = [
     tag: "Audio",
     gradient: ["#06b6d4", "#22c55e"],
     component: MindCastExperience,
+    author: "PiEEG community",
+  },
+  {
+    id: "p300-mini-game",
+    name: "P300 Mini-Game",
+    description:
+      "Brain-controlled selection game powered by a full P300 neural decoding engine — shrinkage-LDA decoder with subject-specific calibration, Bayesian evidence accumulation, cross-session model reuse, confidence scoring, and exportable labelled datasets. Themeable stimulus grid (icons / letters / monsters / spells); architecturally a reusable ML core any mini-game can plug into via the shared marker contract.",
+    tag: "BCI / ML",
+    gradient: ["#22d3ee", "#7c3aed"],
+    component: P300MiniGameExperience,
     author: "PiEEG community",
   },
 ];
