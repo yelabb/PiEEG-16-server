@@ -62,6 +62,20 @@ class _FakeSerial:
         self._buf = bytearray(payload)
         self._lock = threading.Lock()
         self._closed = False
+        # Writable attributes the driver sets before open() to suppress
+        # DTR/RTS reset on USB-CDC ports.
+        self.port = None
+        self.baudrate = 0
+        self.timeout = 0.0
+        self.bytesize = 0
+        self.parity = "N"
+        self.stopbits = 1
+        self.dtr = True
+        self.rts = True
+
+    def open(self) -> None:
+        # No-op: the fake is already "open" with its pre-loaded buffer.
+        self._closed = False
 
     def read(self, n: int) -> bytes:
         with self._lock:
@@ -226,7 +240,8 @@ class TestValidation:
         assert hw.num_channels == 32
 
     def test_sample_rate_default(self, hw):
-        assert hw.sample_rate == 250
+        # Firmware-fixed (~500 SPS, BrainFlow descriptor lists 512).
+        assert hw.sample_rate == 500
 
     def test_spike_filter_setters(self, hw):
         hw.spike_threshold = 1234

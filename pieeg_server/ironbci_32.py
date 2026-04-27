@@ -7,12 +7,16 @@ dependency — just pyserial.
 
 Wire protocol
 -------------
-    Baud:   921600 (USB CDC ACM)
-    Frame:  [0xA0] [counter:u8] [ch1_msb ch1_mid ch1_lsb] ... [ch32_lsb] [0xC0]
-            =  1   +   1        +              32 × 3              +   1   = 99 B
+    Baud:    921600 (USB CDC ACM)
+    Rate:    ~500 SPS (firmware-fixed; AD7771 internal clock)
+    Frame:   [0xA0] [counter:u8] [ch1_msb ch1_mid ch1_lsb] ... [ch32_lsb] [0xC0]
+             =  1   +   1        +              32 × 3              +   1   = 99 B
     Channel data:    24-bit big-endian two's complement
     Reference:       Vref = 2.5 V, gain = 8 (ADS131-style front-end)
     LSB → µV:        2.5 / (2^23 - 1) / 8 × 1e6  ≈  0.03725 µV/LSB
+
+The device starts streaming as soon as USB power is applied — there is no
+`start_stream` command on the wire. Just open the port and parse.
 
 Resync rule (from BrainFlow's `FreeEEG::read_thread`):
     scan byte-by-byte until `... 0xC0 0xA0 ...` is seen with at least
@@ -21,9 +25,9 @@ Resync rule (from BrainFlow's `FreeEEG::read_thread`):
 
 Public interface mirrors `PiEEGHardware` / `MockHardware` / `IronBCIHardware`:
 `open()`, `close()`, `read_sample()`, `num_channels`, `spike_threshold`,
-`spike_reset_after`. The acquisition loop's `_run_serial` mode polls
-`read_sample()` at 250 Hz; the actual byte-pumping happens in a daemon
-thread fed by `serial.Serial.read()`.
+`spike_reset_after`. The acquisition loop drains `read_sample()` in a tight
+loop; the actual byte-pumping happens in a daemon thread fed by
+`serial.Serial.read()`.
 
 Reference:
     https://github.com/pieeg-club/ironbci-32
@@ -67,7 +71,10 @@ SCALE_UV = ADS_VREF / FULL_SCALE / ADS_GAIN * 1_000_000.0  # ≈ 0.03725 µV / L
 # --- Defaults ---------------------------------------------------------------
 DEFAULT_BAUDRATE = 921_600
 DEFAULT_READ_TIMEOUT = 1.0    # seconds
-DEFAULT_BUFFER_LIMIT = 8192   # max samples to keep in buffer (~32 s @ 250 Hz)
+DEFAULT_BUFFER_LIMIT = 8192   # max samples to keep in buffer (~16 s @ 500 Hz)
+DEFAULT_SAMPLE_RATE = 500     # Hz — firmware-fixed (BrainFlow descriptor: 512)
+# How long to wait after the first byte before declaring a stall.
+_STALL_WARN_AFTER_S = 2.0
 
 
 def _require_pyserial():
@@ -156,8 +163,9 @@ class IronBCI32Hardware:
 
     @property
     def sample_rate(self) -> int:
-        # Default firmware rate; not negotiated over the wire.
-        return 250
+        # Firmware-fixed (~500 SPS, BrainFlow's board descriptor lists 512).
+        # Not negotiated over the wire.
+        return DEFAULT_SAMPLE_RATE
 
     @property
     def spike_threshold(self) -> int:
@@ -190,14 +198,25 @@ class IronBCI32Hardware:
             "IronBCI-32: opening serial port %s @ %d baud",
             self._serial_port, self._baudrate,
         )
-        self._port = serial.Serial(
-            port=self._serial_port,
-            baudrate=self._baudrate,
-            timeout=self._timeout,
-            bytesize=serial.EIGHTBITS,
-            parity=serial.PARITY_NONE,
-            stopbits=serial.STOPBITS_ONE,
-        )
+        # Construct the port WITHOUT opening it so we can clear DTR/RTS first.
+        # On Windows, pyserial asserts DTR/RTS by default when opening a
+        # USB-CDC port, which resets STM32 firmware on many boards (including
+        # IronBCI-32 / FreeEEG32). The board would then never start streaming
+        # and the reader thread would loop on empty timeouts forever.
+        port = serial.Serial()
+        port.port = self._serial_port
+        port.baudrate = self._baudrate
+        port.timeout = self._timeout
+        port.bytesize = serial.EIGHTBITS
+        port.parity = serial.PARITY_NONE
+        port.stopbits = serial.STOPBITS_ONE
+        try:
+            port.dtr = False
+            port.rts = False
+        except Exception:  # pragma: no cover — some platforms reject pre-open writes
+            pass
+        port.open()
+        self._port = port
         # Flush any stale bytes from a previous session.
         try:
             self._port.reset_input_buffer()
@@ -300,10 +319,17 @@ class IronBCI32Hardware:
             self._buffer.append(channels)
 
     def _sync_to_start_byte(self) -> bool:
-        """Read one byte at a time until 0xA0 is found. Returns False on stop."""
+        """Read one byte at a time until 0xA0 is found. Returns False on stop.
+
+        Logs a warning if no bytes arrive for `_STALL_WARN_AFTER_S` seconds —
+        the typical symptom of DTR/RTS resetting the board firmware or the
+        wrong serial port being selected.
+        """
         port = self._port
         if port is None:
             return False
+        empty_reads_started: float | None = None
+        warned = False
         while not self._stop_event.is_set():
             try:
                 b = port.read(1)
@@ -311,6 +337,17 @@ class IronBCI32Hardware:
                 logger.warning("IronBCI-32 serial read error during resync: %s", e)
                 return False
             if not b:
+                import time as _t
+                if empty_reads_started is None:
+                    empty_reads_started = _t.monotonic()
+                elif not warned and _t.monotonic() - empty_reads_started > _STALL_WARN_AFTER_S:
+                    logger.warning(
+                        "IronBCI-32: no bytes received on %s after %.1fs. "
+                        "Is the device powered? Correct port? "
+                        "(firmware streams immediately on power-up)",
+                        self._serial_port, _STALL_WARN_AFTER_S,
+                    )
+                    warned = True
                 continue
             if b[0] == START_BYTE:
                 return True
