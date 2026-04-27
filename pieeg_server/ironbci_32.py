@@ -9,8 +9,9 @@ Wire protocol
 -------------
     Baud:    921600 (USB CDC ACM)
     Rate:    ~500 SPS (firmware-fixed; AD7771 internal clock)
-    Frame:   [0xA0] [counter:u8] [ch1_msb ch1_mid ch1_lsb] ... [ch32_lsb] [0xC0]
-             =  1   +   1        +              32 × 3              +   1   = 99 B
+    Frame:   [0xA0] [counter:u8] [ch1_msb ch1_mid ch1_lsb] ... [ch32_lsb]
+             [status:u8] [0x00 × 6] [0xC0]
+             =  1   +   1   +   32 × 3   +   1   +   6   +   1   = 106 B
     Channel data:    24-bit big-endian two's complement
     Reference:       Vref = 2.5 V, gain = 8 (ADS131-style front-end)
     LSB → µV:        2.5 / (2^23 - 1) / 8 × 1e6  ≈  0.03725 µV/LSB
@@ -18,10 +19,10 @@ Wire protocol
 The device starts streaming as soon as USB power is applied — there is no
 `start_stream` command on the wire. Just open the port and parse.
 
-Resync rule (from BrainFlow's `FreeEEG::read_thread`):
-    scan byte-by-byte until `... 0xC0 0xA0 ...` is seen with at least
-    97 bytes between the previous start byte — at which point the prior
-    97 bytes are: `counter (1) + 32 × 3-byte channels (96)`.
+Resync rule:
+    scan byte-by-byte until `0xA0` is seen, then read 105 more bytes; the
+    last must be `0xC0`, otherwise resync. The counter byte (offset 1)
+    increments by 1 per frame.
 
 Public interface mirrors `PiEEGHardware` / `MockHardware` / `IronBCIHardware`:
 `open()`, `close()`, `read_sample()`, `num_channels`, `spike_threshold`,
@@ -58,8 +59,9 @@ START_BYTE = 0xA0
 END_BYTE = 0xC0
 BYTES_PER_CHANNEL = 3
 DATA_BYTES = NUM_CHANNELS * BYTES_PER_CHANNEL          # 96
-PAYLOAD_BYTES = 1 + DATA_BYTES + 1                     # counter + 96 data + 0xC0 = 98
-FRAME_BYTES = 1 + PAYLOAD_BYTES                        # incl. leading 0xA0 = 99
+FOOTER_BYTES = 7                                       # status (1) + zero-pad (6)
+PAYLOAD_BYTES = 1 + DATA_BYTES + FOOTER_BYTES + 1      # counter + 96 data + 7 footer + 0xC0 = 105
+FRAME_BYTES = 1 + PAYLOAD_BYTES                        # incl. leading 0xA0 = 106
 
 # --- Conversion -------------------------------------------------------------
 ADS_VREF = 2.5
@@ -92,9 +94,11 @@ def _require_pyserial():
 
 
 def _decode_frame(payload: bytes) -> tuple[int, list[float]]:
-    """Decode the 98-byte payload (counter + 96 data + end byte) → (counter, [µV...]).
+    """Decode the 105-byte payload → (counter, [µV...]).
 
+    Layout: [counter:u8] [32 × 3-byte channels] [status:u8] [0x00 × 6] [0xC0]
     Caller guarantees `len(payload) == PAYLOAD_BYTES` and `payload[-1] == END_BYTE`.
+    The trailing 7 bytes (status + zero pad) are currently unused.
     """
     counter = payload[0]
     channels: list[float] = []
@@ -115,9 +119,9 @@ class IronBCI32Hardware:
     """Pure-Python serial hardware abstraction for IronBCI-32 boards.
 
     Threading model: a daemon reader thread continuously consumes bytes from
-    the serial port, parses 99-byte frames, and pushes µV samples into an
+    the serial port, parses 106-byte frames, and pushes µV samples into an
     internal `deque`. The acquisition loop calls `read_sample()` from the
-    main thread to drain that deque at 250 Hz.
+    main thread to drain that deque at 500 Hz.
     """
 
     def __init__(

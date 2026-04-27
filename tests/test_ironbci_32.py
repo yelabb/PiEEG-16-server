@@ -36,19 +36,21 @@ def _to_24bit_be(value: int) -> bytes:
     return bytes(((value >> 16) & 0xFF, (value >> 8) & 0xFF, value & 0xFF))
 
 
-def _build_payload(counter: int, raw_codes: list[int]) -> bytes:
-    """Build a 98-byte payload (counter + 32 × 3-byte codes + 0xC0)."""
+def _build_payload(counter: int, raw_codes: list[int], status: int = 0xE0) -> bytes:
+    """Build a 105-byte payload (counter + 32 × 3 + status + 6 zero pad + 0xC0)."""
     assert len(raw_codes) == NUM_CHANNELS
     body = bytearray([counter & 0xFF])
     for code in raw_codes:
         body.extend(_to_24bit_be(code))
+    body.append(status & 0xFF)
+    body.extend(b"\x00" * 6)
     body.append(END_BYTE)
     assert len(body) == PAYLOAD_BYTES
     return bytes(body)
 
 
 def _build_frame(counter: int, raw_codes: list[int]) -> bytes:
-    """Build a complete 99-byte frame (0xA0 + payload)."""
+    """Build a complete 106-byte frame (0xA0 + payload)."""
     return bytes([START_BYTE]) + _build_payload(counter, raw_codes)
 
 
@@ -105,8 +107,8 @@ class TestDecodeFrame:
     def test_layout_constants(self):
         assert NUM_CHANNELS == 32
         assert DATA_BYTES == 96
-        assert PAYLOAD_BYTES == 98
-        assert FRAME_BYTES == 99
+        assert PAYLOAD_BYTES == 105
+        assert FRAME_BYTES == 106
 
     def test_zero_codes_decode_to_zero(self):
         payload = _build_payload(7, [0] * NUM_CHANNELS)
