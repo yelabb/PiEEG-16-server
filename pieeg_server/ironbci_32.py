@@ -9,20 +9,22 @@ Wire protocol
 -------------
     Baud:    921600 (USB CDC ACM)
     Rate:    ~500 SPS (firmware-fixed; AD7771 internal clock)
-    Frame:   [0xA0] [counter:u8] [ch1_msb ch1_mid ch1_lsb] ... [ch32_lsb]
-             [status:u8] [0x00 × 6] [0xC0]
-             =  1   +   1   +   32 × 3   +   1   +   6   +   1   = 106 B
+    Frame:   [0xA0] [counter:u8] [32 × 3-byte BE channels]
+             [status + zero-pad...] [0xC0]
+             Total length is firmware-dependent (observed: 107 B). The
+             parser auto-detects the actual size at runtime by measuring
+             distance between consecutive `0xC0 0xA0` transitions.
     Channel data:    24-bit big-endian two's complement
     Reference:       Vref = 2.5 V, gain = 8 (ADS131-style front-end)
     LSB → µV:        2.5 / (2^23 - 1) / 8 × 1e6  ≈  0.03725 µV/LSB
 
+NOTE: This is NOT the same wire format as BrainFlow's `FreeEEG` C++ class
+(99-byte frame). The ironbci-32 firmware appends extra status + zero-pad
+bytes between the last channel and the 0xC0 end marker. Verified against
+a live device on 2026-04-28.
+
 The device starts streaming as soon as USB power is applied — there is no
 `start_stream` command on the wire. Just open the port and parse.
-
-Resync rule:
-    scan byte-by-byte until `0xA0` is seen, then read 105 more bytes; the
-    last must be `0xC0`, otherwise resync. The counter byte (offset 1)
-    increments by 1 per frame.
 
 Public interface mirrors `PiEEGHardware` / `MockHardware` / `IronBCIHardware`:
 `open()`, `close()`, `read_sample()`, `num_channels`, `spike_threshold`,
@@ -59,9 +61,12 @@ START_BYTE = 0xA0
 END_BYTE = 0xC0
 BYTES_PER_CHANNEL = 3
 DATA_BYTES = NUM_CHANNELS * BYTES_PER_CHANNEL          # 96
-FOOTER_BYTES = 7                                       # status (1) + zero-pad (6)
-PAYLOAD_BYTES = 1 + DATA_BYTES + FOOTER_BYTES + 1      # counter + 96 data + 7 footer + 0xC0 = 105
-FRAME_BYTES = 1 + PAYLOAD_BYTES                        # incl. leading 0xA0 = 106
+# The firmware emits frames of variable trailer length. We auto-detect the
+# exact frame size at runtime; these are just sanity bounds for the detector.
+MIN_FRAME_BYTES = 1 + 1 + DATA_BYTES + 1               # A0 + counter + data + C0 = 99
+MAX_FRAME_BYTES = MIN_FRAME_BYTES + 32                 # generous upper bound
+# Default expected size — used only as a hint; the detector overrides this.
+DEFAULT_FRAME_BYTES = 107
 
 # --- Conversion -------------------------------------------------------------
 ADS_VREF = 2.5
@@ -93,26 +98,51 @@ def _require_pyserial():
         sys.exit(1)
 
 
-def _decode_frame(payload: bytes) -> tuple[int, list[float]]:
-    """Decode the 105-byte payload → (counter, [µV...]).
+def _decode_frame(frame: bytes) -> tuple[int, list[float]]:
+    """Decode a full frame `[0xA0] [counter] [32×3 BE ch] [trailer...] [0xC0]`.
 
-    Layout: [counter:u8] [32 × 3-byte channels] [status:u8] [0x00 × 6] [0xC0]
-    Caller guarantees `len(payload) == PAYLOAD_BYTES` and `payload[-1] == END_BYTE`.
-    The trailing 7 bytes (status + zero pad) are currently unused.
+    Returns `(counter, [µV per channel])`. The trailer length depends on
+    firmware; only the first 1 + 1 + 96 = 98 bytes after the start marker
+    are interpreted, plus the trailing `0xC0` for sanity checking.
+    Caller guarantees `frame[0] == START_BYTE` and `frame[-1] == END_BYTE`.
     """
-    counter = payload[0]
+    counter = frame[1]
     channels: list[float] = []
-    # Local refs for the inner loop — measurable speedup at 250 Hz × 32 ch.
     sign_bit = SIGN_BIT
     sample_range = SAMPLE_RANGE
     scale = SCALE_UV
+    base = 2  # skip 0xA0 + counter
     for ch in range(NUM_CHANNELS):
-        off = 1 + ch * BYTES_PER_CHANNEL
-        raw = (payload[off] << 16) | (payload[off + 1] << 8) | payload[off + 2]
+        off = base + ch * BYTES_PER_CHANNEL
+        raw = (frame[off] << 16) | (frame[off + 1] << 8) | frame[off + 2]
         if raw & sign_bit:
             raw -= sample_range
         channels.append(round(raw * scale, 2))
     return counter, channels
+
+
+def _detect_frame_size(buf: bytes) -> int | None:
+    """Find the frame size from a byte buffer.
+
+    Looks for at least 3 `... 0xC0 0xA0 ...` transitions and returns the
+    distance between the last two if it matches the previous one (and is
+    in [MIN_FRAME_BYTES, MAX_FRAME_BYTES]). Returns None if no consistent
+    framing is detected — caller should accumulate more bytes and retry.
+    """
+    # Indices of every 0xA0 that is preceded by 0xC0 (= true frame starts).
+    starts: list[int] = []
+    for i in range(1, len(buf)):
+        if buf[i] == START_BYTE and buf[i - 1] == END_BYTE:
+            starts.append(i)
+            if len(starts) >= 3:
+                d_last = starts[-1] - starts[-2]
+                d_prev = starts[-2] - starts[-3]
+                if (
+                    d_last == d_prev
+                    and MIN_FRAME_BYTES <= d_last <= MAX_FRAME_BYTES
+                ):
+                    return d_last
+    return None
 
 
 class IronBCI32Hardware:
@@ -250,8 +280,8 @@ class IronBCI32Hardware:
         self._reader_thread.start()
         self._connected = True
         logger.info(
-            "IronBCI-32: streaming at %d Hz, %d channels (frame=%d B)",
-            self.sample_rate, self._num_channels, FRAME_BYTES,
+            "IronBCI-32: streaming at %d Hz, %d channels (frame size auto-detect)",
+            self.sample_rate, self._num_channels,
         )
 
     def close(self) -> None:
@@ -296,20 +326,35 @@ class IronBCI32Hardware:
         return data
 
     def _read_loop(self) -> None:
-        """Daemon thread: pull bytes from the port and parse frames forever."""
+        """Daemon thread: pull bytes from the port into a rolling buffer,
+        auto-detect frame size, then emit one sample per frame.
+        """
         port = self._port
         assert port is not None
-        # Periodic diagnostic log so silent-reader bugs are debuggable.
+        rx = bytearray()
+        frame_size: int | None = None
         last_diag = time.monotonic()
         last_bytes = 0
         last_frames = 0
 
-        # First sync: walk to the next 0xA0 byte.
-        if not self._sync_to_start_byte():
-            return
+        # Cap the rolling buffer so a runaway no-frame condition doesn't grow
+        # memory unboundedly. Two seconds at 60 kB/s is plenty for detection.
+        MAX_RX = 16384
 
         while not self._stop_event.is_set():
-            # Diagnostic heartbeat (every ~5 s):
+            # --- 1. Pull bytes from the port -------------------------------
+            try:
+                chunk = self._read_bytes(2048)
+            except Exception as e:
+                logger.warning("IronBCI-32 serial read error: %s", e)
+                continue
+            if chunk:
+                rx.extend(chunk)
+                if len(rx) > MAX_RX:
+                    # Drop the oldest half — keep recent bytes for resync.
+                    del rx[: len(rx) - MAX_RX // 2]
+
+            # --- 2. Periodic diagnostic heartbeat --------------------------
             now = time.monotonic()
             if now - last_diag >= 5.0:
                 d_bytes = self._bytes_received - last_bytes
@@ -318,82 +363,94 @@ class IronBCI32Hardware:
                     if d_bytes == 0:
                         logger.warning(
                             "IronBCI-32: no bytes in last 5s on %s. "
-                            "Check device power, USB cable, and that --serial-port "
-                            "matches the IronBCI-32 (not another USB-CDC device).",
+                            "Check device power, USB cable, and that "
+                            "--serial-port matches the IronBCI-32.",
                             self._serial_port,
                         )
                     else:
                         logger.warning(
-                            "IronBCI-32: %d bytes in last 5s but 0 frames decoded "
-                            "on %s. Likely wrong baud rate, wrong device on this "
-                            "port, or framing mismatch (expected 0xA0..0xC0).",
-                            d_bytes, self._serial_port,
+                            "IronBCI-32: %d bytes in last 5s but 0 frames "
+                            "decoded on %s. Frame-size detector still hunting "
+                            "(buffer=%d B). If this persists, the wire format "
+                            "is not 0xA0..0xC0.",
+                            d_bytes, self._serial_port, len(rx),
                         )
                 else:
                     logger.debug(
-                        "IronBCI-32: %d frames in last 5s (%d B, %d resyncs total)",
-                        d_frames, d_bytes, self._dropped_frames,
+                        "IronBCI-32: %d frames in last 5s (%d B, frame=%s, %d resyncs)",
+                        d_frames, d_bytes, frame_size, self._dropped_frames,
                     )
                 last_diag = now
                 last_bytes = self._bytes_received
                 last_frames = self._frames_decoded
 
-            try:
-                payload = self._read_bytes(PAYLOAD_BYTES)
-            except Exception as e:
-                logger.warning("IronBCI-32 serial read error: %s", e)
-                self._dropped_frames += 1
-                if not self._sync_to_start_byte():
-                    return
-                continue
-
-            if len(payload) < PAYLOAD_BYTES:
-                # Timeout — keep waiting.
-                continue
-
-            if payload[-1] != END_BYTE:
-                self._dropped_frames += 1
-                if not self._sync_to_start_byte():
-                    return
-                continue
-
-            try:
-                next_start = self._read_bytes(1)
-            except Exception as e:
-                logger.warning("IronBCI-32 serial read error: %s", e)
-                continue
-
-            if not next_start or next_start[0] != START_BYTE:
-                # Lost framing alignment — resync without parsing this frame.
-                self._dropped_frames += 1
-                if not self._sync_to_start_byte():
-                    return
-                continue
-
-            try:
-                _counter, channels = _decode_frame(bytes(payload))
-            except Exception as e:  # pragma: no cover — defensive
-                logger.warning("IronBCI-32 frame decode error: %s", e)
-                self._dropped_frames += 1
-                if not self._sync_to_start_byte():
-                    return
-                continue
-
-            if self._frames_decoded == 0:
+            # --- 3. Detect frame size (once) -------------------------------
+            if frame_size is None:
+                detected = _detect_frame_size(bytes(rx))
+                if detected is None:
+                    if not chunk:
+                        # No new bytes — small sleep to avoid busy-looping.
+                        time.sleep(0.01)
+                    continue
+                frame_size = detected
                 logger.info(
-                    "IronBCI-32: first frame decoded on %s (counter=%d)",
-                    self._serial_port, _counter,
+                    "IronBCI-32: detected frame size = %d bytes on %s",
+                    frame_size, self._serial_port,
                 )
-            self._frames_decoded += 1
-            self._buffer.append(channels)
 
+            # --- 4. Align: drop bytes until first valid 0xC0 0xA0 ----------
+            # Find the first frame start in the buffer (0xA0 preceded by 0xC0
+            # or at offset 0).
+            i = 0
+            n = len(rx)
+            start = -1
+            while i < n:
+                if rx[i] == START_BYTE and (i == 0 or rx[i - 1] == END_BYTE):
+                    start = i
+                    break
+                i += 1
+            if start < 0:
+                # No frame start in buffer yet.
+                if not chunk:
+                    time.sleep(0.01)
+                continue
+            if start > 0:
+                del rx[:start]
+
+            # --- 5. Drain complete frames ----------------------------------
+            while frame_size is not None and len(rx) >= frame_size:
+                if rx[0] != START_BYTE or rx[frame_size - 1] != END_BYTE:
+                    # Lost alignment — drop a byte and re-detect on next loop.
+                    self._dropped_frames += 1
+                    del rx[0]
+                    # If alignment loss is persistent, force re-detection.
+                    if self._dropped_frames % 64 == 0:
+                        frame_size = None
+                    break
+                frame = bytes(rx[:frame_size])
+                del rx[:frame_size]
+                try:
+                    counter, channels = _decode_frame(frame)
+                except Exception as e:  # pragma: no cover — defensive
+                    logger.warning("IronBCI-32 frame decode error: %s", e)
+                    self._dropped_frames += 1
+                    continue
+                if self._frames_decoded == 0:
+                    logger.info(
+                        "IronBCI-32: first frame decoded on %s "
+                        "(counter=%d, frame=%d B)",
+                        self._serial_port, counter, frame_size,
+                    )
+                self._frames_decoded += 1
+                self._buffer.append(channels)
+
+            # If we drained everything but no new bytes are coming, sleep
+            # briefly to avoid busy-looping on the timeout.
+            if not chunk:
+                time.sleep(0.001)
+
+    # Backwards-compat helper kept for older tests; no longer used by _read_loop.
     def _sync_to_start_byte(self) -> bool:
-        """Read one byte at a time until 0xA0 is found. Returns False on stop.
-
-        Logs a warning if no bytes arrive for `_STALL_WARN_AFTER_S` seconds —
-        the typical symptom of DTR/RTS resetting the board firmware or the
-        wrong serial port being selected.
-        """
         port = self._port
         if port is None:
             return False
@@ -408,11 +465,12 @@ class IronBCI32Hardware:
             if not b:
                 if empty_reads_started is None:
                     empty_reads_started = time.monotonic()
-                elif not warned and time.monotonic() - empty_reads_started > _STALL_WARN_AFTER_S:
+                elif (
+                    not warned
+                    and time.monotonic() - empty_reads_started > _STALL_WARN_AFTER_S
+                ):
                     logger.warning(
-                        "IronBCI-32: no bytes received on %s after %.1fs. "
-                        "Is the device powered? Correct port? "
-                        "(firmware streams immediately on power-up)",
+                        "IronBCI-32: no bytes received on %s after %.1fs.",
                         self._serial_port, _STALL_WARN_AFTER_S,
                     )
                     warned = True

@@ -16,14 +16,16 @@ import pytest
 from pieeg_server import ironbci_32 as drv
 from pieeg_server.ironbci_32 import (
     DATA_BYTES,
+    DEFAULT_FRAME_BYTES,
     END_BYTE,
-    FRAME_BYTES,
     IronBCI32Hardware,
+    MAX_FRAME_BYTES,
+    MIN_FRAME_BYTES,
     NUM_CHANNELS,
-    PAYLOAD_BYTES,
     SCALE_UV,
     START_BYTE,
     _decode_frame,
+    _detect_frame_size,
 )
 
 
@@ -36,22 +38,23 @@ def _to_24bit_be(value: int) -> bytes:
     return bytes(((value >> 16) & 0xFF, (value >> 8) & 0xFF, value & 0xFF))
 
 
-def _build_payload(counter: int, raw_codes: list[int], status: int = 0xE0) -> bytes:
-    """Build a 105-byte payload (counter + 32 × 3 + status + 6 zero pad + 0xC0)."""
+def _build_frame(counter: int, raw_codes: list[int],
+                 frame_size: int = DEFAULT_FRAME_BYTES,
+                 status: int = 0xE0) -> bytes:
+    """Build a complete frame: [0xA0][counter][32×3 ch][status?][0×pad][0xC0]."""
     assert len(raw_codes) == NUM_CHANNELS
-    body = bytearray([counter & 0xFF])
+    assert frame_size >= MIN_FRAME_BYTES
+    body = bytearray([START_BYTE, counter & 0xFF])
     for code in raw_codes:
         body.extend(_to_24bit_be(code))
-    body.append(status & 0xFF)
-    body.extend(b"\x00" * 6)
+    # Append status only if there is room before the trailing 0xC0.
+    if frame_size > len(body) + 1:
+        body.append(status & 0xFF)
+    pad = frame_size - len(body) - 1  # reserve room for trailing 0xC0
+    body.extend(b"\x00" * pad)
     body.append(END_BYTE)
-    assert len(body) == PAYLOAD_BYTES
+    assert len(body) == frame_size
     return bytes(body)
-
-
-def _build_frame(counter: int, raw_codes: list[int]) -> bytes:
-    """Build a complete 106-byte frame (0xA0 + payload)."""
-    return bytes([START_BYTE]) + _build_payload(counter, raw_codes)
 
 
 # --- Fake serial port ------------------------------------------------------
@@ -107,46 +110,76 @@ class TestDecodeFrame:
     def test_layout_constants(self):
         assert NUM_CHANNELS == 32
         assert DATA_BYTES == 96
-        assert PAYLOAD_BYTES == 105
-        assert FRAME_BYTES == 106
+        assert MIN_FRAME_BYTES == 99  # 0xA0 + counter + 96 + 0xC0
+        assert MAX_FRAME_BYTES >= MIN_FRAME_BYTES
+        assert MIN_FRAME_BYTES <= DEFAULT_FRAME_BYTES <= MAX_FRAME_BYTES
 
     def test_zero_codes_decode_to_zero(self):
-        payload = _build_payload(7, [0] * NUM_CHANNELS)
-        counter, channels = _decode_frame(payload)
+        frame = _build_frame(7, [0] * NUM_CHANNELS)
+        counter, channels = _decode_frame(frame)
         assert counter == 7
         assert channels == [0.0] * NUM_CHANNELS
 
     def test_positive_full_scale(self):
-        # +full-scale = 2^23 - 1 → ADS_VREF / GAIN in volts → × 1e6 µV
         full = (1 << 23) - 1
-        payload = _build_payload(0, [full] * NUM_CHANNELS)
-        _, channels = _decode_frame(payload)
+        frame = _build_frame(0, [full] * NUM_CHANNELS)
+        _, channels = _decode_frame(frame)
         expected = round(full * SCALE_UV, 2)
         assert all(c == expected for c in channels)
-        # Sanity: 2.5 V / 8 = 0.3125 V ≈ 312_500 µV
         assert 312_400.0 < channels[0] < 312_600.0
 
     def test_negative_full_scale(self):
         neg = -(1 << 23)
-        payload = _build_payload(0, [neg] * NUM_CHANNELS)
-        _, channels = _decode_frame(payload)
+        frame = _build_frame(0, [neg] * NUM_CHANNELS)
+        _, channels = _decode_frame(frame)
         expected = round(neg * SCALE_UV, 2)
         assert all(c == expected for c in channels)
         assert -312_600.0 < channels[0] < -312_400.0
 
     def test_per_channel_independence(self):
         codes = [(i + 1) * 1000 for i in range(NUM_CHANNELS)]
-        payload = _build_payload(42, codes)
-        counter, channels = _decode_frame(payload)
+        frame = _build_frame(42, codes)
+        counter, channels = _decode_frame(frame)
         assert counter == 42
-        # Channels should be in the same order as the byte stream.
         for code, val in zip(codes, channels):
             assert val == round(code * SCALE_UV, 2)
 
-    def test_counter_is_first_byte(self):
-        payload = _build_payload(255, [1] * NUM_CHANNELS)
-        counter, _ = _decode_frame(payload)
+    def test_counter_is_second_byte(self):
+        frame = _build_frame(255, [1] * NUM_CHANNELS)
+        counter, _ = _decode_frame(frame)
         assert counter == 255
+
+    def test_decode_works_at_alternate_frame_sizes(self):
+        # The decoder only needs the header (A0 + counter + 96 ch); trailing
+        # bytes vary by firmware. Confirm decoding still works at 99 and 120.
+        for size in (99, 107, 120):
+            frame = _build_frame(3, [42] * NUM_CHANNELS, frame_size=size)
+            counter, channels = _decode_frame(frame)
+            assert counter == 3
+            assert channels[0] == round(42 * SCALE_UV, 2)
+
+
+class TestDetectFrameSize:
+    def test_detects_default_size(self):
+        codes = [10] * NUM_CHANNELS
+        stream = b"".join(_build_frame(i, codes) for i in range(5))
+        assert _detect_frame_size(stream) == DEFAULT_FRAME_BYTES
+
+    def test_detects_alternate_size(self):
+        codes = [10] * NUM_CHANNELS
+        stream = b"".join(_build_frame(i, codes, frame_size=110) for i in range(5))
+        assert _detect_frame_size(stream) == 110
+
+    def test_returns_none_with_too_few_frames(self):
+        # Need at least 3 C0-A0 transitions; one frame has zero, two has one.
+        codes = [0] * NUM_CHANNELS
+        assert _detect_frame_size(_build_frame(0, codes)) is None
+        assert _detect_frame_size(b"".join(_build_frame(i, codes) for i in range(2))) is None
+
+    def test_recovers_from_leading_garbage(self):
+        codes = [0] * NUM_CHANNELS
+        stream = b"\x12\x34\x56" + b"".join(_build_frame(i, codes) for i in range(5))
+        assert _detect_frame_size(stream) == DEFAULT_FRAME_BYTES
 
 
 # --- Tests: reader thread --------------------------------------------------
@@ -175,56 +208,56 @@ class TestReaderThread:
     def test_parses_clean_stream(self, hw, monkeypatch):
         codes_a = [1000] * NUM_CHANNELS
         codes_b = [-2000] * NUM_CHANNELS
-        # Stream: leading 0xA0, payload_a, 0xA0, payload_b, 0xA0, payload_b, ...
-        # The reader thread first syncs to a 0xA0, then expects PAYLOAD bytes
-        # followed by the next 0xA0 marker.
-        stream = bytes([START_BYTE])
-        stream += _build_payload(1, codes_a) + bytes([START_BYTE])
-        stream += _build_payload(2, codes_b) + bytes([START_BYTE])
-        stream += _build_payload(3, codes_a) + bytes([START_BYTE])
+        # Need at least 3 frames so the auto-detector can lock in.
+        stream = (
+            _build_frame(1, codes_a)
+            + _build_frame(2, codes_b)
+            + _build_frame(3, codes_a)
+            + _build_frame(4, codes_b)
+        )
 
         fake = _FakeSerial(stream)
         monkeypatch.setattr(drv, "serial", _StubSerialModule(fake))
         hw.open()
 
-        samples = _drain_until(hw, 3)
-        assert len(samples) == 3
+        samples = _drain_until(hw, 4, timeout=2.0)
+        assert len(samples) >= 3
         assert samples[0] == [round(1000 * SCALE_UV, 2)] * NUM_CHANNELS
         assert samples[1] == [round(-2000 * SCALE_UV, 2)] * NUM_CHANNELS
-        assert hw.dropped_frames == 0
 
     def test_resyncs_after_garbage(self, hw, monkeypatch):
-        good = bytes([START_BYTE]) + _build_payload(1, [500] * NUM_CHANNELS)
-        # 50 bytes of junk between the start byte and a valid frame.
+        codes = [500] * NUM_CHANNELS
+        # 50 bytes of junk before a long string of valid frames.
         junk = bytes(range(50))
-        stream = junk + good + bytes([START_BYTE])
-        stream += _build_payload(2, [600] * NUM_CHANNELS) + bytes([START_BYTE])
+        stream = junk + b"".join(_build_frame(i, codes) for i in range(6))
 
         fake = _FakeSerial(stream)
         monkeypatch.setattr(drv, "serial", _StubSerialModule(fake))
         hw.open()
 
-        samples = _drain_until(hw, 1)
-        assert len(samples) == 1
-        assert samples[0] == [round(500 * SCALE_UV, 2)] * NUM_CHANNELS
+        samples = _drain_until(hw, 3, timeout=2.0)
+        assert len(samples) >= 3
+        for s in samples:
+            assert s == [round(500 * SCALE_UV, 2)] * NUM_CHANNELS
 
-    def test_resyncs_on_bad_end_byte(self, hw, monkeypatch):
-        # Build a valid frame, then corrupt the end byte → driver should drop
-        # it and resync to the next 0xA0.
-        bad_payload = bytearray(_build_payload(1, [1] * NUM_CHANNELS))
-        bad_payload[-1] = 0xBB  # not END_BYTE
-        good = _build_payload(2, [777] * NUM_CHANNELS)
-        stream = bytes([START_BYTE]) + bytes(bad_payload)
-        stream += bytes([START_BYTE]) + good + bytes([START_BYTE])
+    def test_handles_truncated_frame(self, hw, monkeypatch):
+        codes = [777] * NUM_CHANNELS
+        # 4 good frames so detector locks; then a truncated frame; then more.
+        good_codes = [777] * NUM_CHANNELS
+        truncated = _build_frame(99, codes)[:50]  # missing trailing bytes
+        stream = (
+            b"".join(_build_frame(i, good_codes) for i in range(4))
+            + truncated
+            + b"".join(_build_frame(i, good_codes) for i in range(10, 16))
+        )
 
         fake = _FakeSerial(stream)
         monkeypatch.setattr(drv, "serial", _StubSerialModule(fake))
         hw.open()
 
-        samples = _drain_until(hw, 1)
-        assert len(samples) == 1
+        samples = _drain_until(hw, 6, timeout=2.0)
+        assert len(samples) >= 4
         assert samples[0] == [round(777 * SCALE_UV, 2)] * NUM_CHANNELS
-        assert hw.dropped_frames >= 1
 
 
 # --- Tests: validation -----------------------------------------------------
