@@ -818,6 +818,7 @@ pieeg-server [OPTIONS] [COMMAND]
 | `--no-dashboard` | — | Disable web dashboard |
 | `--auth` | — | Enable 6-digit access code |
 | `--gpio-chip PATH` | `/dev/gpiochip4` | GPIO chip device |
+| `--profile NAME` | `auto` | Raspberry Pi hardware profile: `auto`, `pi4`, `pi5` (auto-detected from `/proc/device-tree`) |
 | `--filter` | — | Enable 1–40 Hz bandpass filter |
 | `--lowcut HZ` | `1.0` | Filter low cutoff |
 | `--highcut HZ` | `40.0` | Filter high cutoff |

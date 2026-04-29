@@ -265,6 +265,14 @@ export function useEEG(timeWindowSec = 4, wsUrl?: string): UseEEGReturn {
         const now = (msg as WSSampleMessage).t;
         tsRef.current.push(now);
 
+        // Optional per-sample tap for downstream consumers (e.g. P300 epoch
+        // extractor) that need precise EEG-stream timestamps. Same pattern as
+        // window.__webhookHandler — opt-in, no cost when unused.
+        const sampleTap = (window as unknown as Record<string, unknown>).__p300SampleHandler;
+        if (typeof sampleTap === "function") {
+          (sampleTap as (t: number, ch: number[]) => void)(now, channels);
+        }
+
         // Throttled React state update for header stats
         const wallNow = performance.now();
         if (wallNow - lastUIUpdate.current > UI_UPDATE_MS) {

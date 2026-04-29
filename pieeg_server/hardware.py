@@ -19,6 +19,7 @@ except ImportError:
     fcntl = None  # not on Linux — hardware methods will fail, mock mode still works
 
 from . import _native
+from .profiles import HardwareProfile, get_profile
 
 logger = logging.getLogger("pieeg.hardware")
 
@@ -110,11 +111,28 @@ class PiEEGHardware:
     CH_REGS = (CH1SET, CH2SET, CH3SET, CH4SET, CH5SET, CH6SET, CH7SET, CH8SET)
 
     def __init__(self, gpio_chip: str = "/dev/gpiochip4",
-                 num_channels: int = 16):
+                 num_channels: int = 16,
+                 profile: HardwareProfile | str | None = None):
         if num_channels not in (8, 16):
             raise ValueError(f"num_channels must be 8 or 16, got {num_channels}")
         self._num_channels = num_channels
         self._gpio_chip_name = gpio_chip
+        # Resolve profile: accept a HardwareProfile, a name string, or None.
+        # None / "auto" trigger auto-detection; unknown setups fall back to
+        # the safe default (= pre-existing behavior).
+        if isinstance(profile, HardwareProfile):
+            self._profile = profile
+        else:
+            self._profile = get_profile(profile)
+        # 16-ch mode always needs GPIO19 toggling for chip 2's CS line,
+        # regardless of the profile's manage_cs_pin setting.
+        self._manage_cs = self._profile.manage_cs_pin or num_channels == 16
+        if num_channels == 16 and not self._profile.manage_cs_pin:
+            logger.warning(
+                "Profile %r disables CS pin management, but 16-channel mode "
+                "requires GPIO%d for chip 2. Forcing CS management on.",
+                self._profile.name, CS_PIN,
+            )
         self._chip_fd = -1
         self._cs_fd = -1
         self._drdy_fd = -1
@@ -318,7 +336,14 @@ class PiEEGHardware:
     # --- GPIO helpers (direct Linux chardev ioctl) ---
 
     def _cs_set(self, value: int):
-        """Set chip-select line: 1 = high (deselect), 0 = low (select)."""
+        """Set chip-select line: 1 = high (deselect), 0 = low (select).
+
+        No-op when the active profile delegates CS to the kernel SPI driver
+        (e.g. Pi 5 in 8-channel mode). In 16-channel mode this always toggles
+        GPIO19 because chip 2's CS is wired there on the PiEEG shield.
+        """
+        if not self._manage_cs or self._cs_fd < 0:
+            return
         buf = bytearray(_HANDLE_DATA_SIZE)
         buf[0] = value & 1
         fcntl.ioctl(self._cs_fd, _GPIOHANDLE_SET_VALUES, buf)
@@ -349,10 +374,14 @@ class PiEEGHardware:
         logger.info("Opening GPIO chip %s", self._gpio_chip_name)
         self._chip_fd = os.open(self._gpio_chip_name, os.O_RDWR | os.O_CLOEXEC)
 
-        # Chip-select line (output, default high)
-        self._cs_fd = self._request_line(
-            self._chip_fd, CS_PIN, _GPIOHANDLE_REQUEST_OUTPUT,
-            default_value=1, consumer=b"pieeg_cs")
+        # Chip-select line (output, default high). Skipped when the kernel
+        # SPI driver owns the line (e.g. Pi 5 in 8-ch mode); see profiles.py.
+        if self._manage_cs:
+            self._cs_fd = self._request_line(
+                self._chip_fd, CS_PIN, _GPIOHANDLE_REQUEST_OUTPUT,
+                default_value=1, consumer=b"pieeg_cs")
+        else:
+            self._cs_fd = -1
 
         # Data-ready line chip 1 (input)
         self._drdy_fd = self._request_line(
@@ -390,9 +419,12 @@ class PiEEGHardware:
         return struct.unpack_from("i", buf, 360)[0]  # fd
 
     def _init_spi(self):
+        speed = self._profile.spi_speed_hz
+        logger.info("Initializing SPI at %d Hz (profile=%s)",
+                    speed, self._profile.name)
         self._spi1 = spidev.SpiDev()
         self._spi1.open(0, 0)
-        self._spi1.max_speed_hz = SPI_SPEED_HZ
+        self._spi1.max_speed_hz = speed
         self._spi1.lsbfirst = False
         self._spi1.mode = SPI_MODE
         self._spi1.bits_per_word = SPI_BITS
@@ -400,7 +432,7 @@ class PiEEGHardware:
         if self._num_channels == 16:
             self._spi2 = spidev.SpiDev()
             self._spi2.open(0, 1)
-            self._spi2.max_speed_hz = SPI_SPEED_HZ
+            self._spi2.max_speed_hz = speed
             self._spi2.lsbfirst = False
             self._spi2.mode = SPI_MODE
             self._spi2.bits_per_word = SPI_BITS

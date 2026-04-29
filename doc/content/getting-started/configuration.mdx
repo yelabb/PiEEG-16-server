@@ -32,6 +32,24 @@ pieeg-server [OPTIONS] [COMMAND]
 | `--no-dashboard` | — | Disable web dashboard |
 | `--auth` | — | Enable 6-digit access code |
 | `--gpio-chip PATH` | `/dev/gpiochip4` | GPIO chip device |
+| `--profile NAME` | `auto` | Raspberry Pi hardware profile: `auto`, `pi4`, `pi5` |
+
+### Hardware Profiles
+
+Different Raspberry Pi models expose SPI/GPIO slightly differently. The
+`--profile` flag selects platform-specific tunables (SPI clock, whether the
+script manages the chip-select GPIO line directly).
+
+| Profile | SPI clock | Notes |
+|---------|-----------|-------|
+| `pi4` | 4 MHz | Pi 2 / 3 / 4 / 400 — script toggles GPIO19 around chip-2 transactions |
+| `pi5` | 2 MHz | Pi 5 — kernel SPI driver owns the CE line, GPIO19 is left to the driver in 8-channel mode |
+| `auto` *(default)* | — | Read `/proc/device-tree/model` (then `compatible`); fall back to `pi4` on any unknown / non-Pi system so existing setups behave exactly as before |
+
+<Callout type="info">
+  In 16-channel mode the second ADS1299's CS is wired to GPIO19 on the shield,
+  so the chip-select pin is always managed regardless of profile.
+</Callout>
 
 ### BLE Options (IronBCI)
 

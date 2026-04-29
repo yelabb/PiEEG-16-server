@@ -61,6 +61,25 @@ kill $(lsof -t -i:1616)
 2. Electrodes connected
 3. Correct device flag: `--device pieeg8` or `--device pieeg16`
 4. Run `pieeg-server doctor` for hardware diagnostics
+5. On Pi 5, make sure `--gpio-chip /dev/gpiochip4` is used (the default). On Pi 4 / 3 / 2, use `--gpio-chip /dev/gpiochip0`.
+
+#### Pi 4 vs Pi 5 hardware profile
+
+The server auto-detects the Raspberry Pi model and applies a matching
+hardware profile. If auto-detection picks the wrong one (e.g. on a custom
+image), force it explicitly:
+
+```bash
+pieeg-server --profile pi5    # Raspberry Pi 5
+pieeg-server --profile pi4    # Pi 2 / 3 / 4 / 400
+```
+
+Symptoms of a profile mismatch:
+
+- **`GPIO busy` / `Device or resource busy` on Pi 5 in 8-channel mode** — the
+  kernel SPI driver already owns the CE line. Use `--profile pi5` (or `auto`).
+- **Garbled samples / dropped frames on Pi 4** — the Pi 5 profile uses a
+  slower 2 MHz SPI clock; force `--profile pi4` to restore 4 MHz.
 
 #### IronBCI / EAREEG (Bluetooth LE)
 

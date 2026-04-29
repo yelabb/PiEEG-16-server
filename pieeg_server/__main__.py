@@ -90,6 +90,12 @@ def parse_args():
             "ironbci32 (USB serial) — default: pieeg16"
         ),
     )
+    profile_kwargs = dict(
+        type=str,
+        choices=["auto", "pi4", "pi5"],
+        default="auto",
+        help="Raspberry Pi hardware profile (default: auto-detect from /proc/device-tree)",
+    )
     def _add_ble_args(parser):
         """Add BLE arguments to a parser (IronBCI / EAREEG compatible)."""
         parser.add_argument(
@@ -143,6 +149,7 @@ def parse_args():
         "--gpio-chip", default="/dev/gpiochip4",
         help="GPIO chip device path (default: '/dev/gpiochip4' for Pi 5)",
     )
+    rec.add_argument("--profile", **profile_kwargs)
     _add_ble_args(rec)
     _add_serial_args(rec)
     rec.add_argument(
@@ -166,6 +173,7 @@ def parse_args():
         "--gpio-chip", default="/dev/gpiochip4",
         help="GPIO chip device path (default: '/dev/gpiochip4' for Pi 5)",
     )
+    mon.add_argument("--profile", **profile_kwargs)
     _add_ble_args(mon)
     _add_serial_args(mon)
     mon.add_argument(
@@ -197,6 +205,7 @@ def parse_args():
         "--gpio-chip", default="/dev/gpiochip4",
         help="GPIO chip device path (default: '/dev/gpiochip4' for Pi 5)",
     )
+    p.add_argument("--profile", **profile_kwargs)
     p.add_argument(
         "--filter", action="store_true",
         help="Enable 1–40 Hz bandpass filter on server side",
@@ -425,9 +434,14 @@ def _make_hardware(args, logger):
         hw = IronBCI32Hardware(serial_port=port, num_channels=num_ch)
     else:
         from .hardware import PiEEGHardware
-        logger.info("Initializing PiEEG-%d hardware (GPIO chip: %s)...",
-                    num_ch, args.gpio_chip)
-        hw = PiEEGHardware(gpio_chip=args.gpio_chip, num_channels=num_ch)
+        profile_name = getattr(args, "profile", "auto")
+        logger.info("Initializing PiEEG-%d hardware (GPIO chip: %s, profile: %s)...",
+                    num_ch, args.gpio_chip, profile_name)
+        hw = PiEEGHardware(
+            gpio_chip=args.gpio_chip,
+            num_channels=num_ch,
+            profile=profile_name,
+        )
     hw.open()
     if not args.mock and not _is_ble_device(device) and not _is_serial_device(device):
         logger.info("Hardware initialized - ADCs configured, LEDs should be ON")
