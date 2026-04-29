@@ -247,34 +247,53 @@ class AcquisitionLoop:
         The hardware driver opens its own reader thread on `open()` and feeds
         an internal buffer; we drain it here paced at the device sample rate.
 
-        Pacing matters: USB-CDC delivers bytes in 8–16ms chunks, so without
-        a per-sample sleep the consumer would emit frames in tight bursts
-        (4–8 at once, then idle), which causes visible UI hangs downstream.
-        Pacing with a monotonic scheduler matches the mock loop's smooth
-        cadence while letting the driver's deque absorb USB jitter.
+        Pacing matters: USB-CDC delivers bytes in 8–16 ms chunks, so without
+        any pacing the consumer would emit frames in tight bursts (4–8 at
+        once, then idle), which causes visible UI hangs downstream.
+
+        Windows caveat: `time.sleep()` default resolution is ~15.6 ms — far
+        coarser than the 2 ms tick a 500 SPS device demands. To work around
+        that we drain *all* queued samples each iteration in a single batch
+        and sleep once for the batch's worth of time. 
         """
-        interval = 1.0 / getattr(self._hw, "sample_rate", SAMPLE_RATE)
+        sample_rate = getattr(self._hw, "sample_rate", SAMPLE_RATE)
+        interval = 1.0 / sample_rate
+        # Cap batch size to keep the loop responsive to stop_event.
+        max_batch = max(8, int(sample_rate / 50))  # ~20 ms worth of samples
         next_t = time.monotonic()
         while not self._stop_event.is_set():
-            sample = self._hw.read_sample()
-            if sample is None:
+            # Drain everything currently in the driver's deque, up to a cap.
+            batch: list[list[float]] = []
+            while len(batch) < max_batch:
+                s = self._hw.read_sample()
+                if s is None:
+                    break
+                batch.append(s)
+
+            if not batch:
+                # No data yet — wait one tick. resync schedule on resume so
+                # we don't burst-catch-up after a stall.
                 time.sleep(interval)
-                next_t = time.monotonic()  # avoid burst catch-up after starvation
+                next_t = time.monotonic()
                 continue
 
-            sample = self._hampel.apply(sample)
-            self._sample_count += 1
-            frame = {
-                "t": round(time.time(), 6),
-                "n": self._sample_count,
-                "channels": sample,
-            }
-            self._loop.call_soon_threadsafe(self._enqueue, frame)
+            for sample in batch:
+                sample = self._hampel.apply(sample)
+                self._sample_count += 1
+                frame = {
+                    "t": round(time.time(), 6),
+                    "n": self._sample_count,
+                    "channels": sample,
+                }
+                self._loop.call_soon_threadsafe(self._enqueue, frame)
 
-            next_t += interval
+            # Advance schedule by one interval per emitted sample, then sleep
+            # the remainder. Sleeping once for `len(batch) * interval` keeps
+            # us above the OS sleep-granularity floor on Windows.
+            next_t += interval * len(batch)
             delay = next_t - time.monotonic()
             if delay > 0:
                 time.sleep(delay)
             elif delay < -interval * 50:
-                # >100 ms behind — deque is overflowing; resync the schedule.
+                # >100 ms behind — driver deque is overflowing; resync.
                 next_t = time.monotonic()
