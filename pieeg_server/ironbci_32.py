@@ -286,6 +286,14 @@ class IronBCI32Hardware:
         # USB-CDC port, which resets STM32 firmware on many boards (including
         # IronBCI-32 / FreeEEG32). The board would then never start streaming
         # and the reader thread would loop on empty timeouts forever.
+        #
+        # CAVEAT: on some Windows 11 + STM32 VCP driver combinations, setting
+        # `dtr` / `rts` *before* `open()` causes SetCommState to fail with
+        # error 87 ("The parameter is incorrect"). We therefore try the
+        # pre-open clear first, and on error 87 fall back to opening with
+        # defaults and clearing DTR/RTS *after* open. End result is the
+        # same on the wire (a brief DTR/RTS blip), and most boards survive
+        # the blip just fine.
         port = serial.Serial()
         port.port = self._serial_port
         port.baudrate = self._baudrate
@@ -298,35 +306,75 @@ class IronBCI32Hardware:
             port.rts = False
         except Exception:  # pragma: no cover — some platforms reject pre-open writes
             pass
+
+        def _looks_like_param_error(exc: Exception) -> bool:
+            msg = str(exc).lower()
+            return "parameter is incorrect" in msg or "error 87" in msg
+
+        def _open_with_post_open_dtr_clear() -> "serial.Serial":
+            """Open with library defaults, then clear DTR/RTS after open."""
+            fallback = serial.Serial()
+            fallback.port = self._serial_port
+            fallback.baudrate = self._baudrate
+            fallback.timeout = self._timeout
+            fallback.bytesize = serial.EIGHTBITS
+            fallback.parity = serial.PARITY_NONE
+            fallback.stopbits = serial.STOPBITS_ONE
+            fallback.open()
+            try:
+                fallback.dtr = False
+                fallback.rts = False
+            except Exception:  # pragma: no cover
+                pass
+            return fallback
+
         try:
             port.open()
         except Exception as exc:
             # Windows error 87 ("The parameter is incorrect") is usually one of:
             #   1. The user picked a COM port that doesn't support 921600 baud
             #      (Bluetooth modem, built-in COM1, …) — fatal, can't recover.
-            #   2. Some STM32 USB-CDC drivers reject SetCommState(921600) even
-            #      though USB-CDC ignores the baud rate at the wire level —
-            #      retrying with the driver's default baud succeeds and the
-            #      device streams normally.
-            msg = str(exc)
-            looks_like_param_error = (
-                "parameter is incorrect" in msg.lower()
-                or "error 87" in msg.lower()
-            )
-            if looks_like_param_error and self._baudrate != 9600:
+            #   2. STM32 VCP driver + Windows 11 rejects SetCommState when DTR
+            #      or RTS is pre-set — works fine if cleared post-open.
+            #   3. Some STM32 USB-CDC drivers reject SetCommState(921600) even
+            #      though USB-CDC ignores the baud rate at the wire level.
+            if _looks_like_param_error(exc):
                 logger.warning(
-                    "IronBCI-32: SetCommState(%d baud) rejected by driver — "
-                    "retrying with default baud (USB-CDC ignores it anyway)",
-                    self._baudrate,
+                    "IronBCI-32: SetCommState rejected by driver (Win error 87) "
+                    "— retrying without pre-open DTR/RTS clear"
                 )
                 try:
-                    port.baudrate = 9600
-                    port.open()
-                except Exception as exc2:  # pragma: no cover
-                    raise RuntimeError(
-                        f"Failed to open IronBCI-32 serial port: {exc2}\n\n"
-                        + _format_port_hint(self._serial_port)
-                    ) from exc2
+                    port = _open_with_post_open_dtr_clear()
+                except Exception as exc2:
+                    if (
+                        _looks_like_param_error(exc2)
+                        and self._baudrate != 9600
+                    ):
+                        logger.warning(
+                            "IronBCI-32: still failing — retrying with default baud "
+                            "(USB-CDC ignores baudrate at the wire level)"
+                        )
+                        try:
+                            port = serial.Serial()
+                            port.port = self._serial_port
+                            port.baudrate = 9600
+                            port.timeout = self._timeout
+                            port.open()
+                            try:
+                                port.dtr = False
+                                port.rts = False
+                            except Exception:  # pragma: no cover
+                                pass
+                        except Exception as exc3:  # pragma: no cover
+                            raise RuntimeError(
+                                f"Failed to open IronBCI-32 serial port: {exc3}\n\n"
+                                + _format_port_hint(self._serial_port)
+                            ) from exc3
+                    else:
+                        raise RuntimeError(
+                            f"Failed to open IronBCI-32 serial port: {exc2}\n\n"
+                            + _format_port_hint(self._serial_port)
+                        ) from exc2
             else:
                 raise RuntimeError(
                     f"Failed to open IronBCI-32 serial port: {exc}\n\n"
