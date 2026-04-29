@@ -298,6 +298,13 @@ def _num_channels_from_device(device: str) -> int:
     return 16  # pieeg16 default
 
 
+def _sample_rate_from_device(device: str) -> int:
+    """Map --device flag to native sample rate (Hz)."""
+    if device == "ironbci32":
+        return 500  # firmware-fixed AD7771 rate
+    return 250  # PiEEG / IronBCI-8 / PiEEG-16
+
+
 def _device_label(device: str) -> str:
     """Human-readable label from --device flag, e.g. 'IronBCI-32' or 'PiEEG-16'."""
     num_ch = _num_channels_from_device(device)
@@ -348,7 +355,8 @@ def _print_startup_panel(console, args, device_label, num_ch, local_ip, hostname
     table.add_column("value")
 
     mode = "[yellow]MOCK[/yellow]" if args.mock else "[green]LIVE[/green]"
-    table.add_row("Mode", f"{mode} · {num_ch} channels · 250 Hz")
+    sr = _sample_rate_from_device(getattr(args, "device", "pieeg16"))
+    table.add_row("Mode", f"{mode} · {num_ch} channels · {sr} Hz")
     if args.filter:
         table.add_row("Filter", f"{args.lowcut}–{args.highcut} Hz bandpass")
 
@@ -402,8 +410,10 @@ def _make_hardware(args, logger):
     num_ch = _num_channels_from_device(device)
     if args.mock:
         from .mock import MockHardware
-        logger.info("Starting in MOCK mode (%d-channel synthetic EEG data)", num_ch)
-        hw = MockHardware(num_channels=num_ch)
+        sr = _sample_rate_from_device(device)
+        logger.info("Starting in MOCK mode (%d-channel synthetic EEG @ %d Hz)",
+                    num_ch, sr)
+        hw = MockHardware(num_channels=num_ch, sample_rate=sr)
     elif _is_ble_device(device):
         from .ironbci import IronBCIHardware, scan_ble_devices
         ble_name = getattr(args, "ble_name", "EAREEG")

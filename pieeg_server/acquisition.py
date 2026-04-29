@@ -108,7 +108,13 @@ class AcquisitionLoop:
             self._run_hardware()
 
     def _run_mock(self):
-        """Generate synthetic data at 250 Hz for testing without hardware."""
+        """Generate synthetic data for testing without hardware.
+
+        Uses the hardware's advertised ``sample_rate`` if available, else
+        falls back to the default 250 Hz. This lets the IronBCI-32 mock
+        run at 500 Hz × 32 ch to faithfully reproduce its data rate.
+        """
+        interval = 1.0 / getattr(self._hw, "sample_rate", SAMPLE_RATE)
         while not self._stop_event.is_set():
             sample = self._hw.read_sample()
             sample = self._hampel.apply(sample)
@@ -119,7 +125,7 @@ class AcquisitionLoop:
                 "channels": sample,
             }
             self._loop.call_soon_threadsafe(self._enqueue, frame)
-            time.sleep(SAMPLE_INTERVAL)
+            time.sleep(interval)
 
     def _run_hardware(self):
         """
