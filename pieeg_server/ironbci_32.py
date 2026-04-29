@@ -328,16 +328,34 @@ class IronBCI32Hardware:
                 pass
             return fallback
 
+        def _open_with_winapi_fallback():
+            """Bypass pyserial entirely on Windows.
+
+            The buggy STMicroelectronics VCP driver rejects `SetCommState`
+            calls outright. USB-CDC ignores baudrate / parity / stopbits at
+            the wire level anyway, so we open the device with raw
+            `CreateFileW` + `ReadFile` and skip the broken configuration
+            step. Same wire-level behaviour, no driver swap required.
+            """
+            from . import _winserial  # local import — Windows-only module
+            return _winserial.WinapiSerial(
+                self._serial_port, timeout=self._timeout
+            )
+
         try:
             port.open()
         except Exception as exc:
-            # Windows error 87 ("The parameter is incorrect") is usually one of:
+            # Windows error 87 ("The parameter is incorrect") has three
+            # known causes on STM32 USB-CDC boards:
             #   1. The user picked a COM port that doesn't support 921600 baud
             #      (Bluetooth modem, built-in COM1, …) — fatal, can't recover.
             #   2. STM32 VCP driver + Windows 11 rejects SetCommState when DTR
             #      or RTS is pre-set — works fine if cleared post-open.
-            #   3. Some STM32 USB-CDC drivers reject SetCommState(921600) even
-            #      though USB-CDC ignores the baud rate at the wire level.
+            #   3. Buggy STMicroelectronics VCP driver versions reject
+            #      `SetCommState` outright regardless of parameters. The only
+            #      working fix here is to bypass pyserial entirely and open
+            #      the port via raw Win32 `CreateFileW` (USB-CDC ignores the
+            #      baud rate at the wire level).
             if _looks_like_param_error(exc):
                 logger.warning(
                     "IronBCI-32: SetCommState rejected by driver (Win error 87) "
@@ -365,11 +383,48 @@ class IronBCI32Hardware:
                                 port.rts = False
                             except Exception:  # pragma: no cover
                                 pass
-                        except Exception as exc3:  # pragma: no cover
+                        except Exception as exc3:
+                            # Final fallback (Windows only): bypass pyserial
+                            # via raw Win32 API. Works around buggy STM32 VCP
+                            # drivers that fail SetCommState unconditionally.
+                            if (
+                                sys.platform == "win32"
+                                and _looks_like_param_error(exc3)
+                            ):
+                                logger.warning(
+                                    "IronBCI-32: pyserial cannot configure this "
+                                    "port — falling back to raw Win32 backend "
+                                    "(bypasses SetCommState)"
+                                )
+                                try:
+                                    port = _open_with_winapi_fallback()
+                                except Exception as exc4:  # pragma: no cover
+                                    raise RuntimeError(
+                                        f"Failed to open IronBCI-32 serial port: {exc4}\n\n"
+                                        + _format_port_hint(self._serial_port)
+                                    ) from exc4
+                            else:  # pragma: no cover
+                                raise RuntimeError(
+                                    f"Failed to open IronBCI-32 serial port: {exc3}\n\n"
+                                    + _format_port_hint(self._serial_port)
+                                ) from exc3
+                    elif (
+                        sys.platform == "win32"
+                        and _looks_like_param_error(exc2)
+                    ):
+                        # Already at default baud and still failing → driver
+                        # truly cannot configure the port. Use Win32 fallback.
+                        logger.warning(
+                            "IronBCI-32: pyserial cannot configure this port "
+                            "— falling back to raw Win32 backend"
+                        )
+                        try:
+                            port = _open_with_winapi_fallback()
+                        except Exception as exc4:  # pragma: no cover
                             raise RuntimeError(
-                                f"Failed to open IronBCI-32 serial port: {exc3}\n\n"
+                                f"Failed to open IronBCI-32 serial port: {exc4}\n\n"
                                 + _format_port_hint(self._serial_port)
-                            ) from exc3
+                            ) from exc4
                     else:
                         raise RuntimeError(
                             f"Failed to open IronBCI-32 serial port: {exc2}\n\n"
