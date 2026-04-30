@@ -243,6 +243,8 @@ export interface WorkerAnalyseRingMessage {
 
 export interface WorkerInitMessage {
   type: "init";
+  /** Sample rate in Hz. Optional for backwards-compat; defaults to 250. */
+  sampleRate?: number;
 }
 
 export type WorkerInMessage = WorkerAnalyseMessage | WorkerAnalyseRingMessage | WorkerInitMessage;

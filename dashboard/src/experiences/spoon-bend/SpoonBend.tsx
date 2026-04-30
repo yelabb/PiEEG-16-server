@@ -19,13 +19,22 @@ import { OBJLoader } from "three/examples/jsm/loaders/OBJLoader.js";
 import type { ExperienceProps } from "../registry";
 import { FftEngine, FREQUENCY_BANDS } from "../../lib/fftEngine";
 import type { BandPowers } from "../../types";
+import { getSampleRate } from "../../lib/sampleRateStore";
 import spoonObjUrl from "./spoon.obj?url";
 
-// ── Constants ────────────────────────────────────────────────────────────────
+// ── Constants ───────────────────────────────────────────────────────
 
-const SAMPLE_RATE = 250;
 const FFT_SIZE = 256;
-const FFT_ENGINE = new FftEngine(FFT_SIZE, SAMPLE_RATE);
+// Rebuild the FftEngine if the device's sample rate changes (PiEEG-16 →
+// IronBCI-32 etc). Otherwise band-power frequency edges silently drift.
+let _FFT_ENGINE: FftEngine | null = null;
+function getFftEngine(): FftEngine {
+  const rate = getSampleRate();
+  if (!_FFT_ENGINE || _FFT_ENGINE.sampleRateHz !== rate) {
+    _FFT_ENGINE = new FftEngine(FFT_SIZE, rate);
+  }
+  return _FFT_ENGINE;
+}
 const FFT_EVERY_N_FRAMES = 2;
 const SMOOTH = 0.88;
 const RAIN_COLS = 60;
@@ -357,7 +366,7 @@ export default function SpoonBend({ eegData, onExit }: ExperienceProps) {
           }
           for (let i = 0; i < FFT_SIZE; i++) input[i] /= chCount;
 
-          const result = FFT_ENGINE.analyse(input);
+          const result = getFftEngine().analyse(input);
           if (result) {
             const bp = result.bandPowers;
             const relaxation =

@@ -26,7 +26,7 @@ import type { Decoder, TrainingMetrics } from "./ml/decoder";
 import { ShrinkageLDA } from "./ml/shrinkageLda";
 import { loadModel, saveModel } from "./ml/storage";
 import { SessionRecorder } from "./review/sessionRecorder";
-import { SAMPLE_RATE } from "../../types";
+import { getSampleRate } from "../../lib/sampleRateStore";
 
 export interface RuntimeOptions {
   subject_id: string;
@@ -71,8 +71,12 @@ export class P300Runtime {
   private liveSnapshots = new Map<number, CandidatePrediction>();
 
   constructor(public opts: RuntimeOptions) {
-    const bufSize = SAMPLE_RATE * (opts.ring_seconds ?? 8);
-    this.ring = new TimestampedRing(opts.numChannels, bufSize);
+    // Read the device's actual sample rate now (PiEEG-16 250 Hz, IronBCI-32
+    // 500 Hz). The Runtime is recreated when the user starts a new session,
+    // so this is the right time to lock in the rate.
+    const sampleRate = getSampleRate();
+    const bufSize = sampleRate * (opts.ring_seconds ?? 8);
+    this.ring = new TimestampedRing(opts.numChannels, bufSize, sampleRate);
     this.bus.setClock(this.ring);
     this.extractor = new EpochExtractor(this.bus, this.ring, {
       channels: opts.channels,

@@ -6,7 +6,7 @@
 // by marker time. Taps into useEEG via the window.__p300SampleHandler hook.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { SAMPLE_RATE } from "../../../types";
+import { getSampleRate } from "../../../lib/sampleRateStore";
 import type { EegTimestamp, PerfTimestamp } from "../types";
 import type { EegClock } from "../marker/markerBus";
 
@@ -21,7 +21,7 @@ export class TimestampedRing implements EegClock {
   constructor(
     public readonly numChannels: number,
     public readonly bufferSize: number,
-    public readonly sampleRate: number = SAMPLE_RATE,
+    public readonly sampleRate: number = getSampleRate(),
   ) {
     this.buffers = Array.from(
       { length: numChannels },

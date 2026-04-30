@@ -17,7 +17,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { Epoch, StimulusMarker } from "../types";
-import { SAMPLE_RATE } from "../../../types";
+import { getSampleRate } from "../../../lib/sampleRateStore";
 
 // ── Biquad helpers (Direct Form II transposed) ───────────────────────────────
 
@@ -121,7 +121,7 @@ export function preprocessEpoch(
   marker: StimulusMarker,
   params: PreprocessParams,
 ): Epoch {
-  const fs = params.sample_rate ?? SAMPLE_RATE;
+  const fs = params.sample_rate ?? getSampleRate();
   const hp = params.hp_hz ?? 0.5;
   const lp = params.lp_hz ?? 20;
   const dec = params.decimation ?? 5;

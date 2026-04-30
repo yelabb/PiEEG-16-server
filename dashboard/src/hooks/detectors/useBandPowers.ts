@@ -11,7 +11,7 @@
 
 import { useRef, useEffect } from "react";
 import type { EEGData, BandPowers } from "../../types";
-import { SAMPLE_RATE } from "../../types";
+import { useSampleRate } from "../../lib/sampleRateStore";
 import { FftEngine, FREQUENCY_BANDS } from "../../lib/fftEngine";
 
 const FFT_SIZE = 256;
@@ -57,9 +57,13 @@ export function useBandPowers(
   const resultRef = useRef<BandPowersResult>({ ...EMPTY_RESULT });
   const prevAbsolute = useRef<BandPowers>({ ...EMPTY_BP });
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Rebuild the FftEngine if the device's sample rate changes mid-session
+  // (e.g. user disconnects from PiEEG-16 and reconnects to IronBCI-32).
+  // Without this, all band edges in Hz space would drift by the rate ratio.
+  const sampleRate = useSampleRate();
 
-  if (!fftRef.current) {
-    fftRef.current = new FftEngine(FFT_SIZE, SAMPLE_RATE);
+  if (!fftRef.current || fftRef.current.sampleRateHz !== sampleRate) {
+    fftRef.current = new FftEngine(FFT_SIZE, sampleRate);
   }
 
   useEffect(() => {

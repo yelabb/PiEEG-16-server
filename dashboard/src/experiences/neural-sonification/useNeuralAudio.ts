@@ -7,7 +7,7 @@
 
 import { useRef, useCallback, useEffect } from "react";
 import type { EEGData, BandPowers } from "../../types";
-import { SAMPLE_RATE } from "../../types";
+import { useSampleRate } from "../../lib/sampleRateStore";
 import { FftEngine, FREQUENCY_BANDS } from "../../lib/fftEngine";
 import { NeuralSynth } from "./NeuralSynth";
 import type { SynthConfig } from "./NeuralSynth";
@@ -21,9 +21,11 @@ export function useNeuralAudio(eegData: EEGData) {
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const latestBP = useRef<BandPowers | null>(null);
 
-  // Lazy-init FFT engine
-  if (!fftRef.current) {
-    fftRef.current = new FftEngine(FFT_SIZE, SAMPLE_RATE);
+  // Re-init the FftEngine when the device's sample rate changes (PiEEG-16
+  // 250 Hz → IronBCI-32 500 Hz). Without this, every band edge is wrong.
+  const sampleRate = useSampleRate();
+  if (!fftRef.current || fftRef.current.sampleRateHz !== sampleRate) {
+    fftRef.current = new FftEngine(FFT_SIZE, sampleRate);
   }
 
   // Lazy-init synth (not started yet — needs user gesture)

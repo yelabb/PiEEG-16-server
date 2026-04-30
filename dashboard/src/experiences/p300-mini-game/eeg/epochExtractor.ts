@@ -11,7 +11,6 @@ import type { Epoch, StimulusMarker, CalibrationConfig } from "../types";
 import type { MarkerBus } from "../marker/markerBus";
 import type { TimestampedRing } from "./timestampedRing";
 import { preprocessEpoch } from "./preprocessing";
-import { SAMPLE_RATE } from "../../../types";
 
 export type EpochListener = (e: Epoch) => void;
 
@@ -126,11 +125,14 @@ export class EpochExtractor {
         // Window not available — likely lost / too old. Drop silently.
         continue;
       }
-      const srcBaselineN = Math.round((this.baseline_ms / 1000) * SAMPLE_RATE);
+      // Use the ring's live sample rate (PiEEG-16 250 Hz, IronBCI-32 500 Hz)
+      // so baseline samples and preprocessing match the actual data.
+      const sampleRate = this.ring.sampleRate;
+      const srcBaselineN = Math.round((this.baseline_ms / 1000) * sampleRate);
       const epoch = preprocessEpoch(win.data, p.marker, {
         baseline_samples: srcBaselineN,
         decimation: this.decimation,
-        sample_rate: SAMPLE_RATE,
+        sample_rate: sampleRate,
       });
       for (const l of this.listeners) {
         try {

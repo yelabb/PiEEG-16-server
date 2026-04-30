@@ -25,7 +25,7 @@
 import { useRef, useState, useEffect, useCallback } from "react";
 import type { ExperienceProps } from "../registry";
 import type { EEGData } from "../../types";
-import { SAMPLE_RATE } from "../../types";
+import { getSampleRate } from "../../lib/sampleRateStore";
 
 // ── Types ────────────────────────────────────────────────────────────────
 
@@ -66,7 +66,11 @@ const CH_FP2 = 1;
 const SMOOTHING = 0.15;
 const DOT_RADIUS = 14;
 const TARGET_RADIUS = 32;
-const WINDOW_SAMPLES = Math.round(SAMPLE_RATE * 0.12);
+// Computed at use-site below via getSampleRate() so the window scales with
+// the device's actual rate (PiEEG-16 250 Hz → 30 samples; IronBCI-32 500 Hz
+// → 60 samples). Keeping this as a `const` would silently halve the time
+// window when running on a 500 Hz device.
+const EOG_WINDOW_MS = 120;
 const TARGET_MOVE_MS = 3000;
 const ERROR_HISTORY_LEN = 60;
 const RIDGE_LAMBDA = 0.01;
@@ -347,7 +351,7 @@ export default function EyeTrack({ eegData, onExit }: ExperienceProps) {
       setProgress(Math.min(1, elapsed / CALIBRATION_DURATION_MS));
 
       if (elapsed > SETTLE_DELAY_MS) {
-        const feat = readEOGFeatures(eegData, WINDOW_SAMPLES);
+        const feat = readEOGFeatures(eegData, Math.round(getSampleRate() * (EOG_WINDOW_MS / 1000)));
         if (feat) {
           collectRef.current.hArr.push(feat.hEOG);
           collectRef.current.vArr.push(feat.vEOG);
@@ -424,7 +428,7 @@ export default function EyeTrack({ eegData, onExit }: ExperienceProps) {
       }
 
       // Read EOG and estimate gaze
-      const feat = readEOGFeatures(eegData, WINDOW_SAMPLES);
+      const feat = readEOGFeatures(eegData, Math.round(getSampleRate() * (EOG_WINDOW_MS / 1000)));
       if (feat && modelRef.current) {
         const fn = algoFnRef.current;
         let raw = { x: 0, y: 0 };

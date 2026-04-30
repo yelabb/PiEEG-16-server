@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import type { FftEngine } from "../lib/fftEngine";
 import type { FFTResult, WorkerOutMessage } from "../types";
+import { useSampleRate } from "../lib/sampleRateStore";
 
 const FFT_SIZE = 256;
 
@@ -9,6 +10,7 @@ export function useFFTWorker(fallbackFFTEngine: FftEngine) {
   const pendingRef = useRef<Map<number, (result: FFTResult | null) => void>>(new Map());
   const requestIdRef = useRef(0);
   const readyRef = useRef(false);
+  const sampleRate = useSampleRate();
 
   useEffect(() => {
     if (typeof Worker === "undefined") {
@@ -38,7 +40,10 @@ export function useFFTWorker(fallbackFFTEngine: FftEngine) {
       };
 
       workerRef.current = worker;
-      worker.postMessage({ type: "init" });
+      // Pass the live sample rate so the worker rebuilds FftEngine with the
+      // device's actual rate (PiEEG=250, IronBCI-32=500). The effect re-runs
+      // when `sampleRate` changes, terminating + re-creating the worker.
+      worker.postMessage({ type: "init", sampleRate });
     } catch (e) {
       console.warn("Could not create FFT worker:", e);
     }
@@ -46,9 +51,11 @@ export function useFFTWorker(fallbackFFTEngine: FftEngine) {
     return () => {
       if (workerRef.current) {
         workerRef.current.terminate();
+        workerRef.current = null;
       }
+      readyRef.current = false;
     };
-  }, []);
+  }, [sampleRate]);
 
   const analyseAsync = (samples: Float32Array | Float64Array | number[], callback: (result: FFTResult | null) => void) => {
     if (!readyRef.current || !workerRef.current) {

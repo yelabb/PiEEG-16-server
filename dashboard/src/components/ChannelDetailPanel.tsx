@@ -1,7 +1,8 @@
 import { useRef, useEffect, useState, memo, useMemo } from "react";
 import { FftEngine, FREQUENCY_BANDS } from "../lib/fftEngine";
 import type { EEGData, BandPowers, CanvasSize, ChannelStats } from "../types";
-import { TRACE_COLORS, SAMPLE_RATE } from "../types";
+import { TRACE_COLORS } from "../types";
+import { getSampleRate, useSampleRate } from "../lib/sampleRateStore";
 
 const FFT_SIZE = 256;
 const FFT_EVERY_FRAMES = 8;
@@ -44,7 +45,7 @@ function drawDetailTrace(
 
   ctx.textAlign = "center";
   ctx.fillStyle = "#8b949e";
-  const totalSec = bufferSize / SAMPLE_RATE;
+  const totalSec = bufferSize / getSampleRate();
   for (let t = 0; t <= totalSec; t += 1) {
     const x = pad.l + (t / totalSec) * plotW;
     ctx.beginPath();
@@ -125,7 +126,7 @@ function drawDetailTrace(
 
   let sum = 0, sumSq = 0, min = Infinity, max = -Infinity, zeroCross = 0;
   let prev: number | null = null;
-  const statCount = Math.min(count, SAMPLE_RATE * 2);
+  const statCount = Math.min(count, getSampleRate() * 2);
   for (let i = count - statCount; i < count; i++) {
     const idx = (writeIndex - count + i + bufferSize) % bufferSize;
     const v = buf[idx];
@@ -283,7 +284,7 @@ function drawHistogram(
 
   const bins = new Float32Array(HISTOGRAM_BINS);
   const binWidth = (2 * yRange) / HISTOGRAM_BINS;
-  const statCount = Math.min(count, SAMPLE_RATE * 2);
+  const statCount = Math.min(count, getSampleRate() * 2);
   for (let i = count - statCount; i < count; i++) {
     const idx = (writeIndex - count + i + bufferSize) % bufferSize;
     const v = buf[idx];
@@ -351,7 +352,11 @@ const ChannelDetailPanel = memo(function ChannelDetailPanel({ chIdx, eegData, yR
   const [dominant, setDominant] = useState({ band: "", freq: 0 });
   const [selectedBand, setSelectedBand] = useState<string | null>(null);
 
-  const fft = useMemo(() => new FftEngine(FFT_SIZE, SAMPLE_RATE), []);
+  const sampleRate = useSampleRate();
+  // Rebuild the FftEngine when the device's sample rate changes (e.g. user
+  // reconnects from PiEEG-16 @ 250 Hz to IronBCI-32 @ 500 Hz). Without this,
+  // the spectrum X-axis would mis-label every bin.
+  const fft = useMemo(() => new FftEngine(FFT_SIZE, sampleRate), [sampleRate]);
   const color = TRACE_COLORS[chIdx];
 
   type CanvasKey = "trace" | "spectrum" | "band" | "hist";
@@ -536,7 +541,7 @@ const ChannelDetailPanel = memo(function ChannelDetailPanel({ chIdx, eegData, yR
           <div className="detail-trace-section">
             <div className="detail-section-head">
               <span className="detail-section-title">Time Domain</span>
-              <span className="detail-section-meta">{SAMPLE_RATE} Hz · ±{yRange} µV</span>
+              <span className="detail-section-meta">{sampleRate} Hz · ±{yRange} µV</span>
             </div>
             <div className="detail-trace-canvas-wrap">
               <canvas ref={traceCanvasRef} style={{ display: "block", width: "100%", height: "100%" }} />
@@ -549,7 +554,7 @@ const ChannelDetailPanel = memo(function ChannelDetailPanel({ chIdx, eegData, yR
             <div className="detail-card">
               <div className="detail-card-head">
                 <span className="detail-card-title">Power Spectrum</span>
-                <span className="detail-card-meta">{FFT_SIZE}pt FFT · {(SAMPLE_RATE / FFT_SIZE).toFixed(1)} Hz/bin</span>
+                <span className="detail-card-meta">{FFT_SIZE}pt FFT · {(sampleRate / FFT_SIZE).toFixed(1)} Hz/bin</span>
               </div>
               <div className="detail-card-canvas">
                 <canvas ref={spectrumCanvasRef} style={{ display: "block", width: "100%", height: "100%" }} />

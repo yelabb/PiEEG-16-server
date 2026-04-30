@@ -10,7 +10,7 @@
 
 import { useState, useRef, useCallback } from "react";
 import type { EEGData } from "../types";
-import { SAMPLE_RATE } from "../types";
+import { getSampleRate } from "../lib/sampleRateStore";
 import { FftEngine, FREQUENCY_BANDS } from "../lib/fftEngine";
 import { buildVideoContext, type VideoContextData } from "./useVideoContext";
 
@@ -40,7 +40,17 @@ export interface UseChatReturn {
 // ── Helpers ──────────────────────────────────────────────────────────────
 
 const FFT_N = 256;
-const fft = new FftEngine(FFT_N, SAMPLE_RATE);
+// Lazy / rate-aware FftEngine. We rebuild whenever the live sample rate
+// changes (e.g. PiEEG-16 → IronBCI-32 reconnect), otherwise the band-power
+// frequencies in the LLM context would silently mis-label.
+let fft: FftEngine | null = null;
+function getFft(): FftEngine {
+  const rate = getSampleRate();
+  if (!fft || fft.sampleRateHz !== rate) {
+    fft = new FftEngine(FFT_N, rate);
+  }
+  return fft;
+}
 
 function buildEEGContext(eegData: EEGData): string {
   const { buffers, writeIndex, samplesInBuffer, bufferSize } = eegData;
@@ -48,6 +58,8 @@ function buildEEGContext(eegData: EEGData): string {
   const count = samplesInBuffer.current;
   if (count < FFT_N) return "EEG: insufficient data (buffering).";
 
+  const fft = getFft();
+  const sampleRate = fft.sampleRateHz;
   const lines: string[] = ["## Live EEG Snapshot"];
   const allBands: Record<string, number[]> = {};
   for (const b of FREQUENCY_BANDS) allBands[b.name] = [];
@@ -80,7 +92,7 @@ function buildEEGContext(eegData: EEGData): string {
     }
   }
 
-  lines.push(`\nChannels: ${activeCh}/${nCh} active, ${SAMPLE_RATE} Hz sample rate`);
+  lines.push(`\nChannels: ${activeCh}/${nCh} active, ${sampleRate} Hz sample rate`);
   return lines.join("\n");
 }
 

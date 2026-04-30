@@ -20,11 +20,20 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import type { ExperienceProps } from "../registry";
 import { FftEngine, FREQUENCY_BANDS } from "../../lib/fftEngine";
 import type { BandPowers } from "../../types";
+import { getSampleRate } from "../../lib/sampleRateStore";
 
-// ── Constants ────────────────────────────────────────────────────────────────
+// ── Constants ───────────────────────────────────────────────────────
 
-const SAMPLE_RATE = 250;
-const FFT_ENGINE = new FftEngine(256, SAMPLE_RATE);
+// Lazy / rate-aware FftEngine. Rebuilt automatically when the live sample
+// rate changes (e.g. PiEEG-16 250 Hz → IronBCI-32 500 Hz).
+let _FFT_ENGINE: FftEngine | null = null;
+function getFftEngine(): FftEngine {
+  const rate = getSampleRate();
+  if (!_FFT_ENGINE || _FFT_ENGINE.sampleRateHz !== rate) {
+    _FFT_ENGINE = new FftEngine(256, rate);
+  }
+  return _FFT_ENGINE;
+}
 const FFT_INTERVAL_MS = 300; // local vis update interval
 
 const DEFAULT_CONFIG = {
@@ -196,7 +205,7 @@ export default function VRChatOSC({ eegData, onExit, sendCommand }: ExperiencePr
         const wi = writeIndex.current;
         const si = samplesInBuffer.current;
         if (!buf || si < 256) continue;
-        const result = FFT_ENGINE.analyseRing(buf, wi, si);
+        const result = getFftEngine().analyseRing(buf, wi, si);
         if (!result) continue;
         for (const band of FREQUENCY_BANDS) {
           accumulated[band.name] = (accumulated[band.name] ?? 0) + result.bandPowers[band.name];

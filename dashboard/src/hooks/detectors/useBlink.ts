@@ -17,7 +17,7 @@
 
 import { useRef, useEffect, useCallback } from "react";
 import type { EEGData } from "../../types";
-import { SAMPLE_RATE } from "../../types";
+import { useSampleRate } from "../../lib/sampleRateStore";
 
 // ── Configuration ────────────────────────────────────────────────────────
 
@@ -104,7 +104,7 @@ export function useBlink(eegData: EEGData, config: BlinkConfig = {}) {
     pollHz = 40,
   } = config;
 
-  const windowSamples = Math.round((windowMs / 1000) * SAMPLE_RATE);
+  const windowSamples = Math.round((windowMs / 1000) * useSampleRate());
 
   const stateRef = useRef<BlinkState>({
     blinked: false,
