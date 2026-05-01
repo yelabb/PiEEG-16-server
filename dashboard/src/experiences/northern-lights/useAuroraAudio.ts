@@ -8,7 +8,7 @@
 
 import { useRef, useCallback, useEffect } from "react";
 import type { EEGData, BandPowers } from "../../types";
-import { SAMPLE_RATE } from "../../types";
+import { useSampleRate } from "../../lib/sampleRateStore";
 import { FftEngine, FREQUENCY_BANDS } from "../../lib/fftEngine";
 import { AuroraSynth } from "./AuroraSynth";
 import type { AuroraConfig } from "./AuroraSynth";
@@ -34,7 +34,11 @@ export function useAuroraAudio(eegData: EEGData) {
     delta: 0, theta: 0, alpha: 0, beta: 0, gamma: 0,
   });
 
-  if (!fftRef.current) fftRef.current = new FftEngine(FFT_SIZE, SAMPLE_RATE);
+  // Re-init the FftEngine when the device's sample rate changes.
+  const sampleRate = useSampleRate();
+  if (!fftRef.current || fftRef.current.sampleRateHz !== sampleRate) {
+    fftRef.current = new FftEngine(FFT_SIZE, sampleRate);
+  }
   if (!synthRef.current) synthRef.current = new AuroraSynth();
 
   // ── FFT loop — runs on mount, independent of audio ─────────────────

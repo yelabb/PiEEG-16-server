@@ -3,7 +3,7 @@ import { FftEngine } from "../lib/fftEngine";
 import type { WorkerInMessage, WorkerOutMessage } from "../types";
 
 const FFT_SIZE = 256;
-const SAMPLE_RATE = 250;
+const DEFAULT_SAMPLE_RATE = 250;
 
 let fftEngine: FftEngine | null = null;
 
@@ -19,7 +19,11 @@ ctx.onmessage = (event: MessageEvent<WorkerInMessage>) => {
   const { type } = event.data;
 
   if (type === "init") {
-    fftEngine = new FftEngine(FFT_SIZE, SAMPLE_RATE);
+    // Sample rate may change between init calls (e.g. user reconnects from
+    // a 250 Hz PiEEG to a 500 Hz IronBCI-32). We rebuild the FftEngine
+    // every time `init` arrives so band-power maths stays correct.
+    const rate = event.data.sampleRate ?? DEFAULT_SAMPLE_RATE;
+    fftEngine = new FftEngine(FFT_SIZE, rate);
     ctx.postMessage({ type: "ready" } satisfies WorkerOutMessage);
     return;
   }

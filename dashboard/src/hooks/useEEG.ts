@@ -9,7 +9,8 @@ import type {
   WSRecordStatusMessage,
   WSSampleMessage,
 } from "../types";
-import { NUM_CHANNELS, SAMPLE_RATE } from "../types";
+import { NUM_CHANNELS } from "../types";
+import { setSampleRate, useSampleRate } from "../lib/sampleRateStore";
 
 const UI_UPDATE_MS = 500; // Throttle React state updates
 
@@ -44,7 +45,11 @@ export function useEEG(timeWindowSec = 4, wsUrl?: string): UseEEGReturn {
   const lastUIUpdate = useRef(0);
   const bufferSizeRef = useRef(0);
 
-  const bufferSize = SAMPLE_RATE * timeWindowSec;
+  // Buffer size scales with the device's actual sample rate (read live from
+  // the welcome message via the sample-rate store). On rate change React
+  // re-runs this hook and the ring buffers are re-allocated below.
+  const sampleRate = useSampleRate();
+  const bufferSize = sampleRate * timeWindowSec;
   bufferSizeRef.current = bufferSize;
 
   // Allocate ring buffers (re-allocate if channel count or buffer size changes)
@@ -212,8 +217,19 @@ export function useEEG(timeWindowSec = 4, wsUrl?: string): UseEEGReturn {
         }
 
         if ("status" in msg) {
-          // Welcome message — read channel count and mock flag from server
-          const welcome = msg as Record<string, unknown>;
+          // Welcome message — read channel count, sample rate and mock flag
+          // from server. The sample rate is critical: PiEEG runs at 250 Hz
+          // but IronBCI-32 streams at 500 Hz. All FFT / band-power maths
+          // depends on knowing this exactly.
+          const welcome = msg as unknown as Record<string, unknown>;
+          const serverRate = welcome.sample_rate;
+          if (
+            typeof serverRate === "number"
+            && serverRate > 0
+            && serverRate <= 4000
+          ) {
+            setSampleRate(serverRate);
+          }
           const serverCh = welcome.channels;
           if (typeof serverCh === "number" && serverCh > 0 && serverCh <= NUM_CHANNELS) {
             numChRef.current = serverCh;

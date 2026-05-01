@@ -33,8 +33,10 @@ class MockHardware:
 
     CH_REGS = CH_REGS
 
-    def __init__(self, num_channels: int = NUM_CHANNELS):
+    def __init__(self, num_channels: int = NUM_CHANNELS,
+                 sample_rate: int = SAMPLE_RATE):
         self._num_channels = num_channels
+        self._sample_rate = int(sample_rate)
         self._start_time = None
         self._sample_index = 0
         # Per-channel random parameters for variety
@@ -54,6 +56,10 @@ class MockHardware:
     @property
     def num_channels(self) -> int:
         return self._num_channels
+
+    @property
+    def sample_rate(self) -> int:
+        return self._sample_rate
 
     @property
     def spike_threshold(self) -> int:
@@ -84,7 +90,7 @@ class MockHardware:
         self._pending_spikes += max(1, int(count))
 
     def read_sample(self):
-        t = self._sample_index / SAMPLE_RATE
+        t = self._sample_index / self._sample_rate
         self._sample_index += 1
 
         # Inject a large spike across all channels if requested
@@ -104,7 +110,7 @@ class MockHardware:
                 channels.append(round(random.gauss(0, 1.0), 2))
             elif mode == 0x05:
                 # Test signal: 1.8 mV square wave at ~2 Hz
-                period = SAMPLE_RATE // 2  # 2 Hz
+                period = self._sample_rate // 2  # 2 Hz
                 val = 1800.0 if (self._sample_index % period) < (period // 2) else -1800.0
                 channels.append(round(val + random.gauss(0, 0.5), 2))
             elif mode == 0x04:

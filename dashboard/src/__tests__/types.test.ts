@@ -2,16 +2,16 @@ import { describe, it, expect } from "vitest";
 import { NUM_CHANNELS, SAMPLE_RATE, TRACE_COLORS, TRIGGER_TYPES, BANDS, SERVICE_TYPES } from "../types";
 
 describe("types constants", () => {
-  it("NUM_CHANNELS is 16", () => {
-    expect(NUM_CHANNELS).toBe(16);
+  it("NUM_CHANNELS is 32", () => {
+    expect(NUM_CHANNELS).toBe(32);
   });
 
   it("SAMPLE_RATE is 250 Hz", () => {
     expect(SAMPLE_RATE).toBe(250);
   });
 
-  it("TRACE_COLORS has 16 entries", () => {
-    expect(TRACE_COLORS).toHaveLength(16);
+  it("TRACE_COLORS has 32 entries", () => {
+    expect(TRACE_COLORS).toHaveLength(32);
   });
 
   it("all trace colors are valid hex codes", () => {

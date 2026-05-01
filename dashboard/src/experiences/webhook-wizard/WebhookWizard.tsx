@@ -11,10 +11,18 @@ import type { ExperienceProps } from "../registry";
 import { WEBHOOK_RECIPES, type WebhookRecipe } from "../../lib/webhookRecipes";
 import { FftEngine, FREQUENCY_BANDS } from "../../lib/fftEngine";
 import type { BandPowers } from "../../types";
+import { getSampleRate } from "../../lib/sampleRateStore";
 
-const SAMPLE_RATE = 250;
 const FFT_SIZE = 256;
-const FFT_ENGINE = new FftEngine(FFT_SIZE, SAMPLE_RATE);
+// Lazy / rate-aware FftEngine (PiEEG-16 250 Hz, IronBCI-32 500 Hz).
+let _FFT_ENGINE: FftEngine | null = null;
+function getFftEngine(): FftEngine {
+  const rate = getSampleRate();
+  if (!_FFT_ENGINE || _FFT_ENGINE.sampleRateHz !== rate) {
+    _FFT_ENGINE = new FftEngine(FFT_SIZE, rate);
+  }
+  return _FFT_ENGINE;
+}
 
 /** Map lowercase band names (from recipe params) → title-case (from FftEngine). */
 const BAND_MAP: Record<string, string> = {
@@ -70,7 +78,7 @@ export default function WebhookWizard({ eegData, onExit, sendCommand }: Experien
         for (let i = 0; i < FFT_SIZE; i++) {
           samples[i] = buf[(wi - FFT_SIZE + i + buf.length) % buf.length];
         }
-        const result = FFT_ENGINE.analyse(samples);
+        const result = getFftEngine().analyse(samples);
         if (result) setBandPowers(result.bandPowers);
 
         // Peak amplitude for amplitude triggers

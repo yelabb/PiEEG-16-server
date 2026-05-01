@@ -1,7 +1,7 @@
 import { useRef, useEffect, useState, memo, useMemo } from "react";
 import { FftEngine } from "../lib/fftEngine";
 import type { EEGData, CanvasSize } from "../types";
-import { SAMPLE_RATE } from "../types";
+import { useSampleRate } from "../lib/sampleRateStore";
 
 const FFT_SIZE = 256;
 const MAX_DISPLAY_HZ = 60;
@@ -91,12 +91,13 @@ const Spectrogram = memo(function Spectrogram({ eegData }: SpectrogramProps) {
   const [channel, setChannel] = useState(-1);
   const [paused, setPaused] = useState(false);
 
-  const fft = useMemo(() => new FftEngine(FFT_SIZE, SAMPLE_RATE), []);
+  const sampleRate = useSampleRate();
+  const fft = useMemo(() => new FftEngine(FFT_SIZE, sampleRate), [sampleRate]);
 
   const binsToDisplay = useMemo(() => {
-    const df = SAMPLE_RATE / FFT_SIZE;
+    const df = sampleRate / FFT_SIZE;
     return Math.min(Math.ceil(MAX_DISPLAY_HZ / df) + 1, (FFT_SIZE >> 1) + 1);
-  }, []);
+  }, [sampleRate]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -302,7 +303,7 @@ const Spectrogram = memo(function Spectrogram({ eegData }: SpectrogramProps) {
     setHeatImg(imgData, imgW, imgH);
 
     // Y-axis labels (frequency)
-    const df = SAMPLE_RATE / FFT_SIZE;
+    const df = sampleRate / FFT_SIZE;
     ctx.fillStyle = canvasAxisRef.current;
     ctx.font = "9px monospace";
     ctx.textAlign = "right";

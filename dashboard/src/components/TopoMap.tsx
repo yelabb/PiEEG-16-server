@@ -1,7 +1,7 @@
 import { useRef, useEffect, useState, memo, useMemo } from "react";
 import { FftEngine, FREQUENCY_BANDS } from "../lib/fftEngine";
 import type { EEGData, BandPowers } from "../types";
-import { SAMPLE_RATE } from "../types";
+import { useSampleRate } from "../lib/sampleRateStore";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TopoMap — EEG scalp topographic heatmap
@@ -378,7 +378,8 @@ const TopoMap = memo(function TopoMap({ eegData }: TopoMapProps) {
 
   const nCh = eegData.numChannels;
   const electrodes = useMemo(() => electrodesForChannels(nCh), [nCh]);
-  const fft = useMemo(() => new FftEngine(FFT_SIZE, SAMPLE_RATE), []);
+  const sampleRate = useSampleRate();
+  const fft = useMemo(() => new FftEngine(FFT_SIZE, sampleRate), [sampleRate]);
   const grid = useMemo(() => precomputeGrid(electrodes, GRID_RES), [electrodes]);
 
   // Reset smoothed/raw arrays when channel count changes

@@ -16,7 +16,8 @@ import type {
   RelayControlMessage,
   WSSampleMessage,
 } from "../types";
-import { NUM_CHANNELS, SAMPLE_RATE } from "../types";
+import { NUM_CHANNELS } from "../types";
+import { useSampleRate } from "../lib/sampleRateStore";
 
 const CLOUD_URL = "https://pieeg-cloud.fly.dev";
 const UI_UPDATE_MS = 500;
@@ -85,7 +86,10 @@ export function useRelayViewer(relayId: string, timeWindowSec = 4): UseRelayView
   const onSignal = useRef<((from: string, data: unknown) => void) | null>(null);
   const viewerNameRef = useRef(viewerName);
 
-  const bufferSize = SAMPLE_RATE * timeWindowSec;
+  // Buffer size scales with the active sample rate (250 Hz default,
+  // 500 Hz when an IronBCI-32 set the rate via the local welcome message).
+  const sampleRate = useSampleRate();
+  const bufferSize = sampleRate * timeWindowSec;
 
   // Allocate ring buffers
   if (

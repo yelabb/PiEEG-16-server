@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, type ChangeEvent, type KeyboardEvent } from "react";
-import { NUM_CHANNELS, SAMPLE_RATE, TRACE_COLORS } from "../types";
+import { SAMPLE_RATE, TRACE_COLORS } from "../types";
 import type { Annotation } from "../types";
 
 const GRID_COLOR = "rgba(48,54,61,0.4)";
@@ -44,6 +44,7 @@ export default function SessionViewer({ filename, onBack }: SessionViewerProps) 
 
   const channelDataRef = useRef<Float32Array[] | null>(null);
   const totalFramesRef = useRef(0);
+  const numChannelsRef = useRef(0);
   const currentFrameRef = useRef(0);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rafRef = useRef(0);
@@ -77,19 +78,25 @@ export default function SessionViewer({ filename, onBack }: SessionViewerProps) 
         const json = await res.json();
         if (json.error) throw new Error(json.error);
         const lines: string[] = json.data || [];
+        if (lines.length < 2) throw new Error("Empty recording");
+        // Header is `timestamp, ch1, ch2, ...` — derive channel count from it.
+        const headerParts = lines[0].split(",");
+        const numCh = Math.max(0, headerParts.length - 1);
+        if (numCh === 0) throw new Error("Recording has no channels");
         const dataLines = lines.slice(1);
         const numFrames = dataLines.length;
         if (numFrames === 0) throw new Error("Empty recording");
-        const channels = Array.from({ length: NUM_CHANNELS }, () => new Float32Array(numFrames));
+        const channels = Array.from({ length: numCh }, () => new Float32Array(numFrames));
         for (let i = 0; i < numFrames; i++) {
           const parts = dataLines[i].split(",");
-          for (let ch = 0; ch < NUM_CHANNELS; ch++) {
+          for (let ch = 0; ch < numCh; ch++) {
             channels[ch][i] = parseFloat(parts[ch + 1]) || 0;
           }
         }
         if (!cancelled) {
           channelDataRef.current = channels;
           totalFramesRef.current = numFrames;
+          numChannelsRef.current = numCh;
           setCurrentFrame(0);
           setLoading(false);
         }
@@ -172,9 +179,9 @@ export default function SessionViewer({ filename, onBack }: SessionViewerProps) 
     if (startSample < 0) { startSample = 0; endSample = windowSamples; }
     if (endSample > total) { endSample = total; startSample = Math.max(0, total - windowSamples); }
 
-    const rowHeight = h / NUM_CHANNELS;
+    const rowHeight = h / Math.max(1, numChannelsRef.current);
 
-    for (let ch = 0; ch < NUM_CHANNELS; ch++) {
+    for (let ch = 0; ch < numChannelsRef.current; ch++) {
       const yTop = ch * rowHeight;
       const yMid = yTop + rowHeight / 2;
       const halfH = rowHeight / 2;
@@ -207,7 +214,7 @@ export default function SessionViewer({ filename, onBack }: SessionViewerProps) 
       const xScale = w / (count - 1);
       const yScaleFactor = (halfH * 0.85) / yRange;
 
-      ctx.strokeStyle = TRACE_COLORS[ch];
+      ctx.strokeStyle = TRACE_COLORS[ch % TRACE_COLORS.length];
       ctx.lineWidth = 1.2;
       ctx.lineJoin = "round";
       ctx.beginPath();
@@ -294,12 +301,13 @@ export default function SessionViewer({ filename, onBack }: SessionViewerProps) 
       annoByFrame.set(a.frame, a.text);
     }
 
-    const header = ["frame", "time_s", ...Array.from({ length: NUM_CHANNELS }, (_, i) => `ch${i + 1}`), "annotation"];
+    const numCh = numChannelsRef.current;
+    const header = ["frame", "time_s", ...Array.from({ length: numCh }, (_, i) => `ch${i + 1}`), "annotation"];
     const lines = [header.join(",")];
 
     for (let i = 0; i < total; i++) {
       const time = (i / SAMPLE_RATE).toFixed(6);
-      const chValues = Array.from({ length: NUM_CHANNELS }, (_, ch) => data[ch][i].toFixed(4));
+      const chValues = Array.from({ length: numCh }, (_, ch) => data[ch][i].toFixed(4));
       const anno = annoByFrame.get(i) || "";
       // Escape annotation text for CSV
       const escaped = anno ? `"${anno.replace(/"/g, '""')}"` : "";
@@ -323,7 +331,7 @@ export default function SessionViewer({ filename, onBack }: SessionViewerProps) 
     const exportData = {
       filename,
       sampleRate: SAMPLE_RATE,
-      channels: NUM_CHANNELS,
+      channels: numChannelsRef.current,
       totalFrames: total,
       duration: total / SAMPLE_RATE,
       annotations: annotations.map((a) => ({

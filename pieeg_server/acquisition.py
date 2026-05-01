@@ -24,11 +24,12 @@ class AcquisitionLoop:
     """Runs the SPI read loop in a background thread, feeds async queues."""
 
     def __init__(self, hardware, loop: asyncio.AbstractEventLoop,
-                 mock: bool = False, ble: bool = False):
+                 mock: bool = False, ble: bool = False, serial: bool = False):
         self._hw = hardware
         self._loop = loop
         self._mock = mock
         self._ble = ble
+        self._serial = serial
         self._subscribers: list[asyncio.Queue] = []
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
@@ -101,11 +102,19 @@ class AcquisitionLoop:
             self._run_mock()
         elif self._ble:
             self._run_ble()
+        elif self._serial:
+            self._run_serial()
         else:
             self._run_hardware()
 
     def _run_mock(self):
-        """Generate synthetic data at 250 Hz for testing without hardware."""
+        """Generate synthetic data for testing without hardware.
+
+        Uses the hardware's advertised ``sample_rate`` if available, else
+        falls back to the default 250 Hz. This lets the IronBCI-32 mock
+        run at 500 Hz × 32 ch to faithfully reproduce its data rate.
+        """
+        interval = 1.0 / getattr(self._hw, "sample_rate", SAMPLE_RATE)
         while not self._stop_event.is_set():
             sample = self._hw.read_sample()
             sample = self._hampel.apply(sample)
@@ -116,7 +125,7 @@ class AcquisitionLoop:
                 "channels": sample,
             }
             self._loop.call_soon_threadsafe(self._enqueue, frame)
-            time.sleep(SAMPLE_INTERVAL)
+            time.sleep(interval)
 
     def _run_hardware(self):
         """
@@ -207,10 +216,13 @@ class AcquisitionLoop:
             )
             return
 
+        interval = 1.0 / getattr(self._hw, "sample_rate", SAMPLE_RATE)
+        next_t = time.monotonic()
         while not self._stop_event.is_set():
             sample = self._hw.read_sample()
             if sample is None:
-                time.sleep(SAMPLE_INTERVAL)
+                time.sleep(interval)
+                next_t = time.monotonic()
                 continue
 
             sample = self._hampel.apply(sample)
@@ -221,3 +233,52 @@ class AcquisitionLoop:
                 "channels": sample,
             }
             self._loop.call_soon_threadsafe(self._enqueue, frame)
+
+            next_t += interval
+            delay = next_t - time.monotonic()
+            if delay > 0:
+                time.sleep(delay)
+            elif delay < -interval * 50:
+                next_t = time.monotonic()
+
+    def _run_serial(self):
+        """Serial acquisition (IronBCI-32 / FreeEEG32-style USB-CDC boards).
+
+        The hardware driver runs its own reader thread that decodes frames
+        from the wire as fast as they arrive (~500 SPS) and stuffs samples
+        into an internal deque. That driver thread is the real rate limiter;
+        our job here is simply to forward whatever is queued downstream as
+        promptly as possible.
+
+        Why we don't pace per-sample:
+          - On Windows, `time.sleep()` rounds up to the OS timer tick
+            (~15.6 ms by default). A 2 ms-per-sample target is impossible
+            to hit, and any cap on batch size that's smaller than what the
+            wire delivers per sleep-tick (≈8 samples for 500 SPS) causes
+            the deque to grow without bound, producing several seconds of
+            latency in the dashboard.
+          - The driver's deque already smooths bursts; downstream queues
+            handle their own back-pressure.
+
+        We therefore drain everything currently queued each iteration, then
+        sleep one short tick (~5 ms) when we're caught up. That keeps the
+        loop responsive to `stop_event` without throttling throughput.
+        """
+        sample_rate = getattr(self._hw, "sample_rate", SAMPLE_RATE)
+        # Idle wait when the deque is empty. Short enough to keep visible
+        # latency well under one frame (~16 ms on a 60 Hz display) but long
+        # enough to avoid busy-spinning when the driver is between USB-CDC
+        # chunks (which arrive every 8–16 ms).
+        idle_sleep = min(0.005, 1.0 / sample_rate)
+        while not self._stop_event.is_set():
+            sample = self._hw.read_sample()
+            if sample is None:
+                time.sleep(idle_sleep)
+                continue
+            sample = self._hampel.apply(sample)
+            self._sample_count += 1
+            self._loop.call_soon_threadsafe(self._enqueue, {
+                "t": round(time.time(), 6),
+                "n": self._sample_count,
+                "channels": sample,
+            })

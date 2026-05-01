@@ -1,7 +1,8 @@
 import { useRef, useEffect, useState, memo, useMemo } from "react";
 import { FftEngine, FREQUENCY_BANDS } from "../lib/fftEngine";
 import type { EEGData, BandPowers, CanvasSize } from "../types";
-import { SAMPLE_RATE, TRACE_COLORS } from "../types";
+import { TRACE_COLORS } from "../types";
+import { useSampleRate } from "../lib/sampleRateStore";
 
 // Read canvas colours from CSS variables (fall back to dark defaults)
 function getCanvasColors(el: Element) {
@@ -177,7 +178,11 @@ const SpectralPanel = memo(function SpectralPanel({ eegData }: SpectralPanelProp
   const [bandPowers, setBandPowers] = useState<BandPowers>({});
   const [dominant, setDominant] = useState({ band: "", freq: 0 });
 
-  const fft = useMemo(() => new FftEngine(FFT_SIZE, SAMPLE_RATE), []);
+  // Rebuild the FftEngine when the device's sample rate changes (PiEEG-16
+  // 250 Hz ↔ IronBCI-32 500 Hz). Without the dependency, alpha would land
+  // in the theta bin on a 500 Hz device.
+  const sampleRate = useSampleRate();
+  const fft = useMemo(() => new FftEngine(FFT_SIZE, sampleRate), [sampleRate]);
 
   if (!avgBufRef.current) {
     avgBufRef.current = new Float64Array(FFT_SIZE);

@@ -24,7 +24,7 @@ import { useWebhooks } from "./hooks/useWebhooks";
 import { useCloud, RELAY_MAX_MINUTES } from "./hooks/useCloud";
 import { useTheme } from "./hooks/useTheme";
 import ErrorBoundary from "./components/ErrorBoundary";
-import { NUM_CHANNELS, SAMPLE_RATE } from "./types";
+import { NUM_CHANNELS } from "./types";
 import { GUIDED_PRESETS } from "./types";
 import type { SelectOption, GuidedPreset, HampelConfig } from "./types";
 
