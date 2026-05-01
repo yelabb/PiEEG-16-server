@@ -206,7 +206,6 @@ class IronBCI32Hardware:
             raise ValueError(
                 "IronBCI-32 requires --serial-port (e.g. COM3, /dev/ttyACM0)"
             )
-        _require_pyserial()
         self._serial_port = serial_port
         self._baudrate = baudrate
         self._timeout = timeout
@@ -277,6 +276,7 @@ class IronBCI32Hardware:
         """Open the serial port and start the reader thread."""
         if self._connected:
             return
+        _require_pyserial()
         logger.info(
             "IronBCI-32: opening serial port %s @ %d baud",
             self._serial_port, self._baudrate,
