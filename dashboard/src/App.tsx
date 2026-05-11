@@ -1176,7 +1176,7 @@ export default function App({ wsUrl, onDisconnect }: { wsUrl?: string; onDisconn
         {showDocs && (
           <iframe
             className="docs-iframe"
-            src="https://pieeg-server-doc.vercel.app/"
+            src="https://docs.pieeg.com/"
             title="PiEEG Documentation"
           />
         )}

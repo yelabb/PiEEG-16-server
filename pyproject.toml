@@ -62,7 +62,7 @@ pieeg-server = "pieeg_server.__main__:main"
 
 [project.urls]
 Homepage = "https://github.com/pieeg-club/PiEEG-server"
-Documentation = "https://pieeg.com/docs/docs/pieeg-16/"
+Documentation = "https://docs.pieeg.com"
 Repository = "https://github.com/pieeg-club/PiEEG-server"
 Issues = "https://github.com/pieeg-club/PiEEG-server/issues"
 

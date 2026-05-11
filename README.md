@@ -15,12 +15,12 @@ Reads at 250 Hz · streams over WebSocket · live dashboard with spectral analys
 [![Downloads](https://img.shields.io/pypi/dm/pieeg-server)](https://pypi.org/project/pieeg-server/)
 [![IFTTT](https://img.shields.io/badge/IFTTT-compatible-black?logo=ifttt&logoColor=white)](https://ifttt.com/maker_webhooks)
 [![Zapier](https://img.shields.io/badge/Zapier-compatible-FF4A00?logo=zapier&logoColor=white)](https://zapier.com/apps/webhooks)
-[![Docs](https://img.shields.io/badge/docs-pieeg--server-blue?logo=vercel&logoColor=white)](https://pieeg-server-doc.vercel.app)
+[![Docs](https://img.shields.io/badge/docs-pieeg.com-blue?logo=vercel&logoColor=white)](https://docs.pieeg.com)
 [![Discord](https://img.shields.io/discord/1059637443548987462?color=5865F2&logo=discord&logoColor=white&label=Discord)](https://discord.gg/neJ45FR6Sv)
 [![Listen](https://img.shields.io/badge/🎧_Audio_Overview-NotebookLM-8A2BE2)](https://miruns.lon1.cdn.digitaloceanspaces.com/Stream_live_brainwaves_with_Raspberry_Pi.m4a)
 
 **[Try it now](https://pieeg.vercel.app)** — no hardware needed, click **▶ Use Demo Server** then **Connect**.
-**[Documentation](https://pieeg-server-doc.vercel.app)** — full guides, API reference, and integration docs.
+**[Documentation](https://docs.pieeg.com)** — full guides, API reference, and integration docs.
 **[Chat with us](https://discord.gg/neJ45FR6Sv)** — Join PiEEG Discord community 
 ```bash
 curl -sSL https://raw.githubusercontent.com/pieeg-club/PiEEG-server/main/install.sh | bash
