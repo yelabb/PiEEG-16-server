@@ -1,0 +1,617 @@
+/* ─────────────────────────────────────────────────────────────────────────
+ * Premeditatio Malorum — Stoic XR HUD
+ *
+ * Futuristic / scientific aesthetic, cyan + violet on near-black.
+ * Designed to overlay full-screen YouTube 360° iframes in the Meta Quest
+ * Browser (also works on desktop / mobile).  All overlays use pointer-
+ * events: none unless they need clicks, so video gestures pass through.
+ * ───────────────────────────────────────────────────────────────────────── */
+
+:root {
+  --stoic-bg: #04060d;
+  --stoic-panel: rgba(8, 14, 28, 0.78);
+  --stoic-line: rgba(120, 200, 255, 0.35);
+  --stoic-cyan: #5cf2ff;
+  --stoic-violet: #b388ff;
+  --stoic-amber: #ffb347;
+  --stoic-rose: #ff5e87;
+  --stoic-dim: rgba(180, 220, 255, 0.55);
+  --stoic-fg: #e6f6ff;
+  --stoic-mono: ui-monospace, "JetBrains Mono", "Fira Code", Menlo, Consolas, monospace;
+}
+
+/* ── Root container — full-screen, dark, locked to viewport ───────── */
+.stoic-root {
+  position: fixed;
+  inset: 0;
+  background: radial-gradient(circle at 50% 0%, #0a1530 0%, var(--stoic-bg) 70%);
+  color: var(--stoic-fg);
+  font-family: var(--stoic-mono);
+  overflow: hidden;
+  z-index: 9999;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.stoic-root *, .stoic-root *::before, .stoic-root *::after {
+  box-sizing: border-box;
+}
+
+/* ── 360° video frame (background layer) ─────────────────────────── */
+.stoic-stage {
+  position: absolute;
+  inset: 0;
+  background: #000;
+  overflow: hidden;
+  z-index: 1;
+  display: flex;
+  flex-direction: row;
+}
+
+/* ── Video sides — left (calm) and right (disruption) ─────────── */
+.stoic-video-side {
+  position: relative;
+  height: 100%;
+  transition: width 4s cubic-bezier(0.4, 0.0, 0.2, 1);
+  overflow: hidden;
+}
+
+.stoic-video-side--calm {
+  background: #000;
+}
+
+/* Cinematic separator shadow on the right edge of calm video */
+.stoic-video-side--calm::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 8px;
+  height: 100%;
+  background: linear-gradient(to right, transparent, rgba(0, 0, 0, 0.9));
+  opacity: 0;
+  transition: opacity 2s ease-in-out;
+  z-index: 5;
+  pointer-events: none;
+}
+
+/* Show separator when calm video is compressed */
+.stoic-video-side--calm[style*="30%"]::after {
+  opacity: 1;
+}
+
+.stoic-video-side--disruption {
+  background: #000;
+}
+
+/* Cinematic separator shadow on the left edge of disruption video */
+.stoic-video-side--disruption::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 12px;
+  height: 100%;
+  background: linear-gradient(to left, transparent, rgba(0, 0, 0, 0.8));
+  opacity: 0;
+  transition: opacity 2s ease-in-out;
+  z-index: 5;
+  pointer-events: none;
+}
+
+/* Show separator when disruption video is expanded */
+.stoic-video-side--disruption[style*="70%"]::before {
+  opacity: 1;
+}
+
+/* YouTube iframes fill their container */
+.stoic-video-side iframe {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+/* Cinematic vignette overlay on compressed calm video */
+.stoic-video-vignette {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+  background: 
+    radial-gradient(ellipse at center, transparent 20%, rgba(0, 0, 0, 0.4) 70%, rgba(0, 0, 0, 0.8) 100%),
+    linear-gradient(to right, rgba(0, 0, 0, 0.3), transparent 30%, transparent 70%, rgba(0, 0, 0, 0.6));
+  animation: stoic-vignette-pulse 3s ease-in-out infinite alternate;
+  box-shadow: inset 0 0 80px rgba(0, 0, 0, 0.6);
+}
+
+@keyframes stoic-vignette-pulse {
+  from {
+    opacity: 0.8;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Cinematic dimming during disruption */
+.stoic-stage-dimmer {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  background: linear-gradient(180deg,
+    rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.15) 35%,
+    rgba(0,0,0,0.15) 65%, rgba(0,0,0,0.7) 100%);
+  pointer-events: none;
+  animation: stoic-dimmer-fade-in 2s ease-out;
+}
+
+@keyframes stoic-dimmer-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* ── Top bar — scenario circle & exit ────────────────────────────── */
+.stoic-topbar {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  padding: 18px 24px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  pointer-events: none;
+  z-index: 100;
+}
+.stoic-topbar > * { pointer-events: auto; }
+
+.stoic-exit {
+  background: var(--stoic-panel);
+  border: 1px solid var(--stoic-line);
+  color: var(--stoic-fg);
+  font-family: var(--stoic-mono);
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  padding: 8px 14px;
+  cursor: pointer;
+  border-radius: 2px;
+  text-transform: uppercase;
+}
+.stoic-exit:hover { border-color: var(--stoic-cyan); color: var(--stoic-cyan); }
+
+/* ── Scenario circle (centre top, screenshot style) ─────────────── */
+.stoic-scenario {
+  pointer-events: none;
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 280px;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  border: 1px solid rgba(120, 200, 255, 0.45);
+  box-shadow:
+    inset 0 0 60px rgba(60, 160, 255, 0.18),
+    0 0 30px rgba(80, 160, 255, 0.25);
+  background: radial-gradient(circle, rgba(15, 25, 60, 0.55) 0%, rgba(4, 6, 13, 0.0) 75%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 0 24px;
+  z-index: 100;
+}
+.stoic-scenario::before,
+.stoic-scenario::after {
+  content: "";
+  position: absolute;
+  inset: -6px;
+  border-radius: 50%;
+  border: 1px dashed rgba(120, 200, 255, 0.18);
+  animation: stoic-spin 60s linear infinite;
+}
+.stoic-scenario::after {
+  inset: -16px;
+  border-style: dotted;
+  animation-duration: 120s;
+  animation-direction: reverse;
+}
+@keyframes stoic-spin { to { transform: rotate(360deg); } }
+
+.stoic-scenario-eyebrow {
+  font-size: 10px;
+  letter-spacing: 0.35em;
+  color: var(--stoic-dim);
+  margin-bottom: 6px;
+}
+.stoic-scenario-title {
+  font-size: 18px;
+  letter-spacing: 0.22em;
+  color: var(--stoic-fg);
+  margin: 0;
+  font-weight: 600;
+}
+.stoic-scenario-sub {
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  color: var(--stoic-violet);
+  margin-top: 6px;
+}
+.stoic-scenario-cue {
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  color: var(--stoic-dim);
+  margin-top: 14px;
+  line-height: 1.6;
+}
+
+/* ── Floating telemetry panels (corners) ─────────────────────────── */
+.stoic-panel {
+  background: var(--stoic-panel);
+  border: 1px solid var(--stoic-line);
+  padding: 12px 14px;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  min-width: 220px;
+  position: relative;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+.stoic-panel::before,
+.stoic-panel::after {
+  content: "";
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border: 1px solid var(--stoic-cyan);
+}
+.stoic-panel::before { top: -1px; left: -1px; border-right: 0; border-bottom: 0; }
+.stoic-panel::after  { bottom: -1px; right: -1px; border-left: 0; border-top: 0; }
+
+.stoic-panel-title {
+  font-size: 9px;
+  letter-spacing: 0.32em;
+  color: var(--stoic-cyan);
+  text-transform: uppercase;
+  margin: 0 0 8px;
+}
+
+.stoic-corner-tl { position: absolute; top: 80px;  left: 24px;  pointer-events: auto; z-index: 100; }
+.stoic-corner-tr { position: absolute; top: 80px;  right: 24px; pointer-events: auto; z-index: 100; }
+.stoic-corner-bl { position: absolute; bottom: 24px; left: 24px;  pointer-events: auto; z-index: 100; }
+.stoic-corner-br { position: absolute; bottom: 24px; right: 24px; pointer-events: auto; z-index: 100; }
+
+/* ── Metric rows ─────────────────────────────────────────────────── */
+.stoic-metric { margin-bottom: 8px; }
+.stoic-metric:last-child { margin-bottom: 0; }
+.stoic-metric-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  margin-bottom: 4px;
+  color: var(--stoic-dim);
+}
+.stoic-metric-row b {
+  color: var(--stoic-fg);
+  font-weight: 500;
+}
+.stoic-bar {
+  height: 4px;
+  background: rgba(120, 200, 255, 0.12);
+  position: relative;
+  overflow: hidden;
+}
+.stoic-bar-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0%;
+  background: linear-gradient(90deg, var(--stoic-cyan), var(--stoic-violet));
+  transition: width 220ms ease-out;
+}
+.stoic-bar-fill--alpha { background: linear-gradient(90deg, #22c55e, var(--stoic-cyan)); }
+.stoic-bar-fill--beta  { background: linear-gradient(90deg, var(--stoic-amber), var(--stoic-rose)); }
+
+/* ── Bottom strip — like the screenshot EEG SESSION row ─────────── */
+.stoic-stripe {
+  position: absolute;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 14px;
+  align-items: stretch;
+  pointer-events: none;
+}
+.stoic-stripe .stoic-panel { pointer-events: auto; }
+
+.stoic-stripe-cell {
+  padding: 10px 16px;
+  min-width: 150px;
+  text-align: center;
+}
+.stoic-stripe-label {
+  font-size: 9px;
+  letter-spacing: 0.3em;
+  color: var(--stoic-dim);
+}
+.stoic-stripe-value {
+  font-size: 18px;
+  letter-spacing: 0.05em;
+  color: var(--stoic-fg);
+  margin-top: 4px;
+}
+.stoic-stripe-value--calm { color: var(--stoic-cyan); }
+.stoic-stripe-value--beta { color: var(--stoic-amber); }
+
+/* ── Onboarding overlay ──────────────────────────────────────────── */
+.stoic-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(4, 6, 13, 0.88);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  padding: 32px;
+  z-index: 200;
+}
+
+.stoic-card {
+  width: min(680px, 100%);
+  background: linear-gradient(160deg, rgba(20, 34, 70, 0.7), rgba(8, 14, 28, 0.85));
+  border: 1px solid var(--stoic-line);
+  padding: 32px 36px;
+  position: relative;
+}
+.stoic-card::before {
+  content: "";
+  position: absolute;
+  top: -1px; left: -1px; right: -1px;
+  height: 2px;
+  background: linear-gradient(90deg, var(--stoic-cyan), var(--stoic-violet));
+}
+
+.stoic-eyebrow {
+  font-size: 11px;
+  letter-spacing: 0.4em;
+  color: var(--stoic-cyan);
+  text-transform: uppercase;
+  margin-bottom: 12px;
+}
+.stoic-headline {
+  font-size: 30px;
+  margin: 0 0 12px;
+  letter-spacing: 0.12em;
+  font-weight: 500;
+}
+.stoic-body {
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--stoic-dim);
+  margin: 0 0 20px;
+  font-family: -apple-system, "Segoe UI", sans-serif;
+  letter-spacing: 0.01em;
+}
+.stoic-body strong { color: var(--stoic-fg); font-weight: 500; }
+
+.stoic-steps {
+  display: grid;
+  gap: 14px;
+  margin: 20px 0;
+}
+.stoic-step {
+  display: flex;
+  gap: 14px;
+  font-size: 12px;
+  color: var(--stoic-dim);
+  font-family: -apple-system, "Segoe UI", sans-serif;
+}
+.stoic-step-num {
+  flex: 0 0 28px;
+  height: 28px;
+  border: 1px solid var(--stoic-cyan);
+  color: var(--stoic-cyan);
+  display: grid;
+  place-items: center;
+  font-family: var(--stoic-mono);
+  font-size: 11px;
+  border-radius: 50%;
+}
+.stoic-step b { color: var(--stoic-fg); display: block; margin-bottom: 2px; }
+
+.stoic-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 18px;
+  flex-wrap: wrap;
+}
+.stoic-btn {
+  background: transparent;
+  color: var(--stoic-fg);
+  border: 1px solid var(--stoic-line);
+  font-family: var(--stoic-mono);
+  font-size: 11px;
+  letter-spacing: 0.2em;
+  padding: 12px 22px;
+  cursor: pointer;
+  text-transform: uppercase;
+  transition: border-color 120ms, color 120ms, background 120ms;
+}
+.stoic-btn:hover { border-color: var(--stoic-cyan); color: var(--stoic-cyan); }
+.stoic-btn--primary {
+  background: linear-gradient(90deg, var(--stoic-cyan), var(--stoic-violet));
+  color: #04060d;
+  border-color: transparent;
+  font-weight: 600;
+}
+.stoic-btn--primary:hover { color: #04060d; opacity: 0.9; }
+.stoic-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ── Duality cards (selection screen) ────────────────────────────── */
+.stoic-dualities {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+  margin-top: 20px;
+}
+.stoic-duality {
+  background: linear-gradient(160deg, rgba(20, 34, 70, 0.5), rgba(8, 14, 28, 0.85));
+  border: 1px solid var(--stoic-line);
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+  color: var(--stoic-fg);
+  font-family: var(--stoic-mono);
+  position: relative;
+  overflow: hidden;
+  transition: transform 160ms, border-color 160ms;
+}
+.stoic-duality:hover {
+  transform: translateY(-2px);
+  border-color: var(--stoic-cyan);
+}
+.stoic-duality-thumb {
+  height: 90px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  letter-spacing: 0.28em;
+  color: rgba(255,255,255,0.92);
+  text-shadow: 0 1px 2px rgba(0,0,0,0.4);
+  position: relative;
+}
+.stoic-duality-thumb::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.45) 100%);
+}
+.stoic-duality-thumb > span { position: relative; z-index: 1; }
+.stoic-duality-body { padding: 14px 16px; }
+.stoic-duality-tr {
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  color: var(--stoic-violet);
+  margin-bottom: 6px;
+}
+.stoic-duality-cap {
+  font-size: 11px;
+  color: var(--stoic-dim);
+  line-height: 1.55;
+  font-family: -apple-system, "Segoe UI", sans-serif;
+  letter-spacing: 0.01em;
+}
+.stoic-duality-pair {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+  font-size: 9px;
+  letter-spacing: 0.18em;
+}
+.stoic-pole-chip {
+  padding: 3px 6px;
+  border: 1px solid currentColor;
+  border-radius: 2px;
+  text-transform: uppercase;
+}
+
+/* ── Calibration ring (large circle progress) ────────────────────── */
+.stoic-calib-ring {
+  width: 220px;
+  height: 220px;
+  margin: 20px auto;
+  position: relative;
+}
+.stoic-calib-ring svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+.stoic-calib-ring circle { fill: none; stroke-width: 2; }
+.stoic-calib-bg { stroke: rgba(120, 200, 255, 0.15); }
+.stoic-calib-fg { stroke: var(--stoic-cyan); stroke-linecap: round; transition: stroke-dashoffset 200ms linear; }
+.stoic-calib-label {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 14px;
+  letter-spacing: 0.2em;
+  color: var(--stoic-fg);
+}
+.stoic-calib-label span { display: block; text-align: center; }
+.stoic-calib-label .stoic-calib-num {
+  font-size: 36px;
+  color: var(--stoic-cyan);
+  letter-spacing: 0.05em;
+}
+
+/* ── Mini bars in calibration / session HUD ─────────────────────── */
+.stoic-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border: 1px solid var(--stoic-line);
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  color: var(--stoic-dim);
+  text-transform: uppercase;
+}
+.stoic-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--stoic-cyan);
+  box-shadow: 0 0 8px var(--stoic-cyan);
+  animation: stoic-pulse 1.6s ease-in-out infinite;
+}
+@keyframes stoic-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+/* ── Result / scorecard ─────────────────────────────────────────── */
+.stoic-result-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px dashed rgba(120, 200, 255, 0.18);
+  font-family: -apple-system, "Segoe UI", sans-serif;
+}
+.stoic-result-row:last-child { border-bottom: 0; }
+.stoic-result-row span:first-child {
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  color: var(--stoic-dim);
+  text-transform: uppercase;
+  font-family: var(--stoic-mono);
+}
+.stoic-result-row span:last-child {
+  font-size: 18px;
+  color: var(--stoic-fg);
+  font-family: var(--stoic-mono);
+}
+
+/* ── Browser hint banner ─────────────────────────────────────────── */
+.stoic-hint {
+  background: rgba(15, 30, 60, 0.6);
+  border-left: 2px solid var(--stoic-cyan);
+  padding: 10px 14px;
+  font-size: 11px;
+  color: var(--stoic-dim);
+  margin-top: 16px;
+  line-height: 1.6;
+  font-family: -apple-system, "Segoe UI", sans-serif;
+}
+.stoic-hint b { color: var(--stoic-cyan); }
+
+/* ── Responsive (Quest browser ~1280×720 portrait/landscape) ───── */
+@media (max-width: 720px) {
+  .stoic-scenario { width: 200px; }
+  .stoic-scenario-title { font-size: 14px; }
+  .stoic-corner-tl, .stoic-corner-tr { top: 220px; }
+  .stoic-panel { min-width: 160px; }
+  .stoic-stripe { flex-wrap: wrap; justify-content: center; }
+  .stoic-headline { font-size: 22px; }
+  .stoic-card { padding: 24px 22px; }
+}
