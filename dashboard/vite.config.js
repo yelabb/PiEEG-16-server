@@ -1,5 +1,6 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import mkcert from "vite-plugin-mkcert";
 import { readFileSync, existsSync } from "fs";
 import { resolve } from "path";
 
@@ -12,8 +13,8 @@ if (existsSync(pyprojectPath)) {
   if (versionMatch) APP_VERSION = versionMatch[1];
 }
 
-export default defineConfig({
-  plugins: [react()],
+export default defineConfig(({ mode }) => ({
+  plugins: [react(), ...(mode === "https" ? [mkcert()] : [])],
   define: {
     __APP_VERSION__: JSON.stringify(APP_VERSION),
   },
@@ -22,20 +23,20 @@ export default defineConfig({
     port: 3000,
     proxy: {
       "/ws": {
-        target: "ws://localhost:1616",
+        target: mode === "https" ? "wss://localhost:1616" : "ws://localhost:1616",
         ws: true,
         rewriteWsPath: true,
       },
       "/auth": {
-        target: "http://localhost:1617",
+        target: mode === "https" ? "https://localhost:1617" : "http://localhost:1617",
         changeOrigin: true,
       },
       "/api": {
-        target: "http://localhost:1617",
+        target: mode === "https" ? "https://localhost:1617" : "http://localhost:1617",
         changeOrigin: true,
       },
       "/recordings": {
-        target: "http://localhost:1617",
+        target: mode === "https" ? "https://localhost:1617" : "http://localhost:1617",
         changeOrigin: true,
       },
     },
@@ -44,4 +45,4 @@ export default defineConfig({
     outDir: "../pieeg_server/static/dashboard",
     emptyOutDir: true,
   },
-});
+}));

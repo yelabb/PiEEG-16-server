@@ -68,6 +68,9 @@ const MindCastExperience = lazy(
 const P300MiniGameExperience = lazy(
   () => import("./p300-mini-game/P300MiniGame"),
 );
+const CatAvatarControlExperience = lazy(
+  () => import("./cat-avatar-control/CatAvatarControl"),
+);
 
 export const EXPERIENCES: ExperienceEntry[] = [
   {
@@ -172,6 +175,16 @@ export const EXPERIENCES: ExperienceEntry[] = [
     tag: "BCI / ML",
     gradient: ["#22d3ee", "#7c3aed"],
     component: P300MiniGameExperience,
+    author: "PiEEG community",
+  },
+  {
+    id: "cat-avatar-control",
+    name: "Cat Avatar Control",
+    description:
+      "Iron Man HUD meets cat person — EEG-driven avatar control with real-time blink detection from frontal channels (Fp1/Fp2) and ear-state mapping from brainwave band powers. Alpha/Theta dominance droops the ears (relaxed), Beta/Gamma perks them up (alert). Full iron-man HUD with band power bars, signal quality readouts, and live frontal-channel waveforms.",
+    tag: "Avatar / BCI",
+    gradient: ["#5fe9ff", "#ff9d2e"],
+    component: CatAvatarControlExperience,
     author: "PiEEG community",
   },
 ];
