@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:https": "vite --mode https --host",
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest run",
@@ -31,6 +32,7 @@
     "jsdom": "^29.0.2",
     "typescript": "^6.0.2",
     "vite": "^6.0.0",
+    "vite-plugin-mkcert": "^2.0.0",
     "vitest": "^4.1.4"
   }
 }
