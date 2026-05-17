@@ -426,10 +426,30 @@ export default function BrainDude({ onExit }: ExperienceProps) {
         demoClockRef.current += dt;
         if (demoClockRef.current >= nextDemoBlinkRef.current) {
           if (demoSideRef.current === "left") {
-            triggerLeftBlink();
+            if (leftPulseTweenRef.current) leftPulseTweenRef.current.stop();
+            blinkPulseLeftRef.current.value = 0;
+            const rise = new Tween(blinkPulseLeftRef.current, tweenGroupRef.current)
+              .to({ value: 1 }, 70)
+              .easing(Easing.Cubic.Out);
+            const fall = new Tween(blinkPulseLeftRef.current, tweenGroupRef.current)
+              .to({ value: 0 }, 110)
+              .easing(Easing.Cubic.In);
+            rise.chain(fall);
+            leftPulseTweenRef.current = rise;
+            rise.start();
             demoSideRef.current = "right";
           } else {
-            triggerRightBlink();
+            if (rightPulseTweenRef.current) rightPulseTweenRef.current.stop();
+            blinkPulseRightRef.current.value = 0;
+            const rise = new Tween(blinkPulseRightRef.current, tweenGroupRef.current)
+              .to({ value: 1 }, 70)
+              .easing(Easing.Cubic.Out);
+            const fall = new Tween(blinkPulseRightRef.current, tweenGroupRef.current)
+              .to({ value: 0 }, 110)
+              .easing(Easing.Cubic.In);
+            rise.chain(fall);
+            rightPulseTweenRef.current = rise;
+            rise.start();
             demoSideRef.current = "left";
           }
           nextDemoBlinkRef.current = demoClockRef.current + 1.15;
@@ -494,55 +514,55 @@ export default function BrainDude({ onExit }: ExperienceProps) {
           const handIdleAmount = handMotionRef.current * relaxAmount;
           const t = motionClockRef.current;
 
-          const shoulderSway = 0.08 * relaxAmount * Math.sin(t * 0.85);
-          const forearmPulse = 0.06 * relaxAmount * Math.sin(t * 1.15 + 0.7);
-          const wristPulse = 0.14 * handIdleAmount * Math.sin(t * 1.9 + 0.3);
-          const wristTwist = 0.16 * handIdleAmount * Math.sin(t * 1.4 + 1.1);
+          const shoulderSway = 0.05 * relaxAmount * Math.sin(t * 0.7);
+          const forearmPulse = 0.04 * relaxAmount * Math.sin(t * 1.05 + 0.7);
+          const wristPulse = 0.08 * handIdleAmount * Math.sin(t * 1.6 + 0.3);
+          const wristTwist = 0.09 * handIdleAmount * Math.sin(t * 1.2 + 1.1);
 
           const scratch = rotationQuatRef.current;
 
           applyOffsetRotation(
             limbs.leftUpperArm,
-            0.12 * relaxAmount,
-            0.1 * relaxAmount + shoulderSway,
-            -0.65 * relaxAmount,
+            0.2 * relaxAmount,
+            0.06 * relaxAmount + shoulderSway,
+            1.2 * relaxAmount,
             scratch,
           );
           applyOffsetRotation(
             limbs.rightUpperArm,
-            0.12 * relaxAmount,
-            -0.1 * relaxAmount - shoulderSway,
-            0.65 * relaxAmount,
+            0.2 * relaxAmount,
+            -0.06 * relaxAmount - shoulderSway,
+            -1.2 * relaxAmount,
             scratch,
           );
 
           applyOffsetRotation(
             limbs.leftLowerArm,
-            0.22 * relaxAmount + forearmPulse,
-            0.04 * relaxAmount,
-            -0.26 * relaxAmount,
+            0.5 * relaxAmount + forearmPulse,
+            0.02 * relaxAmount,
+            0.12 * relaxAmount,
             scratch,
           );
           applyOffsetRotation(
             limbs.rightLowerArm,
-            0.22 * relaxAmount + forearmPulse,
-            -0.04 * relaxAmount,
-            0.26 * relaxAmount,
+            0.5 * relaxAmount + forearmPulse,
+            -0.02 * relaxAmount,
+            -0.12 * relaxAmount,
             scratch,
           );
 
           applyOffsetRotation(
             limbs.leftHand,
-            -0.08 * relaxAmount + wristPulse,
-            0.1 * relaxAmount + wristTwist,
-            -0.22 * relaxAmount,
+            0.1 * relaxAmount + wristPulse,
+            0.04 * relaxAmount + wristTwist,
+            0.02 * relaxAmount,
             scratch,
           );
           applyOffsetRotation(
             limbs.rightHand,
-            -0.08 * relaxAmount - wristPulse,
-            -0.1 * relaxAmount - wristTwist,
-            0.22 * relaxAmount,
+            0.1 * relaxAmount - wristPulse,
+            -0.04 * relaxAmount - wristTwist,
+            -0.02 * relaxAmount,
             scratch,
           );
         } catch (error) {
