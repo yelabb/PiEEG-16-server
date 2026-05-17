@@ -71,6 +71,9 @@ const P300MiniGameExperience = lazy(
 const PremeditatioMalorumExperience = lazy(
   () => import("./premeditatio-malorum/PremeditatioMalorum"),
 );
+const BrainDudeExperience = lazy(
+  () => import("./brain-dude/BrainDude"),
+);
 
 export const EXPERIENCES: ExperienceEntry[] = [
   {
@@ -175,6 +178,16 @@ export const EXPERIENCES: ExperienceEntry[] = [
     tag: "BCI / ML",
     gradient: ["#22d3ee", "#7c3aed"],
     component: P300MiniGameExperience,
+    author: "PiEEG community",
+  },
+  {
+    id: "brain-dude",
+    name: "Brain Dude",
+    description:
+      "Bootstrap lab for avatar animation quality: drive BrainDude.vrm with mock CH3–CH8 controls, tune blink and facial/body motion, and validate expressive behavior before wiring real EEG.",
+    tag: "Avatar / 3D",
+    gradient: ["#f59e8b", "#7f695e"],
+    component: BrainDudeExperience,
     author: "PiEEG community",
   },
   {
