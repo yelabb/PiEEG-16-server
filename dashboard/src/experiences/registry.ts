@@ -71,8 +71,8 @@ const P300MiniGameExperience = lazy(
 const PremeditatioMalorumExperience = lazy(
   () => import("./premeditatio-malorum/PremeditatioMalorum"),
 );
-const BrainDudeExperience = lazy(
-  () => import("./brain-dude/BrainDude"),
+const AvatarFoundationExperience = lazy(
+  () => import("./avatar-foundation/AvatarFoundation"),
 );
 
 export const EXPERIENCES: ExperienceEntry[] = [
@@ -181,13 +181,13 @@ export const EXPERIENCES: ExperienceEntry[] = [
     author: "PiEEG community",
   },
   {
-    id: "brain-dude",
-    name: "Brain Dude",
+    id: "avatar-foundation",
+    name: "Avatar Foundation",
     description:
-      "Bootstrap lab for avatar animation quality: drive BrainDude.vrm with mock CH3–CH8 controls, tune blink and facial/body motion, and validate expressive behavior before wiring real EEG.",
+      "Clean, scalable foundation for avatar animations. Load Ready Player Me avatars with Mixamo animations. Performance-optimized with smooth transitions. No EEG integration — pure animation testing ground. Easy to duplicate for AR/VR experiences.",
     tag: "Avatar / 3D",
-    gradient: ["#f59e8b", "#7f695e"],
-    component: BrainDudeExperience,
+    gradient: ["#6366f1", "#8b5cf6"],
+    component: AvatarFoundationExperience,
     author: "PiEEG community",
   },
   {
