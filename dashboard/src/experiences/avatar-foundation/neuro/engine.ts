@@ -40,7 +40,17 @@ export function newCalibration(): CalibrationPair {
   return { rest: newStats(), active: newStats() };
 }
 
-/** Cohen's d — effect size. ≥0.8 is "large", ≥1.2 is "very strong". */
+/**
+ * Cohen's d on log-band power between REST and ACTIVE for a single channel/
+ * band pair, within a single calibration session.
+ *
+ * IMPORTANT — this is a *within-session* descriptive statistic. It tells us how
+ * separable the two recorded states were *for this user, this electrode
+ * placement, this session* — it is not a generalisation claim, a clinical
+ * metric, or a measure of cognitive state. Inter-session reliability,
+ * artefact contamination, and number-of-channels multiple comparisons are all
+ * unaccounted for. Treat the value as session-local UX feedback only.
+ */
 export function cohenD(rest: Stats, active: Stats): number {
   if (rest.n < 2 || active.n < 2) return 0;
   const vr = variance(rest);
@@ -56,6 +66,59 @@ export function isWellTrained(link: Link): boolean {
     link.cal.active.n > 4 &&
     Math.abs(link.cal.active.mean - link.cal.rest.mean) > STAT_FLOOR
   );
+}
+
+// ── Quality labels ───────────────────────────────────────────────────────
+//
+// Deliberately conservative wording. These bands describe the *session-local*
+// separability of the two recorded states — they are NOT a claim about
+// cognitive content, BCI performance, or clinical utility. Naming them so a
+// reviewer wouldn't flinch.
+
+export type QualityTier = "untrained" | "strong" | "usable" | "marginal" | "inconclusive";
+
+export interface QualityLabel {
+  tier: QualityTier;
+  /** Short text shown to the user. */
+  label: string;
+  /** One-line interpretation, suitable for tooltips. */
+  hint: string;
+}
+
+export function qualityFromD(absD: number, well: boolean): QualityLabel {
+  if (!well) {
+    return {
+      tier: "untrained",
+      label: "untrained",
+      hint: "Not yet calibrated. Run the training overlay to record REST vs ACTIVE.",
+    };
+  }
+  if (absD >= 1.2) {
+    return {
+      tier: "strong",
+      label: "strong session contrast",
+      hint: "REST and ACTIVE distributions separated cleanly within this session.",
+    };
+  }
+  if (absD >= 0.8) {
+    return {
+      tier: "usable",
+      label: "usable",
+      hint: "Distributions separated, with some overlap. Driving the avatar will feel responsive but noisy.",
+    };
+  }
+  if (absD >= 0.4) {
+    return {
+      tier: "marginal",
+      label: "marginal",
+      hint: "Substantial overlap between REST and ACTIVE. Expect the avatar to react slowly and inconsistently.",
+    };
+  }
+  return {
+    tier: "inconclusive",
+    label: "inconclusive",
+    hint: "REST and ACTIVE are statistically indistinguishable in this session. Try a stronger / clearer cue, or a different channel.",
+  };
 }
 
 // ── Feature extraction ───────────────────────────────────────────────────

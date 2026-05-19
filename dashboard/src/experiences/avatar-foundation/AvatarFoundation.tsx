@@ -10,10 +10,11 @@
 //
 // Scientific pipeline (per ~80 ms tick):
 //   1.  256-sample Hanning-windowed FFT on every channel  → per-band PSD (µV²/Hz)
-//   2.  log10(power + ε)                                  → roughly Gaussian
-//   3.  Two-state contrastive calibration (REST vs ACTIVE)
+//   2.  log10(power + ε)                                  → approximately Gaussian
+//   3.  Two-state contrastive calibration (REST 20 s vs ACTIVE 20 s)
 //        → Welford mean/std on log-power for both phases
-//        → Cohen's d ranks every (channel × band) pair by effect size
+//        → Cohen's d ranks every (channel × band) pair by within-session
+//          separability (descriptive, NOT a generalisation claim)
 //   4.  Linear map: (feature − rest.mean) / (active.mean − rest.mean)
 //        clipped to [0,1], gained, EMA-smoothed → expression weight ∈ [0,1]
 //

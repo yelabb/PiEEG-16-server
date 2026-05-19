@@ -25,22 +25,41 @@ Per RAF tick (~60 Hz) and per enabled Link:
 
 Per‑expression aggregation across links uses `Math.max` so multiple electrodes can vote for the same expression without cancelling each other out.
 
-### Two‑state contrastive calibration
+### Two-state contrastive calibration
 
-The Training overlay records 6 s of REST and 6 s of ACTIVE log‑band power on every channel, then ranks every `(channel × band)` pair by **Cohen's d**:
+The training overlay walks the user through a user-paced **intro**, then records two long windows on every channel:
+
+| Phase   | Duration | Purpose                                                  |
+| ------- | -------- | -------------------------------------------------------- |
+| PREP    | 5 s      | settle, neutral face                                     |
+| REST    | 20 s     | baseline log-band power (~200 samples at 10 Hz polling)  |
+| PREP    | 5 s      | switch cue                                               |
+| ACTIVE  | 20 s     | log-band power while producing a repeatable cue          |
+
+It then ranks every `(channel × band)` pair by **Cohen's d** on log-power:
 
 $$ d = \frac{\mu_{\text{active}} - \mu_{\text{rest}}}{\sqrt{(\sigma^2_{\text{rest}} + \sigma^2_{\text{active}}) / 2}} $$
 
-Quality thresholds shown in the UI:
+The labels shown in the UI describe **within-session separability** for the two recorded windows. They are deliberately non-clinical — they are not claims about cognitive state, BCI accuracy, or generalisation across sessions or subjects:
 
-| \|d\|          | Label       | Interpretation                          |
-| -------------- | ----------- | --------------------------------------- |
-| ≥ 1.2          | excellent   | strong, BCI‑grade separation            |
-| ≥ 0.8          | good        | adequate for everyday neurofeedback     |
-| ≥ 0.4          | weak        | marginal; expect noise                  |
-| < 0.4          | noise       | re‑train with a stronger / clearer cue  |
+| \|d\|     | Label                       | What it means in plain language                                                |
+| --------- | --------------------------- | ------------------------------------------------------------------------------ |
+| ≥ 1.2     | strong session contrast     | REST and ACTIVE distributions separated cleanly in this recording.             |
+| ≥ 0.8     | usable                      | Distributions separated, with some overlap. The driver will feel noisy.        |
+| ≥ 0.4     | marginal                    | Substantial overlap. Expect slow, inconsistent avatar response.                |
+| < 0.4     | inconclusive                | Distributions are statistically indistinguishable in this session.             |
 
-A link is `isWellTrained` only when both phases have ≥ 4 samples *and* `|μ_active − μ_rest| > 0.05` (the `STAT_FLOOR`). **Untrained links contribute zero** — they cannot lock the avatar's face on, by design.
+These cut-offs are conventional descriptive bands for Cohen's d, *not* validated thresholds for any specific BCI task. Use them as UX feedback, not as evidence.
+
+A link is `isWellTrained` only when both phases have ≥ 4 samples **and** `|μ_active − μ_rest| > 0.05` (the `STAT_FLOOR`). **Untrained links contribute zero** to the avatar — they cannot lock the face on, by design.
+
+#### Known limitations
+
+- Single-session, descriptive statistics only. The session ends, the numbers go with it.
+- No artefact rejection. EOG (blinks), EMG (jaw, neck), motion, and 50/60 Hz line noise all leak into the bands and inflate or deflate d in ways the tool does not detect.
+- No multiple-comparison correction across `(channels × bands)`. With 8 channels × 5 bands = 40 simultaneous tests, the top-ranked pair is biased upward.
+- Polling-rate aliasing: the 12 Hz FFT update rate and 10 Hz calibration sampler are mutually unsynchronised. Distributions get slightly autocorrelated; treat sample counts as *effective sample size ≈ actual / 2*.
+
 
 ---
 
@@ -185,8 +204,8 @@ To add **multi-link blends** other than `max` (e.g. weighted sum, gated by anoth
 
 ## 9. Why these choices?
 
-- **Log-power, not raw PSD** — EEG band powers are roughly log-normal; effect-size statistics like Cohen's d only behave well on near-Gaussian data.
-- **Cohen's d over correlation** — d is the right tool when comparing two *populations* (REST vs ACTIVE), each potentially with their own variance. It also gives an interpretable scale (0.8 = "large effect").
+- **Log-power, not raw PSD** — EEG band powers are roughly log-normal; variance-based statistics like Cohen's d only behave decently on near-Gaussian data.
+- **Cohen's d over correlation** — d is the right tool when comparing two *populations* (REST vs ACTIVE) with possibly different variances. It also has well-known conventional bands (≥0.8 large, ≥1.2 very large) which the UI maps to deliberately conservative labels.
 - **Linear interp instead of sigmoid** — when REST and ACTIVE are well-separated, linear interpolation gives the user a directly readable gauge (0% = your rest level, 100% = your trained activation level). Sigmoids are saved for the untrained fallback (currently: zero, by design).
 - **EMA over Kalman** — facial expression is a slow, perceptual control loop; a one-parameter exponential moving average is enough and stays interpretable.
 - **`max` aggregation across links** — multiple electrodes voting on the same expression is a *union of evidence*, not a vote.

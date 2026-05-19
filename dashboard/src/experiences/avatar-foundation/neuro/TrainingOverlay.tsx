@@ -2,20 +2,28 @@
 // TrainingOverlay — contrastive 2-state EEG calibration UI.
 //
 // Protocol:
-//   1.  PREP   (3 s)   — "Get ready, neutral face, eyes open"
-//   2.  REST   (6 s)   — record baseline log-band features for every channel
-//   3.  PREP   (3 s)   — "Now: <express the cue>"
-//   4.  ACTIVE (6 s)   — record activation features
+//   0.  INTRO          — user-paced. Explains the paradigm before recording.
+//   1.  PREP  (5 s)    — "Get ready, neutral face, eyes open"
+//   2.  REST  (20 s)   — record baseline log-band features (~200 samples)
+//   3.  PREP  (5 s)    — "Now: <express / imagine the cue>"
+//   4.  ACTIVE (20 s)  — record activation features (~200 samples)
 //   5.  ANALYSIS       — Cohen's d ranking over every (channel × band)
-//   6.  REVIEW         — top-N feature picker; user applies the best one (or
-//                        all good ones for a multi-channel blend)
+//   6.  REVIEW         — ranked feature picker. User decides what to commit.
+//
+// Why the longer windows?
+//   With ~200 samples per phase, the Welford mean/variance estimates are much
+//   tighter than what 60 samples (a 6 s window at 10 Hz polling) gives us. The
+//   Cohen's d we report is then less noisy as a description of *this session's*
+//   separability — it is not a generalisation claim.
 //
 // Scientific notes:
 //   • log10 transform of band power approximates a more Gaussian distribution
-//     for EEG, making variance-based effect sizes more meaningful.
-//   • Cohen's d treats both populations symmetrically; d>0 means "active feature
-//     > rest", d<0 means inverse. We auto-set `invert` accordingly.
-//   • Frame buffering uses a copy of the NeuroFrame at each polled tick.
+//     for EEG, making variance-based effect sizes meaningful at all.
+//   • Cohen's d treats both populations symmetrically; d>0 means "active >
+//     rest", d<0 means the inverse. We auto-set `invert` accordingly.
+//   • Quality labels (strong / usable / marginal / inconclusive) are
+//     intentionally non-clinical. They describe within-session separability,
+//     not BCI performance, cognitive state, or anything generalisable.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -27,17 +35,17 @@ import {
   type Link,
   type NeuroFrame,
 } from "./types";
-import { linkFromRanked, rankFeatures, type RankedFeature } from "./engine";
+import { linkFromRanked, qualityFromD, rankFeatures, type RankedFeature } from "./engine";
 import { deepCopyNeuroFrame } from "./frame";
 import { TOKENS } from "./MappingStudio";
 
-type Phase = "prep1" | "rest" | "prep2" | "active" | "analysis" | "review";
+type Phase = "intro" | "prep1" | "rest" | "prep2" | "active" | "analysis" | "review";
 
-const DURATIONS: Record<Exclude<Phase, "analysis" | "review">, number> = {
-  prep1: 3000,
-  rest: 6000,
-  prep2: 3000,
-  active: 6000,
+const DURATIONS: Record<"prep1" | "rest" | "prep2" | "active", number> = {
+  prep1: 5000,
+  rest: 20000,
+  prep2: 5000,
+  active: 20000,
 };
 
 const POLL_HZ = 10; // sample the NeuroFrame at this rate during REST/ACTIVE
@@ -62,16 +70,17 @@ export function TrainingOverlay({
   onCancel,
   onApply,
 }: TrainingOverlayProps) {
-  const [phase, setPhase] = useState<Phase>("prep1");
+  const [phase, setPhase] = useState<Phase>("intro");
   const [progress, setProgress] = useState(0); // 0..1 within current phase
+  const [sampleTick, setSampleTick] = useState(0); // re-render trigger for live counters
   const restFramesRef = useRef<NeuroFrame[]>([]);
   const activeFramesRef = useRef<NeuroFrame[]>([]);
   const [ranking, setRanking] = useState<RankedFeature[]>([]);
   const [selected, setSelected] = useState<Set<number>>(new Set([0])); // indices in ranking
 
-  // ── Phase machine ─────────────────────────────────────────────────────
+  // ── Phase machine ────────────────────────────────────────────────
   useEffect(() => {
-    if (phase === "analysis" || phase === "review") return;
+    if (phase === "intro" || phase === "analysis" || phase === "review") return;
 
     const duration = DURATIONS[phase];
     const start = performance.now();
@@ -85,6 +94,8 @@ export function TrainingOverlay({
         const f = frameRef.current;
         if (!f.ready) return;
         target.push(deepCopyNeuroFrame(f));
+        // Lightweight re-render so the on-screen sample counter ticks up.
+        setSampleTick((n) => (n + 1) | 0);
       }, Math.round(1000 / POLL_HZ));
     }
 
@@ -129,38 +140,51 @@ export function TrainingOverlay({
   // ── Helpers ───────────────────────────────────────────────────────────
   const cueText = useMemo(() => {
     switch (phase) {
+      case "intro":
+        return {
+          title:
+            mode === "refine"
+              ? `Recalibrate “${expression}”`
+              : `Calibrate a new link for “${expression}”`,
+          sub:
+            `We will record two short windows of brain activity — one while you are\u00a0relaxed, one while you actively produce a chosen mental or facial cue — and then compare them. The channels whose log-band power separates the two windows most cleanly become your driver.`,
+        };
       case "prep1":
         return {
-          title: "Get ready",
-          sub: `In a moment: relax your face — eyes open, neutral expression.`,
+          title: "Get ready — neutral baseline",
+          sub:
+            `In a moment we'll record ${DURATIONS.rest / 1000}\u00a0s of REST. Settle in, face relaxed, jaw unclenched, eyes open and softly fixated. Don't think about “${expression}” yet.`,
         };
       case "rest":
         return {
-          title: "REST · neutral face",
-          sub: `Just sit. Don't do "${expression}". Even breathing.`,
+          title: "REST · neutral baseline",
+          sub:
+            `Recording your baseline. Keep your face relaxed and your breathing even. Try not to do “${expression}”; we need a clean reference.`,
         };
       case "prep2":
         return {
-          title: "Get ready",
-          sub: `Next: actively perform / imagine "${expression}". Pick a cue you can repeat.`,
+          title: "Get ready — active state",
+          sub:
+            `Next: ${DURATIONS.active / 1000}\u00a0s of ACTIVE. Pick a single repeatable cue (a clear mental image, a subtle muscular intention, or both) and stick with it the whole window — consistency matters more than intensity.`,
         };
       case "active":
         return {
           title: `ACTIVE · ${expression}`,
-          sub: `Hold it. Repeat your mental / muscular cue rhythmically until the bar fills.`,
+          sub:
+            `Hold your cue. Keep the same intensity throughout — don't push at the end. Repeat the mental / muscular instruction rhythmically until the timer fills.`,
         };
       case "analysis":
         return {
-          title: "Analyzing…",
-          sub: `Computing Cohen's d for every (channel × band) pair.`,
+          title: "Comparing the two windows…",
+          sub: `Computing Cohen's d on log-power for every (channel × band) pair.`,
         };
       case "review":
         return {
-          title: "Pick your channels",
+          title: "Pick which channels drive the avatar",
           sub:
             mode === "refine"
-              ? `Refining calibration for "${expression}" — the strongest contrasts are pre-selected.`
-              : `These channels showed the strongest difference between REST and ACTIVE. Pick one (or several) to drive "${expression}".`,
+              ? `Refining the calibration for “${expression}”. The most clearly separated channel is pre-selected.`
+              : `Channels are ranked by within-session separability of REST vs ACTIVE. These are descriptive statistics for this recording, not generalisation claims.`,
         };
     }
   }, [phase, expression, mode]);
@@ -196,6 +220,19 @@ export function TrainingOverlay({
     onApply(newLinks, []);
   };
 
+  // Live sample counters (re-render driven by sampleTick).
+  void sampleTick;
+  const liveSamples =
+    phase === "rest"
+      ? restFramesRef.current.length
+      : phase === "active"
+        ? activeFramesRef.current.length
+        : 0;
+  const expectedSamples =
+    phase === "rest" || phase === "active"
+      ? Math.round((DURATIONS[phase] / 1000) * POLL_HZ)
+      : 0;
+
   // ── Render ────────────────────────────────────────────────────────────
   return (
     <div style={overlayStyles.scrim}>
@@ -204,19 +241,27 @@ export function TrainingOverlay({
         <div style={overlayStyles.header}>
           <div>
             <div style={overlayStyles.eyebrow}>
-              ⌖ Calibration · 2-state contrastive paradigm
+              Calibration · two-state contrastive paradigm
             </div>
             <div style={overlayStyles.title}>{cueText.title}</div>
             <div style={overlayStyles.subtitle}>{cueText.sub}</div>
           </div>
-          <button onClick={onCancel} style={overlayStyles.closeBtn}>
+          <button onClick={onCancel} style={overlayStyles.closeBtn} title="Cancel calibration">
             ✕
           </button>
         </div>
 
-        {/* Body: progress dial during recording, ranking during review */}
-        {phase !== "review" ? (
-          <RecordingBody phase={phase} progress={progress} expression={expression} />
+        {/* Body: intro screen, recording dial, or ranked review */}
+        {phase === "intro" ? (
+          <IntroBody expression={expression} mode={mode} />
+        ) : phase !== "review" ? (
+          <RecordingBody
+            phase={phase}
+            progress={progress}
+            expression={expression}
+            liveSamples={liveSamples}
+            expectedSamples={expectedSamples}
+          />
         ) : (
           <ReviewBody
             ranking={ranking}
@@ -229,8 +274,13 @@ export function TrainingOverlay({
         {/* Footer */}
         <div style={overlayStyles.footer}>
           <button onClick={onCancel} style={overlayStyles.ghostBtn}>
-            Cancel
+            {phase === "review" ? "Cancel" : "Abort"}
           </button>
+          {phase === "intro" && (
+            <button onClick={() => setPhase("prep1")} style={overlayStyles.primaryBtn}>
+              Start calibration →
+            </button>
+          )}
           {phase === "review" && (
             <button
               onClick={apply}
@@ -248,16 +298,103 @@ export function TrainingOverlay({
   );
 }
 
+// ── Intro body — explains the protocol before any recording starts ─────
+
+function IntroBody({
+  expression,
+  mode,
+}: {
+  expression: string;
+  mode: "discover" | "refine";
+}) {
+  const totalSec = (DURATIONS.prep1 + DURATIONS.rest + DURATIONS.prep2 + DURATIONS.active) / 1000;
+  return (
+    <div style={overlayStyles.introBody}>
+      <div style={overlayStyles.introGrid}>
+        <IntroStep
+          n={1}
+          title={`REST · ${DURATIONS.rest / 1000} s`}
+          body={`Sit quietly with a relaxed face. We record your baseline log-band power on every channel.`}
+          color="#5cd6a0"
+        />
+        <IntroStep
+          n={2}
+          title={`ACTIVE · ${DURATIONS.active / 1000} s`}
+          body={`Produce a single, repeatable cue for “${expression}”. Hold it steady — consistency matters more than intensity.`}
+          color="#ff9ec0"
+        />
+        <IntroStep
+          n={3}
+          title="Compare"
+          body={`We rank every (channel × band) by Cohen's d on log-power between the two windows, and let you pick which channels drive the avatar.`}
+          color={TOKENS.accent}
+        />
+      </div>
+      <div style={overlayStyles.introMeta}>
+        <div>
+          <span style={overlayStyles.metaKey}>Total time</span>
+          <span style={overlayStyles.metaVal}>~{Math.round(totalSec)} s</span>
+        </div>
+        <div>
+          <span style={overlayStyles.metaKey}>Samples / window</span>
+          <span style={overlayStyles.metaVal}>~{Math.round((DURATIONS.rest / 1000) * POLL_HZ)}</span>
+        </div>
+        <div>
+          <span style={overlayStyles.metaKey}>Mode</span>
+          <span style={overlayStyles.metaVal}>{mode === "refine" ? "refine existing" : "discover new"}</span>
+        </div>
+      </div>
+      <div style={overlayStyles.introCaveat}>
+        Tips. Hold a steady posture. Don't blink heavily during REST or ACTIVE — both phases get the same artefacts then,
+        which wipes out the contrast. Pick a cue you can hold for the whole {DURATIONS.active / 1000} s without forcing it.
+      </div>
+      <div style={overlayStyles.introDisclaimer}>
+        The numbers reported by this tool are within-session descriptive statistics. They quantify how separable
+        your two recorded windows are <em>right now</em>, on this electrode placement — not cognitive content,
+        not BCI accuracy, not anything that generalises across sessions or subjects.
+      </div>
+    </div>
+  );
+}
+
+function IntroStep({
+  n,
+  title,
+  body,
+  color,
+}: {
+  n: number;
+  title: string;
+  body: string;
+  color: string;
+}) {
+  return (
+    <div style={overlayStyles.introStep}>
+      <div style={{ ...overlayStyles.introBadge, color, borderColor: color + "55", background: color + "11" }}>
+        {n}
+      </div>
+      <div>
+        <div style={overlayStyles.introStepTitle}>{title}</div>
+        <div style={overlayStyles.introStepBody}>{body}</div>
+      </div>
+    </div>
+  );
+}
+
 // ── Recording body — large circular progress + phase pips ─────────────
 
 function RecordingBody({
   phase,
   progress,
   expression,
+  liveSamples,
+  expectedSamples,
 }: {
   phase: Phase;
   progress: number;
   expression: string;
+  liveSamples: number;
+  expectedSamples: number;
 }) {
   const radius = 80;
   const stroke = 8;
@@ -271,6 +408,18 @@ function RecordingBody({
         : phase === "analysis"
           ? TOKENS.accent
           : TOKENS.textDim;
+
+  const phaseDurationSec =
+    phase === "rest"
+      ? DURATIONS.rest / 1000
+      : phase === "active"
+        ? DURATIONS.active / 1000
+        : phase === "prep1"
+          ? DURATIONS.prep1 / 1000
+          : phase === "prep2"
+            ? DURATIONS.prep2 / 1000
+            : 0;
+  const remainingSec = Math.max(0, Math.ceil((1 - progress) * phaseDurationSec));
 
   return (
     <div style={overlayStyles.recordBody}>
@@ -303,13 +452,19 @@ function RecordingBody({
           fontFamily={TOKENS.mono}
           fill={phaseColor}
         >
-          {phase === "analysis"
-            ? "…"
-            : isRecording
-              ? `${Math.ceil((1 - progress) * (phase === "rest" ? 6 : 6))}s`
-              : `${Math.ceil((1 - progress) * 3)}s`}
+          {phase === "analysis" ? "…" : `${remainingSec}s`}
         </text>
       </svg>
+      {isRecording && (
+        <div style={overlayStyles.liveReadout}>
+          <span style={overlayStyles.liveSamples}>
+            {liveSamples} / {expectedSamples} samples
+          </span>
+          <span style={overlayStyles.liveHint}>
+            polling at {POLL_HZ} Hz · log-power on every channel
+          </span>
+        </div>
+      )}
       <PhasePips phase={phase} expression={expression} />
     </div>
   );
@@ -387,15 +542,14 @@ function ReviewBody({
         <span style={{ width: 18 }} />
         <span style={{ flex: 2 }}>Channel</span>
         <span style={{ flex: 1 }}>Band</span>
-        <span style={{ flex: 3, textAlign: "left" }}>Effect size · |d|</span>
+        <span style={{ flex: 3, textAlign: "left" }}>Session contrast · |d|</span>
         <span style={{ width: 60, textAlign: "right" }}>R → A</span>
       </div>
       {top.map((f, i) => {
         const isSel = selected.has(i);
         const abs = Math.abs(f.d);
         const w = (abs / maxD) * 100;
-        const quality =
-          abs >= 1.2 ? "excellent" : abs >= 0.8 ? "good" : abs >= 0.4 ? "weak" : "noise";
+        const q = qualityFromD(abs, true);
         return (
           <div
             key={`${f.channel}-${f.band}`}
@@ -441,10 +595,11 @@ function ReviewBody({
                   fontSize: 11,
                   fontFamily: TOKENS.mono,
                   color: TOKENS.text,
-                  width: 70,
+                  width: 160,
                 }}
+                title={q.hint}
               >
-                {abs.toFixed(2)} · {quality}
+                {abs.toFixed(2)} · {q.label}
               </span>
             </div>
             <span
@@ -463,8 +618,10 @@ function ReviewBody({
         );
       })}
       <div style={overlayStyles.legend}>
-        d ≥ 1.2 excellent · ≥ 0.8 good · ≥ 0.4 weak · &lt; 0.4 noise. Positive d ⇒ ACTIVE
-        increases the band power; negative d ⇒ ACTIVE decreases it (auto-inverted).
+        |d| ≥ 1.2 strong session contrast · ≥ 0.8 usable · ≥ 0.4 marginal · &lt; 0.4 inconclusive.
+        Positive d means ACTIVE increased the band power; negative d means ACTIVE decreased it (we auto-flip
+        the link's invert flag so the avatar still moves in the intuitive direction). These are descriptive
+        within-session statistics, not generalisation claims.
       </div>
     </div>
   );
@@ -528,7 +685,106 @@ const overlayStyles: Record<string, React.CSSProperties> = {
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
+    gap: 18,
+  },
+  liveReadout: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    gap: 4,
+  },
+  liveSamples: {
+    fontFamily: TOKENS.mono,
+    fontSize: 13,
+    color: TOKENS.text,
+    letterSpacing: 0.4,
+  },
+  liveHint: {
+    fontSize: 10,
+    color: TOKENS.textFaint,
+    letterSpacing: 0.6,
+    textTransform: "uppercase",
+  },
+  introBody: {
+    padding: "20px 24px 24px",
+    display: "flex",
+    flexDirection: "column",
+    gap: 18,
+    overflowY: "auto",
+  },
+  introGrid: {
+    display: "grid",
+    gridTemplateColumns: "1fr 1fr 1fr",
+    gap: 12,
+  },
+  introStep: {
+    display: "flex",
+    gap: 12,
+    padding: 14,
+    borderRadius: 10,
+    border: `1px solid ${TOKENS.border}`,
+    background: "rgba(255,255,255,0.02)",
+    alignItems: "flex-start",
+  },
+  introBadge: {
+    width: 28,
+    height: 28,
+    minWidth: 28,
+    borderRadius: 14,
+    border: "1px solid",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontFamily: TOKENS.mono,
+    fontSize: 13,
+    fontWeight: 600,
+  },
+  introStepTitle: {
+    fontSize: 13,
+    fontWeight: 600,
+    color: TOKENS.text,
+    marginBottom: 4,
+  },
+  introStepBody: {
+    fontSize: 12,
+    color: TOKENS.textDim,
+    lineHeight: 1.5,
+  },
+  introMeta: {
+    display: "flex",
     gap: 24,
+    padding: "10px 14px",
+    borderRadius: 8,
+    background: "rgba(255,255,255,0.03)",
+    border: `1px solid ${TOKENS.border}`,
+  },
+  metaKey: {
+    display: "block",
+    fontSize: 9,
+    letterSpacing: 1,
+    textTransform: "uppercase",
+    color: TOKENS.textFaint,
+    marginBottom: 3,
+  },
+  metaVal: {
+    fontFamily: TOKENS.mono,
+    fontSize: 13,
+    color: TOKENS.text,
+  },
+  introCaveat: {
+    fontSize: 11,
+    lineHeight: 1.5,
+    color: TOKENS.textDim,
+    padding: "10px 14px",
+    borderLeft: `2px solid ${TOKENS.accent}55`,
+    background: "rgba(255,255,255,0.015)",
+    borderRadius: "0 6px 6px 0",
+  },
+  introDisclaimer: {
+    fontSize: 10,
+    lineHeight: 1.5,
+    color: TOKENS.textFaint,
+    fontStyle: "italic",
   },
   pips: { display: "flex", alignItems: "center", gap: 22 },
   pipItem: { display: "flex", flexDirection: "column", alignItems: "center", gap: 6 },

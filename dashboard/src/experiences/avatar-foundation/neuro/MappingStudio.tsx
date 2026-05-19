@@ -23,7 +23,7 @@ import {
   type LinkRuntime,
   type NeuroFrame,
 } from "./types";
-import { cohenD, isWellTrained } from "./engine";
+import { cohenD, isWellTrained, qualityFromD } from "./engine";
 
 // ── Design tokens ─────────────────────────────────────────────────────────
 
@@ -610,24 +610,17 @@ function LinkCard({
 
 function SnrBadge({ d, well }: { d: number; well: boolean }) {
   const abs = Math.abs(d);
-  let quality: string;
-  let color: string;
-  if (!well) {
-    quality = "untrained";
-    color = TOKENS.textFaint;
-  } else if (abs >= 1.2) {
-    quality = "excellent";
-    color = TOKENS.success;
-  } else if (abs >= 0.8) {
-    quality = "good";
-    color = "#88d8ff";
-  } else if (abs >= 0.4) {
-    quality = "weak";
-    color = "#f3b94d";
-  } else {
-    quality = "noise";
-    color = TOKENS.danger;
-  }
+  const q = qualityFromD(abs, well);
+  const color =
+    q.tier === "strong"
+      ? TOKENS.success
+      : q.tier === "usable"
+        ? "#88d8ff"
+        : q.tier === "marginal"
+          ? "#f3b94d"
+          : q.tier === "inconclusive"
+            ? TOKENS.danger
+            : TOKENS.textFaint;
   return (
     <span
       style={{
@@ -636,9 +629,9 @@ function SnrBadge({ d, well }: { d: number; well: boolean }) {
         borderColor: color + "55",
         background: color + "11",
       }}
-      title="Cohen's d (effect size) of log-power between REST and ACTIVE."
+      title={`Cohen's d (within-session contrast) of log-power between REST and ACTIVE. ${q.hint}`}
     >
-      d={abs.toFixed(2)} · {quality}
+      d={abs.toFixed(2)} · {q.label}
     </span>
   );
 }
