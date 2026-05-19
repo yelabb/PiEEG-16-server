@@ -452,15 +452,14 @@ export default function AvatarFoundation({ eegData, onExit }: ExperienceProps) {
         }
       }
 
-      // Spontaneous blink so the avatar feels alive (only if not EEG-driven).
-      const { durationMs, minIntervalMs, maxIntervalMs } = AVATAR_CONFIG.blink;
+      // Spontaneous idle blink is intentionally disabled: it would confuse
+      // users while calibrating/testing the `blink` expression. The block below
+      // still runs the blink envelope if something else (e.g. a link or demo)
+      // triggers it, but no automatic blink is scheduled.
+      const { durationMs } = AVATAR_CONFIG.blink;
       const isVRM = !!ref.vrm?.expressionManager;
       const blinkName = isVRM ? "blink" : "Wink_Left";
       let blinkW = 0;
-      if (now >= ref.nextBlinkAt && ref.blinkUntil === 0) {
-        ref.blinkUntil = now + durationMs;
-        ref.nextBlinkAt = now + minIntervalMs + Math.random() * (maxIntervalMs - minIntervalMs);
-      }
       if (ref.blinkUntil > 0) {
         const remaining = ref.blinkUntil - now;
         if (remaining <= 0) {
