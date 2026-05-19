@@ -46,6 +46,8 @@ interface SceneState {
   clock: THREE.Clock;
   nextBlinkAt: number; // performance.now() timestamp
   rafId: number;
+  procState: 'idle' | 'walk';
+  bones: Record<string, THREE.Object3D>;
 }
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -65,10 +67,75 @@ function exprWeight(elapsed: number): number {
   return Math.max(0, 1.0 - t / EXPR_RELEASE_MS);
 }
 
+// ── Procedural animation (arm rest angles in VRM normalized bone space) ──────
+// VRM normalized bones: left/right are mirrored. +Z on leftUpperArm = arm UP.
+// To hang arms DOWN: leftUpperArm.z = NEGATIVE, rightUpperArm.z = POSITIVE.
+const ARM_REST_Z_LEFT = -1.4;  // ~80° below horizontal T-pose, left arm down
+const ARM_REST_Z_RIGHT = 1.4;  // ~80° below horizontal T-pose, right arm down
+const ARM_FORWARD = 0.08;      // slight forward angle for natural relaxed look
+
+const BONE_NAMES = [
+  'hips','spine','chest','upperChest','neck','head',
+  'leftUpperArm','leftLowerArm','leftHand',
+  'rightUpperArm','rightLowerArm','rightHand',
+  'leftUpperLeg','leftLowerLeg','leftFoot',
+  'rightUpperLeg','rightLowerLeg','rightFoot',
+] as const;
+
+function applyProcAnim(
+  bones: Record<string, THREE.Object3D>,
+  state: 'idle' | 'walk',
+  t: number,
+): void {
+  if (state === 'idle') {
+    const br = Math.sin(t * 1.2);   // breathing cycle
+    const sw = Math.sin(t * 0.45);  // gentle idle sway
+    bones.hips?.rotation.set(0, 0, sw * 0.01);
+    bones.spine?.rotation.set(br * 0.008, 0, 0);
+    bones.chest?.rotation.set(br * 0.006, 0, 0);
+    bones.neck?.rotation.set(0, sw * 0.012, 0);
+    bones.head?.rotation.set(0, sw * 0.015, sw * 0.008);
+    // Arms hang relaxed, sway gently with breathing
+    bones.leftUpperArm?.rotation.set(ARM_FORWARD, 0, ARM_REST_Z_LEFT + sw * 0.015);
+    bones.rightUpperArm?.rotation.set(ARM_FORWARD, 0, ARM_REST_Z_RIGHT - sw * 0.015);
+    bones.leftLowerArm?.rotation.set(0.05, 0, 0.04);
+    bones.rightLowerArm?.rotation.set(0.05, 0, -0.04);
+    bones.leftUpperLeg?.rotation.set(0, 0, -0.02);
+    bones.rightUpperLeg?.rotation.set(0, 0, 0.02);
+    bones.leftLowerLeg?.rotation.set(0.02, 0, 0);
+    bones.rightLowerLeg?.rotation.set(0.02, 0, 0);
+    bones.leftFoot?.rotation.set(-0.02, 0, 0);
+    bones.rightFoot?.rotation.set(-0.02, 0, 0);
+  } else {
+    // Walk: full stride cycle
+    const p = t * 2.3 * Math.PI * 2;
+    const s = Math.sin(p);
+    const lg = 0.55; // leg swing amplitude
+    const ar = 0.35; // arm swing amplitude
+    bones.hips?.rotation.set(0, 0.035 * s, 0);
+    bones.spine?.rotation.set(-0.04, -0.02 * s, 0);
+    bones.chest?.rotation.set(-0.03, 0.01 * s, 0);
+    bones.neck?.rotation.set(0, 0, 0);
+    bones.head?.rotation.set(0, 0, 0);
+    // Arms swing opposite to legs
+    bones.leftUpperArm?.rotation.set(ARM_FORWARD - ar * s, 0, ARM_REST_Z_LEFT);
+    bones.rightUpperArm?.rotation.set(ARM_FORWARD + ar * s, 0, ARM_REST_Z_RIGHT);
+    bones.leftLowerArm?.rotation.set(0.2 + 0.1 * Math.max(0, s), 0, 0.04);
+    bones.rightLowerArm?.rotation.set(0.2 + 0.1 * Math.max(0, -s), 0, -0.04);
+    bones.leftUpperLeg?.rotation.set(lg * s, 0, -0.02);
+    bones.rightUpperLeg?.rotation.set(-lg * s, 0, 0.02);
+    bones.leftLowerLeg?.rotation.set(0.35 * Math.max(0, -s), 0, 0);
+    bones.rightLowerLeg?.rotation.set(0.35 * Math.max(0, s), 0, 0);
+    bones.leftFoot?.rotation.set(0.1 * s, 0, 0);
+    bones.rightFoot?.rotation.set(-0.1 * s, 0, 0);
+  }
+}
+
 // Looping "states" (avatar stays in them). Everything else is a one-shot
 // action that plays once then returns to the current base state.
 const LOOP_STATES = new Set([
   "Idle",
+  "Walk",
   "Walking",
   "Running",
   "Dance",
@@ -231,6 +298,8 @@ export default function AvatarFoundation({ onExit }: ExperienceProps) {
       clock,
       nextBlinkAt: performance.now() + 3000,
       rafId: 0,
+      procState: 'idle',
+      bones: {},
     };
 
     // ── Avatar Loading ────────────────────────────────────────────────────
@@ -323,11 +392,19 @@ export default function AvatarFoundation({ onExit }: ExperienceProps) {
           if (vrm!.lookAt) {
             vrm!.lookAt.target = lookAtTarget;
           }
-          // A-pose: lower arms ~45° from T-pose (normalized bone space)
-          const leftArm = vrm!.humanoid?.getNormalizedBoneNode('leftUpperArm');
-          const rightArm = vrm!.humanoid?.getNormalizedBoneNode('rightUpperArm');
-          if (leftArm) leftArm.rotation.z = Math.PI / 4;
-          if (rightArm) rightArm.rotation.z = -Math.PI / 4;
+          // Cache humanoid bone nodes for procedural animation
+          if (sceneRef.current) {
+            const cached: Record<string, THREE.Object3D> = {};
+            for (const boneName of BONE_NAMES) {
+              const node = vrm!.humanoid?.getNormalizedBoneNode(boneName);
+              if (node) cached[boneName] = node;
+            }
+            sceneRef.current.bones = cached;
+            sceneRef.current.procState = 'idle';
+          }
+          // Show Idle/Walk buttons
+          setAvailableAnimations(['Idle', 'Walk']);
+          setCurrentAnimation('Idle');
         } else {
           const morphMap = new Map<string, MorphTarget[]>();
           avatar.traverse((child) => {
@@ -457,6 +534,12 @@ export default function AvatarFoundation({ onExit }: ExperienceProps) {
         if (elapsed >= EXPR_TOTAL_MS) ref.activeExpressions.delete(name);
       }
 
+      // Procedural body animation — drive bones BEFORE vrm.update() so
+      // spring bones (les bras mécaniques) get correct body as their root
+      if (ref.vrm && Object.keys(ref.bones).length > 0) {
+        applyProcAnim(ref.bones, ref.procState, ref.clock.elapsedTime);
+      }
+
       // VRM per-frame: spring bones, look-at, expression apply
       if (ref.vrm) {
         ref.vrm.update(delta);
@@ -525,7 +608,19 @@ export default function AvatarFoundation({ onExit }: ExperienceProps) {
 
   const playAnimation = (name: string) => {
     const ref = sceneRef.current;
-    if (!ref?.animState) return;
+    if (!ref) return;
+
+    // VRM has no embedded clips — handle via procedural states
+    if (!ref.animState) {
+      if (name === 'Idle') {
+        ref.procState = 'idle';
+        setCurrentAnimation('Idle');
+      } else if (name === 'Walk') {
+        ref.procState = 'walk';
+        setCurrentAnimation('Walk');
+      }
+      return;
+    }
 
     const { actions, currentAction } = ref.animState;
     const nextAction = actions.get(name);
