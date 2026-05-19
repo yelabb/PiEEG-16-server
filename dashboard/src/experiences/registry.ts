@@ -182,11 +182,11 @@ export const EXPERIENCES: ExperienceEntry[] = [
   },
   {
     id: "avatar-foundation",
-    name: "Avatar Foundation",
+    name: "Avatar Neurofeedback Studio",
     description:
-      "Clean, scalable foundation for avatar animations. Load Ready Player Me avatars with Mixamo animations. Performance-optimized with smooth transitions. No EEG integration — pure animation testing ground. Easy to duplicate for AR/VR experiences.",
-    tag: "Avatar / 3D",
-    gradient: ["#6366f1", "#8b5cf6"],
+      "Drive a VRM avatar's face directly from your EEG. Every electrode and every standard EEG band (δ θ α β γ) is a draggable signal source; every facial expression is a controllable sink. A Figma-style mapping panel lets you compose Links (channel × band → expression) and a two-state contrastive trainer (REST vs ACTIVE) ranks the 32 electrodes × 5 bands by Cohen's d and auto-picks your strongest cue. Live activation bars, per-link gain / smoothing / inversion, persistent calibration. Full neurofeedback avatar manipulation, with the rigor of qEEG.",
+    tag: "BCI / Avatar",
+    gradient: ["#6366f1", "#22d3ee"],
     component: AvatarFoundationExperience,
     author: "PiEEG community",
   },
