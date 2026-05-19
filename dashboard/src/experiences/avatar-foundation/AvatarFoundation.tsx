@@ -63,11 +63,42 @@ interface SceneState {
   blinkUntil: number;
 }
 
-// ── Procedural body animation (idle breathing) ──────────────────────────────
+// ── Configuration ───────────────────────────────────────────────────────────
+//
+// All scene-level tuning lives here so the body of the component stays focused
+// on wiring. Numbers were picked empirically for a roughly 1.7 m humanoid VRM.
+//
+const AVATAR_CONFIG = {
+  /** Default avatar files to try (first hit wins). */
+  avatarUrls: ["/avatar.vrm", "/avatar.glb"] as const,
+  /** Target avatar height in scene units after auto-scale. */
+  targetHeight: 1.7,
+  camera: {
+    fov: 30,
+    near: 0.1,
+    far: 20,
+    position: [0, 1.35, 2.6] as const,
+    target: [0, 1.45, 0] as const,
+    minDistance: 0.4,
+    maxDistance: 8,
+  },
+  /** Spontaneous-blink scheduling so the avatar stays "alive". */
+  blink: {
+    durationMs: 160,
+    minIntervalMs: 3000,
+    maxIntervalMs: 6000,
+  },
+  /** Procedural breathing/sway frequencies (radians / s). */
+  idle: {
+    breathHz: 1.2,
+    swayHz: 0.45,
+    armRestZLeft: -1.4,
+    armRestZRight: 1.4,
+    armForward: 0.12,
+  },
+} as const;
 
-const ARM_REST_Z_LEFT = -1.4;
-const ARM_REST_Z_RIGHT = 1.4;
-const ARM_FORWARD = 0.12;
+// ── Procedural body animation (idle breathing) ──────────────────────────────
 
 const BONE_NAMES = [
   "hips", "spine", "chest", "upperChest", "neck", "head",
@@ -78,15 +109,16 @@ const BONE_NAMES = [
 ] as const;
 
 function applyIdle(bones: Record<string, THREE.Object3D>, t: number): void {
-  const br = Math.sin(t * 1.2);
-  const sw = Math.sin(t * 0.45);
+  const { breathHz, swayHz, armRestZLeft, armRestZRight, armForward } = AVATAR_CONFIG.idle;
+  const br = Math.sin(t * breathHz);
+  const sw = Math.sin(t * swayHz);
   bones.hips?.rotation.set(0, 0, sw * 0.01);
   bones.spine?.rotation.set(br * 0.008, 0, 0);
   bones.chest?.rotation.set(br * 0.006, 0, 0);
   bones.neck?.rotation.set(0, sw * 0.012, 0);
   bones.head?.rotation.set(0, sw * 0.015, sw * 0.008);
-  bones.leftUpperArm?.rotation.set(ARM_FORWARD + br * 0.012, 0, ARM_REST_Z_LEFT + sw * 0.015);
-  bones.rightUpperArm?.rotation.set(ARM_FORWARD + br * 0.012, 0, ARM_REST_Z_RIGHT - sw * 0.015);
+  bones.leftUpperArm?.rotation.set(armForward + br * 0.012, 0, armRestZLeft + sw * 0.015);
+  bones.rightUpperArm?.rotation.set(armForward + br * 0.012, 0, armRestZRight - sw * 0.015);
   bones.leftLowerArm?.rotation.set(0.22, 0, 0.04);
   bones.rightLowerArm?.rotation.set(0.22, 0, -0.04);
   bones.leftHand?.rotation.set(0.08, 0, 0.05);
@@ -155,8 +187,10 @@ export default function AvatarFoundation({ eegData, onExit }: ExperienceProps) {
   const linksRef = useRef<Link[]>(links);
   useEffect(() => {
     linksRef.current = links;
+    // Sync runtimeRef with the latest set of links: drop runtimes for deleted
+    // links, create empty runtimes for new ones.
     const ids = new Set(links.map((l) => l.id));
-    for (const id of runtimeRef.current.keys()) {
+    for (const id of Array.from(runtimeRef.current.keys())) {
       if (!ids.has(id)) runtimeRef.current.delete(id);
     }
     for (const l of links) {
@@ -182,12 +216,12 @@ export default function AvatarFoundation({ eegData, onExit }: ExperienceProps) {
     scene.background = new THREE.Color(0x0a0c12);
 
     const camera = new THREE.PerspectiveCamera(
-      30,
+      AVATAR_CONFIG.camera.fov,
       initW / initH,
-      0.1,
-      20,
+      AVATAR_CONFIG.camera.near,
+      AVATAR_CONFIG.camera.far,
     );
-    camera.position.set(0, 1.35, 2.6);
+    camera.position.set(...AVATAR_CONFIG.camera.position);
 
     const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -203,9 +237,9 @@ export default function AvatarFoundation({ eegData, onExit }: ExperienceProps) {
     controls.screenSpacePanning = true;
     controls.enableDamping = true;
     controls.dampingFactor = 0.07;
-    controls.target.set(0, 1.45, 0);
-    controls.minDistance = 0.4;
-    controls.maxDistance = 8;
+    controls.target.set(...AVATAR_CONFIG.camera.target);
+    controls.minDistance = AVATAR_CONFIG.camera.minDistance;
+    controls.maxDistance = AVATAR_CONFIG.camera.maxDistance;
     controls.update();
 
     const lookAtTarget = new THREE.Object3D();
@@ -248,7 +282,7 @@ export default function AvatarFoundation({ eegData, onExit }: ExperienceProps) {
       rafId: 0,
       bones: {},
       expressionWeights: new Map(),
-      nextBlinkAt: performance.now() + 2500,
+      nextBlinkAt: performance.now() + AVATAR_CONFIG.blink.minIntervalMs,
       blinkUntil: 0,
     };
 
@@ -309,7 +343,7 @@ export default function AvatarFoundation({ eegData, onExit }: ExperienceProps) {
 
         const box0 = new THREE.Box3().setFromObject(avatar);
         const sz = box0.getSize(new THREE.Vector3());
-        const sf = 1.7 / Math.max(sz.y, 0.001);
+        const sf = AVATAR_CONFIG.targetHeight / Math.max(sz.y, 0.001);
         avatar.scale.setScalar(sf);
         avatar.updateMatrixWorld(true);
 
@@ -358,11 +392,15 @@ export default function AvatarFoundation({ eegData, onExit }: ExperienceProps) {
         setStatus(`Ready · ${kind} · ${exprCount} expressions · ${url}`);
       };
 
-      tryLoad("/avatar.vrm", () => {
-        tryLoad("/avatar.glb", () => {
-          setStatus("Failed to load avatar (no .vrm or .glb in /public)");
-        });
-      });
+      // Walk the fallback chain of avatar URLs until one loads.
+      const tryChain = (urls: readonly string[], idx: number) => {
+        if (idx >= urls.length) {
+          setStatus(`Failed to load avatar (tried: ${urls.join(", ")})`);
+          return;
+        }
+        tryLoad(urls[idx], () => tryChain(urls, idx + 1));
+      };
+      tryChain(AVATAR_CONFIG.avatarUrls, 0);
     };
     loadAvatar();
 
@@ -400,20 +438,20 @@ export default function AvatarFoundation({ eegData, onExit }: ExperienceProps) {
       }
 
       // Spontaneous blink so the avatar feels alive (only if not EEG-driven).
+      const { durationMs, minIntervalMs, maxIntervalMs } = AVATAR_CONFIG.blink;
       const isVRM = !!ref.vrm?.expressionManager;
       const blinkName = isVRM ? "blink" : "Wink_Left";
       let blinkW = 0;
       if (now >= ref.nextBlinkAt && ref.blinkUntil === 0) {
-        ref.blinkUntil = now + 160;
-        ref.nextBlinkAt = now + 3000 + Math.random() * 3000;
+        ref.blinkUntil = now + durationMs;
+        ref.nextBlinkAt = now + minIntervalMs + Math.random() * (maxIntervalMs - minIntervalMs);
       }
       if (ref.blinkUntil > 0) {
         const remaining = ref.blinkUntil - now;
         if (remaining <= 0) {
           ref.blinkUntil = 0;
         } else {
-          const total = 160;
-          const e = (total - remaining) / total;
+          const e = (durationMs - remaining) / durationMs;
           blinkW = e < 0.5 ? e * 2 : 2 - e * 2;
         }
       }

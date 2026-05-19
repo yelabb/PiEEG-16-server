@@ -28,6 +28,7 @@ import {
   type NeuroFrame,
 } from "./types";
 import { linkFromRanked, rankFeatures, type RankedFeature } from "./engine";
+import { deepCopyNeuroFrame } from "./frame";
 import { TOKENS } from "./MappingStudio";
 
 type Phase = "prep1" | "rest" | "prep2" | "active" | "analysis" | "review";
@@ -83,16 +84,7 @@ export function TrainingOverlay({
       pollTimer = setInterval(() => {
         const f = frameRef.current;
         if (!f.ready) return;
-        // Deep copy the snapshot so later mutations don't contaminate stats.
-        target.push({
-          ts: f.ts,
-          ready: true,
-          channels: f.channels.map((c) => ({
-            logBands: new Float32Array(c.logBands),
-            dominantBand: c.dominantBand,
-            rms: c.rms,
-          })),
-        });
+        target.push(deepCopyNeuroFrame(f));
       }, Math.round(1000 / POLL_HZ));
     }
 
