@@ -99,6 +99,9 @@ const AVATAR_CONFIG = {
   },
 } as const;
 
+/** VRM look* presets are driven by lookAt, not setValue — hide from the studio. */
+const HIDDEN_EXPRESSIONS = new Set<string>(["lookUp", "lookDown", "lookLeft", "lookRight"]);
+
 // ── Procedural body animation (idle breathing) ──────────────────────────────
 
 const BONE_NAMES = [
@@ -362,7 +365,9 @@ export default function AvatarFoundation({ eegData, onExit }: ExperienceProps) {
         avatar.position.y = -box1.min.y;
 
         if (isVRM && vrm!.expressionManager) {
-          const names = vrm!.expressionManager.expressions.map((e) => e.expressionName);
+          const names = vrm!.expressionManager.expressions
+            .map((e) => e.expressionName)
+            .filter((n) => !HIDDEN_EXPRESSIONS.has(n));
           setAvailableExpressions(names);
           if (sceneRef.current) sceneRef.current.vrm = vrm!;
           if (vrm!.lookAt) vrm!.lookAt.target = lookAtTarget;
@@ -390,7 +395,9 @@ export default function AvatarFoundation({ eegData, onExit }: ExperienceProps) {
             }
           });
           if (sceneRef.current) sceneRef.current.morphs = morphMap;
-          setAvailableExpressions(Array.from(morphMap.keys()));
+          setAvailableExpressions(
+            Array.from(morphMap.keys()).filter((n) => !HIDDEN_EXPRESSIONS.has(n)),
+          );
         }
 
         const exprCount = isVRM
