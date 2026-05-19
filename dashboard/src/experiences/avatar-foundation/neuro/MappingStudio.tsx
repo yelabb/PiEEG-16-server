@@ -8,7 +8,7 @@
 // Plus a top status bar and an inline + New Link composer.
 //
 // All real-time numbers (live values, RMS, activation) are read from refs
-// at 20 Hz via a single internal RAF loop, so the rest of React stays cheap.
+// at ~10 Hz via a single internal RAF loop, so the rest of React stays cheap.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useEffect, useMemo, useRef, useState } from "react";

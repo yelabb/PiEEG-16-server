@@ -69,11 +69,6 @@ export function isWellTrained(link: Link): boolean {
 }
 
 // ── Quality labels ───────────────────────────────────────────────────────
-//
-// Deliberately conservative wording. These bands describe the *session-local*
-// separability of the two recorded states — they are NOT a claim about
-// cognitive content, BCI performance, or clinical utility. Naming them so a
-// reviewer wouldn't flinch.
 
 export type QualityTier = "untrained" | "strong" | "usable" | "marginal" | "inconclusive";
 

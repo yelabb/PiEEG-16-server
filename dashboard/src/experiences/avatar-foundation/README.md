@@ -51,14 +51,14 @@ The labels shown in the UI describe **within-session separability** for the two 
 
 These cut-offs are conventional descriptive bands for Cohen's d, *not* validated thresholds for any specific BCI task. Use them as UX feedback, not as evidence.
 
-A link is `isWellTrained` only when both phases have ≥ 4 samples **and** `|μ_active − μ_rest| > 0.05` (the `STAT_FLOOR`). **Untrained links contribute zero** to the avatar — they cannot lock the face on, by design.
+A link is `isWellTrained` only when both phases have **more than 4 samples** (`n > 4`, i.e. at least 5 each) **and** `|μ_active − μ_rest| > 0.05` (the `STAT_FLOOR`). Freshly added, uncalibrated links contribute zero to the avatar — they cannot lock the face on, by design. (A previously calibrated link whose calibration is later wiped will decay toward zero rather than snap, via the smoothing factor.)
 
 #### Known limitations
 
 - Single-session, descriptive statistics only. The session ends, the numbers go with it.
 - No artefact rejection. EOG (blinks), EMG (jaw, neck), motion, and 50/60 Hz line noise all leak into the bands and inflate or deflate d in ways the tool does not detect.
-- No multiple-comparison correction across `(channels × bands)`. With 8 channels × 5 bands = 40 simultaneous tests, the top-ranked pair is biased upward.
-- Polling-rate aliasing: the 12 Hz FFT update rate and 10 Hz calibration sampler are mutually unsynchronised. Distributions get slightly autocorrelated; treat sample counts as *effective sample size ≈ actual / 2*.
+- No multiple-comparison correction across `(channels × bands)`. With *N* channels × 5 bands simultaneous tests, the top-ranked pair is biased upward by the selection itself.
+- Window autocorrelation, not just polling jitter: the FFT uses a 256-sample (~1.024 s at 250 Hz) Hanning window updated at 12 Hz, polled at 10 Hz during calibration. Adjacent polled samples are drawn from FFT windows that share ~90% of their input, so the *200 polled samples in a 20 s window* correspond to only ≈ **20 effectively independent observations** (`recording_duration / FFT_window`). Treat sample counts displayed in the UI as a progress indicator, not as the *N* of an independent-samples test.
 
 
 ---
@@ -158,7 +158,7 @@ localStorage.removeItem("avatar-foundation:links:v1");
 
 The scene tries `AVATAR_CONFIG.avatarUrls` in order — by default `/avatar.vrm` then `/avatar.glb` (both served from `dashboard/public/`).
 
-- **VRM 1.0** is preferred: the studio uses `vrm.expressionManager.expressions`, which gives a clean list of named presets (`aa`, `angry`, `blink`, `blinkLeft`, `blinkRight`, `ee`, `happy`, `ih`, `lookDown/Left/Right/Up`, `neutral`, `oh`, `ou`, `relaxed`, `sad`, `surprised`).
+- **VRM** (both 0.x and 1.0) works out of the box via `@pixiv/three-vrm`'s `VRMLoaderPlugin`; VRM 0.x avatars are auto-rotated by `VRMUtils.rotateVRM0`. The studio enumerates whatever names `vrm.expressionManager.expressions` exposes — typically the VRM 1.0 standard presets (`aa`, `angry`, `blink`, `blinkLeft`, `blinkRight`, `ee`, `happy`, `ih`, `lookDown/Left/Right/Up`, `neutral`, `oh`, `ou`, `relaxed`, `sad`, `surprised`) but any custom expression registered on the VRM is also picked up.
 - **glTF/glb** fallback: any mesh with `morphTargetDictionary` works; the studio lists the morph names directly.
 
 See [AVATAR_SOURCES.md](AVATAR_SOURCES.md) for download options and ARKit-style blendshape sources.
