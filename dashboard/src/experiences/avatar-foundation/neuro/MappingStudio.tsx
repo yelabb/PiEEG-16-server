@@ -61,6 +61,8 @@ export interface MappingStudioProps {
   /** Master pause: when true, no EEG signal is written to the avatar. */
   paused: boolean;
   onTogglePause: () => void;
+  /** Briefly pulse an expression on the avatar for preview/demo. */
+  onDemoExpression: (name: string) => void;
   /** Wipe all links + persisted calibration. */
   onResetAll: () => void;
   /** Optional avatar info pill. */
@@ -81,6 +83,7 @@ export function MappingStudio({
   trainingActive,
   paused,
   onTogglePause,
+  onDemoExpression,
   onResetAll,
   statusText,
   onExit,
@@ -235,6 +238,7 @@ export function MappingStudio({
                 activation={liveExpression.get(e) ?? 0}
                 trained={links.some((l) => l.expression === e && isWellTrained(l))}
                 onTrain={() => onStartTraining(e, "discover")}
+                onDemo={() => onDemoExpression(e)}
                 disabled={trainingActive}
               />
             ))
@@ -414,12 +418,14 @@ function ExpressionRow({
   activation,
   trained,
   onTrain,
+  onDemo,
   disabled,
 }: {
   name: string;
   activation: number;
   trained: boolean;
   onTrain: () => void;
+  onDemo: () => void;
   disabled: boolean;
 }) {
   return (
@@ -434,14 +440,27 @@ function ExpressionRow({
     >
       <div style={styles.exprRowTop}>
         <span style={{ fontSize: 11, color: TOKENS.text }}>{name}</span>
-        <span
-          style={{
-            fontSize: 9,
-            color: trained ? TOKENS.success : TOKENS.textFaint,
-            fontFamily: TOKENS.mono,
-          }}
-        >
-          {trained ? "● trained" : "○ untrained"}
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onDemo();
+            }}
+            title="Preview this expression on the avatar (1 s pulse)"
+            style={styles.demoBtn}
+          >
+            ▶
+          </button>
+          <span
+            style={{
+              fontSize: 9,
+              color: trained ? TOKENS.success : TOKENS.textFaint,
+              fontFamily: TOKENS.mono,
+            }}
+          >
+            {trained ? "● trained" : "○ untrained"}
+          </span>
         </span>
       </div>
       <div style={styles.exprBarBg}>
@@ -810,6 +829,21 @@ const styles: Record<string, React.CSSProperties> = {
     background: "rgba(255,255,255,0.02)",
   },
   exprRowTop: { display: "flex", justifyContent: "space-between", alignItems: "center" },
+  demoBtn: {
+    width: 18,
+    height: 18,
+    padding: 0,
+    borderRadius: "50%",
+    border: `1px solid ${TOKENS.border}`,
+    background: "rgba(255,255,255,0.04)",
+    color: TOKENS.accent,
+    fontSize: 9,
+    lineHeight: "16px",
+    cursor: "pointer",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+  },
   exprBarBg: {
     height: 5,
     background: "rgba(255,255,255,0.06)",

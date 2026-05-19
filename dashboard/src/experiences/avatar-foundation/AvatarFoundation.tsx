@@ -174,6 +174,13 @@ export default function AvatarFoundation({ eegData, onExit }: ExperienceProps) {
     pausedRef.current = paused;
   }, [paused]);
 
+  // Demo pulse: when user clicks ▶ on an expression row, we play a brief
+  // bell-curve envelope on that expression so they can see what it does.
+  const demoRef = useRef<{ name: string; startedAt: number } | null>(null);
+  const triggerDemo = (name: string) => {
+    demoRef.current = { name, startedAt: performance.now() };
+  };
+
   const initializedRef = useRef(false);
   const onExitRef = useRef(onExit);
   const sceneRef = useRef<SceneState | null>(null);
@@ -460,6 +467,31 @@ export default function AvatarFoundation({ eegData, onExit }: ExperienceProps) {
         weights.set(blinkName, blinkW);
       }
 
+      // Demo pulse override (max-merge with whatever links produced).
+      const demo = demoRef.current;
+      if (demo) {
+        const DEMO_TOTAL_MS = 1000;
+        const DEMO_RAMP_UP_MS = 150;
+        const DEMO_HOLD_MS = 500;
+        const elapsed = now - demo.startedAt;
+        if (elapsed >= DEMO_TOTAL_MS) {
+          demoRef.current = null;
+        } else {
+          let dw: number;
+          if (elapsed < DEMO_RAMP_UP_MS) {
+            dw = elapsed / DEMO_RAMP_UP_MS;
+          } else if (elapsed < DEMO_RAMP_UP_MS + DEMO_HOLD_MS) {
+            dw = 1;
+          } else {
+            const fall = DEMO_TOTAL_MS - elapsed;
+            const fallDur = DEMO_TOTAL_MS - DEMO_RAMP_UP_MS - DEMO_HOLD_MS;
+            dw = Math.max(0, fall / fallDur);
+          }
+          const cur = weights.get(demo.name) ?? 0;
+          if (dw > cur) weights.set(demo.name, dw);
+        }
+      }
+
       // Apply weights to the avatar
       if (ref.vrm?.expressionManager) {
         for (const expr of ref.vrm.expressionManager.expressions) {
@@ -598,6 +630,7 @@ export default function AvatarFoundation({ eegData, onExit }: ExperienceProps) {
         trainingActive={!!training}
         paused={paused}
         onTogglePause={() => setPaused((p) => !p)}
+        onDemoExpression={triggerDemo}
         onResetAll={() => {
           setLinks([]);
           runtimeRef.current.clear();
