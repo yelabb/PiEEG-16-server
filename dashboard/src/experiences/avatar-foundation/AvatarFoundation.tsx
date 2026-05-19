@@ -135,6 +135,11 @@ export default function AvatarFoundation({ eegData, onExit }: ExperienceProps) {
     mode: "discover" | "refine";
     existingLinkId?: string;
   } | null>(null);
+  const [paused, setPaused] = useState(false);
+  const pausedRef = useRef(paused);
+  useEffect(() => {
+    pausedRef.current = paused;
+  }, [paused]);
 
   const initializedRef = useRef(false);
   const onExitRef = useRef(onExit);
@@ -378,7 +383,7 @@ export default function AvatarFoundation({ eegData, onExit }: ExperienceProps) {
       weights.clear();
       const frame = frameRef.current;
       const liveLinks = linksRef.current;
-      if (frame.ready) {
+      if (frame.ready && !pausedRef.current) {
         for (const link of liveLinks) {
           if (!link.enabled) continue;
           const snap = frame.channels[link.channel];
@@ -552,6 +557,17 @@ export default function AvatarFoundation({ eegData, onExit }: ExperienceProps) {
         frameRef={frameRef}
         onStartTraining={handleStartTraining}
         trainingActive={!!training}
+        paused={paused}
+        onTogglePause={() => setPaused((p) => !p)}
+        onResetAll={() => {
+          setLinks([]);
+          runtimeRef.current.clear();
+          try {
+            localStorage.removeItem(STORAGE_KEY);
+          } catch {
+            /* ignore */
+          }
+        }}
         statusText={status}
         onExit={onExit}
       />

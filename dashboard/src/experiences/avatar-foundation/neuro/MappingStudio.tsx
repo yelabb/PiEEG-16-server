@@ -58,6 +58,11 @@ export interface MappingStudioProps {
   onStartTraining: (expression: string, mode: "discover" | "refine", existingLinkId?: string) => void;
   /** Currently active training session (if any). */
   trainingActive: boolean;
+  /** Master pause: when true, no EEG signal is written to the avatar. */
+  paused: boolean;
+  onTogglePause: () => void;
+  /** Wipe all links + persisted calibration. */
+  onResetAll: () => void;
   /** Optional avatar info pill. */
   statusText: string;
   onExit: () => void;
@@ -74,6 +79,9 @@ export function MappingStudio({
   frameRef,
   onStartTraining,
   trainingActive,
+  paused,
+  onTogglePause,
+  onResetAll,
   statusText,
   onExit,
 }: MappingStudioProps) {
@@ -158,6 +166,29 @@ export function MappingStudio({
         </div>
         <div style={styles.brandRight}>
           <span style={{ color: TOKENS.textDim, fontSize: 11 }}>{statusText}</span>
+          <button
+            style={{
+              ...styles.topBtn,
+              color: paused ? TOKENS.danger : TOKENS.text,
+              borderColor: paused ? TOKENS.danger : TOKENS.border,
+            }}
+            onClick={onTogglePause}
+            title={paused ? "Resume EEG → avatar" : "Pause EEG → avatar (avatar returns to neutral)"}
+          >
+            {paused ? "▶ Resume" : "⏸ Pause"}
+          </button>
+          <button
+            style={styles.topBtn}
+            onClick={() => {
+              if (links.length === 0 ||
+                  window.confirm(`Reset ${links.length} link${links.length === 1 ? "" : "s"} and clear saved calibration?`)) {
+                onResetAll();
+              }
+            }}
+            title="Delete all links and clear saved calibration"
+          >
+            ↻ Reset
+          </button>
           <button style={styles.exitBtn} onClick={onExit} title="Exit (Esc)">
             ✕
           </button>
@@ -694,7 +725,19 @@ const styles: Record<string, React.CSSProperties> = {
     zIndex: 10,
   },
   brand: { display: "flex", alignItems: "center", gap: 6, fontSize: 13 },
-  brandRight: { display: "flex", alignItems: "center", gap: 12 },
+  brandRight: { display: "flex", alignItems: "center", gap: 8 },
+  topBtn: {
+    height: 26,
+    padding: "0 10px",
+    background: "rgba(255,255,255,0.04)",
+    border: `1px solid ${TOKENS.border}`,
+    borderRadius: 6,
+    color: TOKENS.text,
+    cursor: "pointer",
+    fontFamily: TOKENS.font,
+    fontSize: 11,
+    letterSpacing: 0.3,
+  },
   exitBtn: {
     width: 28,
     height: 28,

@@ -87,9 +87,12 @@ export function evaluateLink(
     const hi = link.cal.active.mean;
     norm = (feature - lo) / (hi - lo);
   } else {
-    // Soft auto-mode: use running rest stats only as a centre line.
-    const sd = stddev(link.cal.rest) || 0.5;
-    norm = 0.5 + 0.25 * ((feature - link.cal.rest.mean) / sd);
+    // Not yet trained → contribute nothing (avatar stays neutral until the
+    // user calibrates this link). This avoids the "locked face" problem
+    // where a 0.5 baseline would stick on the avatar indefinitely.
+    next.norm = 0;
+    next.value = prev.value * link.smoothing; // decay any leftover smoothing
+    return next;
   }
   next.norm = norm;
   if (link.invert) norm = 1 - norm;
