@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:https": "vite --mode https --host",
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest run",
@@ -15,6 +16,7 @@
     "@fontsource/geist": "^5.2.8",
     "@fontsource/geist-mono": "^5.2.7",
     "@mediapipe/tasks-vision": "^0.10.34",
+    "@pixiv/three-vrm": "^3.4.2",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "three": "^0.183.2"
@@ -31,6 +33,7 @@
     "jsdom": "^29.0.2",
     "typescript": "^6.0.2",
     "vite": "^6.0.0",
+    "vite-plugin-mkcert": "^2.0.0",
     "vitest": "^4.1.4"
   }
 }

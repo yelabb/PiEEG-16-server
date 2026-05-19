@@ -68,6 +68,12 @@ const MindCastExperience = lazy(
 const P300MiniGameExperience = lazy(
   () => import("./p300-mini-game/P300MiniGame"),
 );
+const PremeditatioMalorumExperience = lazy(
+  () => import("./premeditatio-malorum/PremeditatioMalorum"),
+);
+const AvatarFoundationExperience = lazy(
+  () => import("./avatar-foundation/AvatarFoundation"),
+);
 
 export const EXPERIENCES: ExperienceEntry[] = [
   {
@@ -172,6 +178,27 @@ export const EXPERIENCES: ExperienceEntry[] = [
     tag: "BCI / ML",
     gradient: ["#22d3ee", "#7c3aed"],
     component: P300MiniGameExperience,
+    author: "PiEEG community",
+  },
+  {
+    id: "avatar-foundation",
+    name: "Avatar Neurofeedback Studio",
+    description:
+      "Drive a VRM avatar's face directly from your EEG. Every electrode and every standard EEG band (δ θ α β γ) is a draggable signal source; every facial expression is a controllable sink. A Figma-style mapping panel lets you compose Links (channel × band → expression) and a two-state contrastive trainer (REST vs ACTIVE) ranks the 32 electrodes × 5 bands by Cohen's d and auto-picks your strongest cue. Live activation bars, per-link gain / smoothing / inversion, persistent calibration. Full neurofeedback avatar manipulation, with the rigor of qEEG.",
+    tag: "BCI / Avatar",
+    gradient: ["#6366f1", "#22d3ee"],
+    component: AvatarFoundationExperience,
+    author: "PiEEG community",
+  },
+  {
+    id: "premeditatio-malorum",
+    name: "Premeditatio Malorum",
+    description:
+      "Mixed-reality Stoic training in your Meta Quest Browser. Pairs of 360° YouTube scenes (fire vs. forest, storm vs. lagoon, city vs. summit, cliff vs. meadow) deliver classical Stoic exercises \u2014 Premeditatio Malorum, Amor Fati, Summum Bonum, Memento Mori. Hold high alpha through the disruption; the score is how fast your beta spike decays back to your personal baseline. Includes 30 s eyes-closed calibration, sci-fi HUD telemetry, and a scorecard.",
+    tag: "XR / Stoic",
+    gradient: ["#5cf2ff", "#b388ff"],
+    component: PremeditatioMalorumExperience,
+    vr: true,
     author: "PiEEG community",
   },
 ];
