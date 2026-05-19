@@ -48,6 +48,7 @@ interface SceneState {
   rafId: number;
   procState: 'idle' | 'walk';
   bones: Record<string, THREE.Object3D>;
+  mechArmRoots: THREE.Object3D[];
 }
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -72,7 +73,7 @@ function exprWeight(elapsed: number): number {
 // To hang arms DOWN: leftUpperArm.z = NEGATIVE, rightUpperArm.z = POSITIVE.
 const ARM_REST_Z_LEFT = -1.4;  // ~80° below horizontal T-pose, left arm down
 const ARM_REST_Z_RIGHT = 1.4;  // ~80° below horizontal T-pose, right arm down
-const ARM_FORWARD = 0.08;      // slight forward angle for natural relaxed look
+const ARM_FORWARD = 0.12;      // forward angle — slightly more natural hand-in-front-of-hip
 
 const BONE_NAMES = [
   'hips','spine','chest','upperChest','neck','head',
@@ -95,11 +96,13 @@ function applyProcAnim(
     bones.chest?.rotation.set(br * 0.006, 0, 0);
     bones.neck?.rotation.set(0, sw * 0.012, 0);
     bones.head?.rotation.set(0, sw * 0.015, sw * 0.008);
-    // Arms hang relaxed, sway gently with breathing
-    bones.leftUpperArm?.rotation.set(ARM_FORWARD, 0, ARM_REST_Z_LEFT + sw * 0.015);
-    bones.rightUpperArm?.rotation.set(ARM_FORWARD, 0, ARM_REST_Z_RIGHT - sw * 0.015);
-    bones.leftLowerArm?.rotation.set(0.05, 0, 0.04);
-    bones.rightLowerArm?.rotation.set(0.05, 0, -0.04);
+    // Arms hang relaxed — shoulder rises slightly with breathing, elbow gently bent
+    bones.leftUpperArm?.rotation.set(ARM_FORWARD + br * 0.012, 0, ARM_REST_Z_LEFT + sw * 0.015);
+    bones.rightUpperArm?.rotation.set(ARM_FORWARD + br * 0.012, 0, ARM_REST_Z_RIGHT - sw * 0.015);
+    bones.leftLowerArm?.rotation.set(0.22, 0, 0.04);   // natural elbow bend
+    bones.rightLowerArm?.rotation.set(0.22, 0, -0.04);
+    bones.leftHand?.rotation.set(0.08, 0, 0.05);       // slight wrist droop
+    bones.rightHand?.rotation.set(0.08, 0, -0.05);
     bones.leftUpperLeg?.rotation.set(0, 0, -0.02);
     bones.rightUpperLeg?.rotation.set(0, 0, 0.02);
     bones.leftLowerLeg?.rotation.set(0.02, 0, 0);
@@ -300,6 +303,7 @@ export default function AvatarFoundation({ onExit }: ExperienceProps) {
       rafId: 0,
       procState: 'idle',
       bones: {},
+      mechArmRoots: [],
     };
 
     // ── Avatar Loading ────────────────────────────────────────────────────
@@ -401,6 +405,34 @@ export default function AvatarFoundation({ onExit }: ExperienceProps) {
             }
             sceneRef.current.bones = cached;
             sceneRef.current.procState = 'idle';
+          }
+          // Discover mechanical arm spring bone roots.
+          // Strategy: find non-humanoid attachment bones (custom bones that are
+          // parents of spring joint chains). Exclude humanoid raw bones to avoid
+          // accidentally rotating leftUpperArm, chest, etc.
+          // Chain threshold ≥ 5 targets the long rigid mechanical arm, not short
+          // hair/accessory chains (which are usually 2–3 joints per strand).
+          const rawHumanoidBones = new Set<THREE.Object3D>();
+          for (const bn of BONE_NAMES) {
+            const raw = vrm!.humanoid?.getRawBoneNode(bn as any);
+            if (raw) rawHumanoidBones.add(raw);
+          }
+          const sbm = (vrm! as any).springBoneManager;
+          if (sbm?.joints && sceneRef.current) {
+            const allJoints: any[] = [...sbm.joints];
+            const jointBones = new Set<THREE.Object3D>(allJoints.map((j: any) => j.bone));
+            const seen = new Set<THREE.Object3D>();
+            const mechRoots: THREE.Object3D[] = [];
+            for (const j of allJoints) {
+              const parent = j.bone?.parent as THREE.Object3D | null;
+              if (!parent || jointBones.has(parent) || seen.has(parent)) continue;
+              if (rawHumanoidBones.has(parent)) continue; // never rotate humanoid bones
+              seen.add(parent);
+              let chainLen = 0;
+              parent.traverse((child) => { if (jointBones.has(child as THREE.Object3D)) chainLen++; });
+              if (chainLen >= 5) mechRoots.push(parent); // ≥5 = long mechanical arm chain
+            }
+            sceneRef.current.mechArmRoots = mechRoots;
           }
           // Show Idle/Walk buttons
           setAvailableAnimations(['Idle', 'Walk']);
@@ -509,12 +541,6 @@ export default function AvatarFoundation({ onExit }: ExperienceProps) {
         ref.animState.mixer.update(delta);
       }
 
-      // Auto-blink: natural idle life, random interval 2.5–5s
-      if (ref.vrm?.expressionManager && now >= ref.nextBlinkAt) {
-        ref.activeExpressions.set("blink", now);
-        ref.nextBlinkAt = now + 2500 + Math.random() * 2500;
-      }
-
       // Drive facial expressions with attack/hold/release envelope
       for (const [name, startedAt] of ref.activeExpressions) {
         const elapsed = now - startedAt;
@@ -532,6 +558,16 @@ export default function AvatarFoundation({ onExit }: ExperienceProps) {
         }
 
         if (elapsed >= EXPR_TOTAL_MS) ref.activeExpressions.delete(name);
+      }
+
+      // Mechanical arm pendulum sweep — yaw (rotation.y) gives left–right arc.
+      // Runs before vrm.update() so spring bone physics uses the new anchor position.
+      if (ref.mechArmRoots.length > 0) {
+        const t = ref.clock.elapsedTime;
+        const sweep = Math.sin(t * 0.65) * 0.25; // slow, modest arc ≈±14°
+        for (const bone of ref.mechArmRoots) {
+          bone.rotation.y = sweep;
+        }
       }
 
       // Procedural body animation — drive bones BEFORE vrm.update() so
