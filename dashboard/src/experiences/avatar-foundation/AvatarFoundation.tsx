@@ -256,9 +256,9 @@ export default function AvatarFoundation({ eegData, onExit }: ExperienceProps) {
     const lookAtTarget = new THREE.Object3D();
     camera.add(lookAtTarget);
 
-    const hemi = new THREE.HemisphereLight(0xffffff, 0x222233, 0.55);
+    const hemi = new THREE.HemisphereLight(0xffffff, 0x222233, 0.35);
     scene.add(hemi);
-    const dirLight = new THREE.DirectionalLight(0xffffff, Math.PI);
+    const dirLight = new THREE.DirectionalLight(0xffffff, Math.PI * 0.45);
     dirLight.position.set(1, 1.5, 1.2).normalize();
     dirLight.castShadow = true;
     dirLight.shadow.mapSize.width = 1024;
