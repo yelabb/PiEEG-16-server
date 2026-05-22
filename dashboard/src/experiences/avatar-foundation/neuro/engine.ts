@@ -7,7 +7,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { Stats, CalibrationPair, Link, LinkRuntime, NeuroFrame } from "./types";
-import { BAND_NAMES } from "./types";
+import { BAND_NAMES, isSpectralLink } from "./types";
 
 const LOG_EPSILON = 1e-9;
 const STAT_FLOOR = 0.05; // minimum |active-rest| to consider a link well-trained
@@ -61,11 +61,17 @@ export function cohenD(rest: Stats, active: Stats): number {
 }
 
 export function isWellTrained(link: Link): boolean {
-  return (
-    link.cal.rest.n > 4 &&
-    link.cal.active.n > 4 &&
-    Math.abs(link.cal.active.mean - link.cal.rest.mean) > STAT_FLOOR
-  );
+  // Use the type guard from types.ts
+  if (isSpectralLink(link) && link.cal) {
+    const { rest, active } = link.cal;
+    return (
+      rest.n > 4 &&
+      active.n > 4 &&
+      Math.abs(active.mean - rest.mean) > STAT_FLOOR
+    );
+  }
+  // For artifact links, delegate to types.ts helper
+  return false; // Will be handled by isWellTrainedArtifact in types.ts
 }
 
 // ── Quality labels ───────────────────────────────────────────────────────

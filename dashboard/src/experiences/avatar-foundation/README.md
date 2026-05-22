@@ -1,12 +1,18 @@
 # Avatar Neurofeedback Studio
 
-A real‑time facial‑expression neurofeedback workbench. Every EEG electrode becomes a feature source, every avatar facial expression becomes a controllable sink, and the user composes **Links** between them through a mapping panel.
+A real‑time facial‑expression neurofeedback workbench with **three parallel pipelines**: spectral (FFT), artifact (time-domain), and hybrid (fusion). Every EEG electrode becomes a feature source, every avatar facial expression becomes a controllable sink, and the user composes **Links** between them through a mapping panel.
+
+The system automatically discovers the best channels for each expression type — **no prescribed electrode placements required**.
 
 The experience is mounted by the dashboard's experience registry under the id `avatar-foundation`.
 
 ---
 
-## 1. Scientific pipeline
+## 1. Three-Pipeline Architecture
+
+### **Spectral Pipeline** (FFT-based, ~12 Hz, ~1s window)
+
+For slow emotional/mental states: *relaxed*, *focused*, *happy*, *sad*, etc.
 
 Per ~80 ms tick (~12 Hz) and per channel:
 
@@ -25,7 +31,65 @@ Per RAF tick (~60 Hz) and per enabled Link:
 
 Per‑expression aggregation across links uses `Math.max` so multiple electrodes can vote for the same expression without cancelling each other out.
 
-### Two-state contrastive calibration
+### **Artifact Pipeline** (time-domain, 60 Hz, ~256ms window)
+
+For fast transient events: *blink*, *jaw*, *eyebrow*, *wink*, etc.
+
+Per ~16 ms tick (60 Hz) and per channel:
+
+1. **Windowing** — 64 newest samples (~256 ms at 250 Hz) from ring buffer.
+2. **Zero-mean** — Remove DC offset.
+3. **Detrend** — Linear detrending to remove slow drift.
+4. **Rectification** — Absolute value (|signal|).
+5. **Moving average** — Smooth over 20 samples (~80 ms) for envelope.
+
+Per RAF tick (~60 Hz) and per enabled Link:
+
+6. **Threshold detection** — Compare envelope to calibrated threshold with hysteresis:
+   - **Above threshold + hysteresis** → detected = true
+   - **Below threshold** → detected = false
+7. **Activation mapping** — Map envelope amplitude to 0..1 range based on calibrated peak.
+8. **Gain & smoothing** — Same as spectral pipeline.
+
+**Calibration** (3-phase auto-discovery):
+- **BASELINE (5s)**: Records noise floor on ALL channels simultaneously
+- **REPETITIONS (10x)**: User performs action naturally, system detects peaks on all channels
+- **RANKING**: Channels sorted by SNR × consistency × detection rate
+- **USER PICKS**: Reviews ranked channels with live preview, selects best
+
+This is based on Chapter 5 EOG signal processing (bandpass 1-15Hz → rectify → moving average → threshold).
+
+### **Hybrid Pipeline** (fusion of spectral + artifact)
+
+For complex expressions requiring both: *surprised*, *angry*, *excited*, *alert*, etc.
+
+Combines calibrated spectral + artifact sub-links using configurable fusion modes:
+
+- **Multiply (AND)**: Both must be active — e.g., *surprised = browUp × beta burst*
+- **Add (OR)**: Either can activate — e.g., *excited = beta spike + jaw*
+- **Max**: Stronger signal wins — e.g., *alert = max(gamma, eyeWide)*
+- **Strict AND**: Both must exceed 50% threshold
+- **Sequential**: Artifact triggers, spectral modulates — e.g., *focused blink = blink gated by alpha*
+
+Each mode supports independent weight adjustment (0-2×) for spectral vs artifact components.
+
+### Auto-Detection
+
+The system auto-suggests pipeline type based on expression name:
+
+| Keywords | Pipeline | Examples |
+|----------|----------|----------|
+| `surprised`, `angry`, `excited`, `alert`, `shocked` | **Hybrid** | Combines slow frequency shifts with fast muscle movements |
+| `blink`, `wink`, `eye`, `brow`, `jaw`, `mouth`, `frown` | **Artifact** | Fast transient events (100-500ms) |
+| *all others* | **Spectral** | Slow emotional/mental states (>1s) |
+
+Users can override the auto-suggestion when creating links.
+
+---
+
+## 2. Calibration Workflows
+
+### Spectral (Two-state contrastive calibration)
 
 The training overlay walks the user through a user-paced **intro**, then records two long windows on every channel:
 
@@ -63,59 +127,93 @@ A link is `isWellTrained` only when both phases have **more than 4 samples** (`n
 
 ---
 
-## 2. Data flow
+## 3. Data Flow
 
 ```
 EEGData (ring buffers, 250 Hz)
         │
-        ▼
-useChannelBandPowers ── FFT @ 12 Hz ──▶ frameRef: NeuroFrame
-        │                                    {channels[ch].logBands[5]}
-        │                                    in-place mutation, no GC churn
-        │
-        ▼
-AvatarFoundation RAF loop (60 Hz)
-        │
-        │ for each enabled Link:
-        │   feature = frame.channels[link.channel].logBands[band]
-        │   next    = evaluateLink(link, feature, prev)
-        │   weights[link.expression] = max(weights[link.expression], next.value)
-        │
-        ▼
-VRM.expressionManager.setValue(name, weight)
-or  mesh.morphTargetInfluences[i] = weight
+        ├─────────────────────────────────────────────┐
+        │                                             │
+        ▼                                             ▼
+useChannelBandPowers                    useArtifactEnvelopes
+  FFT @ 12 Hz                              Envelope @ 60 Hz
+  256-sample window                        64-sample window
+        │                                             │
+        ▼                                             ▼
+   frameRef: NeuroFrame                  envelopeFrameRef: EnvelopeFrame
+   {channels[ch].logBands[5]}            {channels[ch].envelope, rms}
+   in-place mutation                     in-place mutation
+        │                                             │
+        └─────────────────┬───────────────────────────┘
+                          │
+                          ▼
+            AvatarFoundation RAF loop (60 Hz)
+                          │
+        ┌─────────────────┼─────────────────┐
+        │                 │                 │
+        ▼                 ▼                 ▼
+   SPECTRAL          ARTIFACT           HYBRID
+   pipeline          pipeline          pipeline
+        │                 │                 │
+        │ evaluateLink()  │ evaluateArtifact│ evaluateHybridLink()
+        │ (FFT features)  │ (envelope)      │ (fusion of both)
+        │                 │                 │
+        └─────────────────┴─────────────────┘
+                          │
+        for each enabled Link:
+          if (spectral):  feature = frame.logBands[band]
+          if (artifact):  feature = envelope.envelope
+          if (hybrid):    feature = fuse(spectral, artifact)
+          
+          next = evaluate(link, feature, prev)
+          weights[expression] = max(weights[expression], next.value)
+                          │
+                          ▼
+        VRM.expressionManager.setValue(name, weight)
+        or  mesh.morphTargetInfluences[i] = weight
 ```
 
-The MappingStudio reads the same `frameRef` and `runtimeRef` at 10 Hz to refresh live numerics (band bars, link activation, R/A means) without forcing the RAF loop or the bigger React tree to re-render.
+The MappingStudio reads the same `frameRef`, `envelopeFrameRef`, and `runtimeRef` at 10 Hz to refresh live numerics without forcing RAF or React to re-render.
 
 ---
 
-## 3. File map
+## 4. File Map
 
 ```
 avatar-foundation/
-├── README.md                ← this file
-├── AVATAR_SOURCES.md        ← how to obtain/customise the .vrm or .glb
-├── AvatarFoundation.tsx     ← 3D scene + RAF loop + studio orchestration
+├── README.md                      ← this file
+├── AVATAR_SOURCES.md              ← how to obtain/customise the .vrm or .glb
+├── AvatarFoundation.tsx           ← 3D scene + RAF loop + dual-pipeline orchestration
 └── neuro/
-    ├── types.ts                  ← Link, Stats, NeuroFrame, BAND_*, MONTAGE_HINTS
-    ├── engine.ts                 ← Welford, Cohen's d, evaluateLink, rankFeatures
-    ├── frame.ts                  ← deepCopyNeuroFrame()
-    ├── useChannelBandPowers.ts   ← FFT hook (256-sample @ 12 Hz)
-    ├── MappingStudio.tsx         ← Figma-style 4-panel control UI
-    └── TrainingOverlay.tsx       ← 2-state contrastive calibration UI
+    ├── types.ts                   ← Link (with pipeline discriminators), Stats, NeuroFrame, EnvelopeFrame
+    │
+    ├── engine.ts                  ← SPECTRAL: Welford, Cohen's d, evaluateLink, rankChannelsForSpectral
+    ├── engine-artifact.ts         ← ARTIFACT: envelope processing, threshold calibration, rankChannelsForArtifact
+    ├── engine-hybrid.ts           ← HYBRID: fusion modes (multiply/add/max/and/sequential)
+    │
+    ├── frame.ts                   ← deepCopyNeuroFrame(), deepCopyEnvelopeFrame()
+    │
+    ├── useChannelBandPowers.ts    ← FFT hook (256-sample @ 12 Hz) → NeuroFrame
+    ├── useArtifactEnvelopes.ts    ← Envelope hook (64-sample @ 60 Hz) → EnvelopeFrame
+    │
+    ├── MappingStudio.tsx          ← Figma-style 4-panel control UI + link cards
+    │
+    ├── TrainingOverlay.tsx        ← SPECTRAL calibration (2-state, 20s REST/ACTIVE)
+    ├── ArtifactTrainingOverlay.tsx← ARTIFACT calibration (3-phase: baseline/reps/ranking)
+    └── HybridTrainingOverlay.tsx  ← HYBRID calibration (choose components + fusion config)
 ```
 
 The split is intentional:
 
-- **`engine.ts` is pure math** — no React, no Three, easy to unit test.
-- **`useChannelBandPowers.ts` is the only consumer of raw EEG** — everyone else reads `NeuroFrame`.
-- **`MappingStudio.tsx` and `TrainingOverlay.tsx` are UI-only** — they never touch Three.js.
-- **`AvatarFoundation.tsx` is the wiring layer** — it owns the scene, the RAF loop, persistence, and the training callbacks.
+- **Engine files (`engine.ts`, `engine-artifact.ts`, `engine-hybrid.ts`) are pure math** — no React, no Three, easy to unit test.
+- **Hook files (`useChannelBandPowers.ts`, `useArtifactEnvelopes.ts`) are the only consumers of raw EEG** — everyone else reads `NeuroFrame` or `EnvelopeFrame`.
+- **Training overlays (`TrainingOverlay.tsx`, `ArtifactTrainingOverlay.tsx`, `HybridTrainingOverlay.tsx`) are UI-only** — they never touch Three.js, only collect calibration data.
+- **`MappingStudio.tsx` is the control panel** — reads refs at 10 Hz for live display, doesn't trigger re-renders.
+- **`AvatarFoundation.tsx` is the wiring layer** — owns the scene, RAF loop, persistence, training callbacks, and pipeline routing.
 
 ---
 
-## 4. Controls
+## 5. Controls
 
 Top bar:
 
@@ -144,9 +242,9 @@ Keyboard:
 
 ---
 
-## 5. Persistence
+## 6. Persistence
 
-Links are persisted under the localStorage key `avatar-foundation:links:v1`. This includes the calibration `Stats` for each link (Welford state), so a trained avatar comes back across reloads. Wipe via the **Reset** button or:
+Links are persisted under the localStorage key `avatar-foundation:links:v1`. This includes the calibration data for each link (spectral: Welford state, artifact: threshold/baseline, hybrid: fusion config), so a trained avatar comes back across reloads. Wipe via the **Reset** button or:
 
 ```js
 localStorage.removeItem("avatar-foundation:links:v1");
@@ -154,7 +252,7 @@ localStorage.removeItem("avatar-foundation:links:v1");
 
 ---
 
-## 6. Avatar requirements
+## 7. Avatar requirements
 
 The scene tries `AVATAR_CONFIG.avatarUrls` in order — by default `/avatar.vrm` then `/avatar.glb` (both served from `dashboard/public/`).
 
@@ -165,7 +263,7 @@ See [AVATAR_SOURCES.md](AVATAR_SOURCES.md) for download options and ARKit-style 
 
 ---
 
-## 7. Tuning knobs
+## 8. Tuning knobs
 
 All scene-level constants live in the `AVATAR_CONFIG` block at the top of [AvatarFoundation.tsx](AvatarFoundation.tsx):
 
@@ -179,33 +277,57 @@ const AVATAR_CONFIG = {
 };
 ```
 
-Numerical engine tuning lives in [neuro/engine.ts](neuro/engine.ts):
+**Spectral pipeline** tuning in [neuro/engine.ts](neuro/engine.ts) and [neuro/useChannelBandPowers.ts](neuro/useChannelBandPowers.ts):
 
+- `FFT_SIZE = 256` — window size (~1.024s at 250 Hz)
+- `UPDATE_HZ = 12` — FFT computation rate
 - `LOG_EPSILON = 1e-9` — log-domain floor
 - `STAT_FLOOR = 0.05` — minimum |Δμ| for `isWellTrained`
 - Default Link params: `gain = 1.4`, `smoothing = 0.85`
 
-FFT / feature-rate tuning lives in [neuro/useChannelBandPowers.ts](neuro/useChannelBandPowers.ts):
+**Artifact pipeline** tuning in [neuro/engine-artifact.ts](neuro/engine-artifact.ts) and [neuro/useArtifactEnvelopes.ts](neuro/useArtifactEnvelopes.ts):
 
-- `FFT_SIZE = 256`
-- `UPDATE_HZ = 12`
+- `UPDATE_HZ = 60` — envelope computation rate
+- `WINDOW_SAMPLES = 64` — window size (~256ms at 250 Hz)
+- `MA_WINDOW = 20` — moving average window (~80ms)
+- `HYSTERESIS_FACTOR = 1.2` — threshold + 20% for detection
+- Threshold calibration: `baseline + 0.6 × (meanPeak - baseline)`
+
+**Hybrid pipeline** tuning in [neuro/engine-hybrid.ts](neuro/engine-hybrid.ts):
+
+- Default fusion mode: `"multiply"` (AND)
+- Default weights: `[1, 1]` (spectral, artifact)
+- Sequential mode threshold: `0.3` (artifact must exceed 30% to gate spectral)
 
 ---
 
-## 8. Extending
+## 9. Extending
 
 To add a **new feature dimension** (e.g. coherence between two channels, or a frontal alpha asymmetry index), add the computation to `useChannelBandPowers.ts` and extend `ChannelSnapshot` / the `Link` shape so the engine and studio know how to address it.
 
-To add a **new transfer function** (e.g. log-sigmoid, dead-zone), replace the trained branch of `evaluateLink` in `engine.ts`. The function signature is stable; nothing outside `engine.ts` needs to change.
+To add a **new pipeline type**, follow the pattern:
+1. Create `engine-<type>.ts` with evaluation and ranking functions
+2. Create `use<Type>Features.ts` hook for real-time feature extraction
+3. Create `<Type>TrainingOverlay.tsx` for calibration UI
+4. Add pipeline branch in `AvatarFoundation.tsx` evaluation loop
+5. Update `suggestPipeline()` for auto-detection
+
+To add a **new transfer function** (e.g. log-sigmoid, dead-zone), replace the trained branch of `evaluateLink` in the respective engine file. The function signature is stable; nothing outside the engine needs to change.
+
+To add a **new fusion mode** for hybrid links, add it to the `switch` statement in `engine-hybrid.ts` `evaluateHybridLink()`.
 
 To add **multi-link blends** other than `max` (e.g. weighted sum, gated by another link), edit the per-expression aggregation block inside the RAF loop in `AvatarFoundation.tsx`.
 
 ---
 
-## 9. Why these choices?
+## 10. Why these choices?
 
+- **Three pipelines** — FFT cannot detect sub-second transients (fundamental window-duration tradeoff); time-domain envelope detection has ~80ms latency but no frequency information; hybrid fusion combines both for complex expressions.
+- **Auto-channel discovery over prescribed montages** — Works with any electrode configuration; user sees quality metrics for ALL channels and picks the best one.
 - **Log-power, not raw PSD** — EEG band powers are roughly log-normal; variance-based statistics like Cohen's d only behave decently on near-Gaussian data.
 - **Cohen's d over correlation** — d is the right tool when comparing two *populations* (REST vs ACTIVE) with possibly different variances. It also has well-known conventional bands (≥0.8 large, ≥1.2 very large) which the UI maps to deliberately conservative labels.
 - **Linear interp instead of sigmoid** — when REST and ACTIVE are well-separated, linear interpolation gives the user a directly readable gauge (0% = your rest level, 100% = your trained activation level). Sigmoids are saved for the untrained fallback (currently: zero, by design).
 - **EMA over Kalman** — facial expression is a slow, perceptual control loop; a one-parameter exponential moving average is enough and stays interpretable.
 - **`max` aggregation across links** — multiple electrodes voting on the same expression is a *union of evidence*, not a vote.
+- **Separate sub-links for hybrid** — Easier to debug, retrain, and reason about; fusion weights are adjustable without recalibrating.
+

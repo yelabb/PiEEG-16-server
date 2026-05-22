@@ -1,14 +1,16 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // Neurofeedback Avatar — shared types
 //
-// A "Link" connects an EEG feature (channel × frequency band) to an avatar
-// facial expression. Each link has its own calibration (REST / ACTIVE means)
-// and a few transfer-function knobs (gain, smoothing, invert).
+// DUAL-PIPELINE ARCHITECTURE:
+//   • SPECTRAL: FFT-based log band powers → slow emotional states (relaxation, focus)
+//   • ARTIFACT: Time-domain envelopes → fast transient events (blinks, jaw, brows)
+//   • HYBRID: Combination of both pipelines with fusion logic
 //
-// Mathematics is kept transparent: linear interpolation between trained rest
-// and active means, clamped to [0, 1], then EMA-smoothed. The neuroscience
-// signal-quality score is Cohen's d (a.k.a. d-prime) over log-power features.
+// A "Link" connects an EEG feature to an avatar expression. The pipeline type
+// determines the feature extraction method and calibration protocol.
 // ─────────────────────────────────────────────────────────────────────────────
+
+export type PipelineType = "spectral" | "artifact" | "hybrid";
 
 export const BAND_NAMES = ["Delta", "Theta", "Alpha", "Beta", "Gamma"] as const;
 export type BandName = (typeof BAND_NAMES)[number];
@@ -41,13 +43,61 @@ export interface CalibrationPair {
   active: Stats;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Artifact Pipeline Types (time-domain envelope detection)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Artifact calibration: threshold-based instead of Cohen's d. */
+export interface ArtifactCalibration {
+  /** Baseline RMS during rest (noise floor). */
+  baseline: number;
+  /** Detection threshold (baseline + gain × range). */
+  threshold: number;
+  /** Peak envelope during active phase. */
+  peakEnvelope: number;
+  /** Number of samples in baseline. */
+  nBaseline: number;
+  /** Number of detected events during active phase. */
+  nDetections: number;
+}
+
+/** Per-channel envelope snapshot (updated at ~60 Hz). */
+export interface EnvelopeSnapshot {
+  /** Current rectified + smoothed envelope (µV). */
+  envelope: number;
+  /** Raw RMS for this update window. */
+  rms: number;
+}
+
+/** Artifact detection frame (all channels, fast update). */
+export interface EnvelopeFrame {
+  channels: EnvelopeSnapshot[];
+  ts: number;
+  ready: boolean;
+}
+
+/** Channel ranking result after artifact calibration. */
+export interface ArtifactChannelRank {
+  channel: number;
+  channelLabel: string;
+  peakEnvelope: number;
+  baselineRMS: number;
+  snr: number; // peak / baseline
+  consistency: number; // 1 / stdDev of peak amplitudes
+  detectionRate: number; // % of expected events detected
+  quality: number; // composite score
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Unified Link Type (supports spectral, artifact, hybrid)
+// ─────────────────────────────────────────────────────────────────────────────
+
 export interface Link {
   id: string;
+  /** Pipeline type determines feature extraction and calibration. */
+  pipeline: PipelineType;
   channel: number; // 0-based electrode index
-  band: BandName;
   expression: string; // VRM expression name or glTF morph name
-  /** Calibration of log-power features for this (channel, band). */
-  cal: CalibrationPair;
   /** Post-normalisation gain (0.1 … 4). */
   gain: number;
   /** EMA smoothing on the output 0..1 (0 = none, 0.95 = heavy). */
@@ -55,10 +105,29 @@ export interface Link {
   /** Flip the mapping (e.g. relax-driven smile when alpha is the cue). */
   invert: boolean;
   enabled: boolean;
-  /** Frozen Cohen's d at end of last calibration (0 if untrained). */
-  snr: number;
   /** Optional human label override. */
   label?: string;
+
+  // ── Spectral-specific fields (only when pipeline === "spectral") ──
+  band?: BandName;
+  /** Calibration of log-power features for this (channel, band). */
+  cal?: CalibrationPair;
+  /** Frozen Cohen's d at end of last calibration (0 if untrained). */
+  snr?: number;
+
+  // ── Artifact-specific fields (only when pipeline === "artifact") ──
+  /** Threshold-based calibration for envelope detection. */
+  artifactCal?: ArtifactCalibration;
+
+  // ── Hybrid-specific fields (only when pipeline === "hybrid") ──
+  /** Reference to spectral sub-link (optional). */
+  spectralLinkId?: string;
+  /** Reference to artifact sub-link (optional). */
+  artifactLinkId?: string;
+  /** Fusion mode for combining spectral and artifact signals. */
+  fusionMode?: "multiply" | "add" | "max" | "and" | "sequential";
+  /** Weights for fusion: [spectral, artifact]. */
+  fusionWeights?: [number, number];
 }
 
 export interface LinkRuntime {
@@ -66,8 +135,52 @@ export interface LinkRuntime {
   value: number;
   /** Latest normalised position between rest (0) and active (1) before clamp. */
   norm: number;
+  
+  // ── Spectral runtime state ──
   /** Latest log10(power). */
-  logPower: number;
+  logPower?: number;
+  
+  // ── Artifact runtime state ──
+  /** Latest envelope amplitude (µV). */
+  envelope?: number;
+  /** Detection state (above threshold). */
+  detected?: boolean;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Type Guards & Helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+export function isSpectralLink(link: Link): boolean {
+  return link.pipeline === "spectral";
+}
+
+export function isArtifactLink(link: Link): boolean {
+  return link.pipeline === "artifact";
+}
+
+export function isHybridLink(link: Link): boolean {
+  return link.pipeline === "hybrid";
+}
+
+export function isWellTrainedSpectral(link: Link): boolean {
+  if (!isSpectralLink(link) || !link.cal) return false;
+  const { rest, active } = link.cal;
+  return (
+    rest.n > 4 &&
+    active.n > 4 &&
+    Math.abs(active.mean - rest.mean) > 0.05
+  );
+}
+
+export function isWellTrainedArtifact(link: Link): boolean {
+  if (!isArtifactLink(link) || !link.artifactCal) return false;
+  const { nBaseline, nDetections, peakEnvelope, baseline } = link.artifactCal;
+  return (
+    nBaseline > 50 &&
+    nDetections > 3 &&
+    peakEnvelope > baseline * 2
+  );
 }
 
 export interface ChannelSnapshot {

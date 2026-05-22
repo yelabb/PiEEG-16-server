@@ -22,13 +22,16 @@ import {
   type Link,
   type LinkRuntime,
   type NeuroFrame,
+  isWellTrainedSpectral,
+  isWellTrainedArtifact,
 } from "./types";
-import { cohenD, isWellTrained, qualityFromD } from "./engine";
+import { cohenD, qualityFromD } from "./engine";
 
 // ── Design tokens ─────────────────────────────────────────────────────────
 
 const TOKENS = {
   bg: "rgba(10, 12, 20, 0.78)",
+  bgPanel: "rgba(20, 22, 32, 0.92)",
   bgRaised: "rgba(20, 22, 32, 0.92)",
   border: "rgba(255, 255, 255, 0.08)",
   borderStrong: "rgba(255, 255, 255, 0.16)",
@@ -115,6 +118,11 @@ export function MappingStudio({
     }
   }, [availableExpressions, composerExpression]);
 
+  // Helper to check if a link is well-trained (spectral or artifact)
+  const isLinkWellTrained = (link: Link): boolean => {
+    return isWellTrainedSpectral(link) || isWellTrainedArtifact(link);
+  };
+
   // ── Expression → live activation map (max over enabled links) ───────
   const liveExpression = useMemo(() => {
     const map = new Map<string, number>();
@@ -135,6 +143,7 @@ export function MappingStudio({
       ...prev,
       {
         id: `${channel}-${band}-${expression}-${Date.now().toString(36)}`,
+        pipeline: "spectral", // Manual links default to spectral
         channel,
         band,
         expression,
@@ -236,7 +245,7 @@ export function MappingStudio({
                 key={e}
                 name={e}
                 activation={liveExpression.get(e) ?? 0}
-                trained={links.some((l) => l.expression === e && isWellTrained(l))}
+                trained={links.some((l) => l.expression === e && isLinkWellTrained(l))}
                 onTrain={() => onStartTraining(e, "discover")}
                 onDemo={() => onDemoExpression(e)}
                 disabled={trainingActive}
@@ -499,7 +508,7 @@ function LinkCard({
 }) {
   const value = runtime?.value ?? 0;
   const d = cohenD(link.cal.rest, link.cal.active);
-  const well = isWellTrained(link);
+  const well = isLinkWellTrained(link);
   const accent = BAND_COLORS[link.band];
 
   return (
