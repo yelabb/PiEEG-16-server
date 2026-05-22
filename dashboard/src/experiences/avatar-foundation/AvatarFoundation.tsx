@@ -31,14 +31,23 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { VRMLoaderPlugin, VRMUtils, type VRM } from "@pixiv/three-vrm";
 import type { ExperienceProps } from "../registry";
 import { useChannelBandPowers } from "./neuro/useChannelBandPowers";
+import { useArtifactEnvelopes } from "./neuro/useArtifactEnvelopes";
 import { MappingStudio } from "./neuro/MappingStudio";
 import { TrainingOverlay } from "./neuro/TrainingOverlay";
+import { ArtifactTrainingOverlay } from "./neuro/ArtifactTrainingOverlay";
+import { HybridTrainingOverlay } from "./neuro/HybridTrainingOverlay";
 import {
   BAND_NAMES,
   type Link,
   type LinkRuntime,
+  type PipelineType,
+  isSpectralLink,
+  isArtifactLink,
+  isHybridLink,
 } from "./neuro/types";
 import { evaluateLink, newRuntime } from "./neuro/engine";
+import { evaluateArtifactLink, newArtifactRuntime } from "./neuro/engine-artifact";
+import { evaluateHybridLink } from "./neuro/engine-hybrid";
 
 // ── 3D scene types (carried over from previous Foundation) ──────────────────
 
@@ -158,6 +167,37 @@ function saveLinks(links: Link[]): void {
   }
 }
 
+// ── Pipeline Auto-Detection ─────────────────────────────────────────────────
+
+/**
+ * Auto-suggest pipeline type based on expression name keywords.
+ * Hybrid for expressions that benefit from both pipelines (surprised, angry).
+ * Artifact detection for fast transient events (blinks, jaw, brows).
+ * Spectral for slow emotional states (relaxation, focus, stress).
+ */
+function suggestPipeline(expressionName: string): PipelineType {
+  const lower = expressionName.toLowerCase();
+  
+  // Hybrid keywords: expressions that benefit from both pipelines
+  const hybridKeywords = ["surprised", "angry", "excited", "alert", "shocked"];
+  for (const keyword of hybridKeywords) {
+    if (lower.includes(keyword)) return "hybrid";
+  }
+  
+  // Artifact keywords: fast muscle movements / transient events
+  const artifactKeywords = [
+    "blink", "wink", "eye", "brow", "eyebrow", "jaw", "mouth", 
+    "clench", "raise", "frown", "squint", "nose", "lip"
+  ];
+  
+  for (const keyword of artifactKeywords) {
+    if (lower.includes(keyword)) return "artifact";
+  }
+  
+  // Default to spectral for emotional/mental states
+  return "spectral";
+}
+
 // ── Component ───────────────────────────────────────────────────────────────
 
 export default function AvatarFoundation({ eegData, onExit }: ExperienceProps) {
@@ -170,6 +210,7 @@ export default function AvatarFoundation({ eegData, onExit }: ExperienceProps) {
     expression: string;
     mode: "discover" | "refine";
     existingLinkId?: string;
+    pipeline: PipelineType;
   } | null>(null);
   const [paused, setPaused] = useState(false);
   const pausedRef = useRef(paused);
@@ -188,8 +229,11 @@ export default function AvatarFoundation({ eegData, onExit }: ExperienceProps) {
   const onExitRef = useRef(onExit);
   const sceneRef = useRef<SceneState | null>(null);
 
-  // Per-channel band power pipeline (always running)
+  // Per-channel band power pipeline (spectral - always running)
   const frameRef = useChannelBandPowers(eegData);
+
+  // Per-channel envelope pipeline (artifact - always running)
+  const envelopeFrameRef = useArtifactEnvelopes(eegData);
 
   // Stable runtime map: linkId → live state. Mutated in RAF.
   const runtimeRef = useRef<Map<string, LinkRuntime>>(new Map());
@@ -205,7 +249,10 @@ export default function AvatarFoundation({ eegData, onExit }: ExperienceProps) {
       if (!ids.has(id)) runtimeRef.current.delete(id);
     }
     for (const l of links) {
-      if (!runtimeRef.current.has(l.id)) runtimeRef.current.set(l.id, newRuntime());
+      if (!runtimeRef.current.has(l.id)) {
+        const rt = isArtifactLink(l) ? newArtifactRuntime() : newRuntime();
+        runtimeRef.current.set(l.id, rt);
+      }
     }
     saveLinks(links);
   }, [links]);
@@ -434,18 +481,97 @@ export default function AvatarFoundation({ eegData, onExit }: ExperienceProps) {
       // Evaluate every enabled link → aggregate per expression (max).
       const weights = ref.expressionWeights;
       weights.clear();
-      const frame = frameRef.current;
+      const spectralFrame = frameRef.current;
+      const artifactFrame = envelopeFrameRef.current;
       const liveLinks = linksRef.current;
-      if (frame.ready && !pausedRef.current) {
+      
+      if (!pausedRef.current) {
         for (const link of liveLinks) {
           if (!link.enabled) continue;
-          const snap = frame.channels[link.channel];
-          if (!snap) continue;
-          const bandIdx = BAND_NAMES.indexOf(link.band);
-          if (bandIdx < 0) continue;
-          const feature = snap.logBands[bandIdx];
-          const prev = runtimeRef.current.get(link.id) ?? newRuntime();
-          const next = evaluateLink(link, feature, prev);
+          
+          let next: LinkRuntime;
+          
+          if (isSpectralLink(link)) {
+            // Spectral pipeline: FFT-based band powers
+            if (!spectralFrame.ready) continue;
+            const snap = spectralFrame.channels[link.channel];
+            if (!snap || !link.band) continue;
+            const bandIdx = BAND_NAMES.indexOf(link.band);
+            if (bandIdx < 0) continue;
+            const feature = snap.logBands[bandIdx];
+            const prev = runtimeRef.current.get(link.id) ?? newRuntime();
+            next = evaluateLink(link, feature, prev);
+          } else if (isArtifactLink(link)) {
+            // Artifact pipeline: time-domain envelopes
+            if (!artifactFrame.ready) continue;
+            const snap = artifactFrame.channels[link.channel];
+            if (!snap) continue;
+            const envelope = snap.envelope;
+            const prev = runtimeRef.current.get(link.id) ?? newArtifactRuntime();
+            next = evaluateArtifactLink(link, envelope, prev);
+          } else if (isHybridLink(link)) {
+            // Hybrid pipeline: fusion of spectral + artifact
+            const spectralSubLink = link.spectralLinkId 
+              ? liveLinks.find(l => l.id === link.spectralLinkId) 
+              : undefined;
+            const artifactSubLink = link.artifactLinkId 
+              ? liveLinks.find(l => l.id === link.artifactLinkId) 
+              : undefined;
+
+            // Get normalized values from sub-links
+            let spectralValue = 0;
+            let artifactValue = 0;
+
+            if (spectralSubLink && spectralFrame.ready) {
+              const snap = spectralFrame.channels[spectralSubLink.channel];
+              if (snap && spectralSubLink.band) {
+                const bandIdx = BAND_NAMES.indexOf(spectralSubLink.band);
+                if (bandIdx >= 0) {
+                  const feature = snap.logBands[bandIdx];
+                  const prevSpec = runtimeRef.current.get(spectralSubLink.id) ?? newRuntime();
+                  const specRuntime = evaluateLink(spectralSubLink, feature, prevSpec);
+                  spectralValue = specRuntime.norm; // Use normalized value
+                  runtimeRef.current.set(spectralSubLink.id, specRuntime);
+                }
+              }
+            }
+
+            if (artifactSubLink && artifactFrame.ready) {
+              const snap = artifactFrame.channels[artifactSubLink.channel];
+              if (snap) {
+                const envelope = snap.envelope;
+                const prevArt = runtimeRef.current.get(artifactSubLink.id) ?? newArtifactRuntime();
+                const artRuntime = evaluateArtifactLink(artifactSubLink, envelope, prevArt);
+                artifactValue = artRuntime.norm; // Use normalized value
+                runtimeRef.current.set(artifactSubLink.id, artRuntime);
+              }
+            }
+
+            // Fuse the two values
+            const fusedValue = evaluateHybridLink(
+              link,
+              spectralSubLink,
+              artifactSubLink,
+              spectralValue,
+              artifactValue
+            );
+
+            // Apply gain/smoothing to fused value
+            const prev = runtimeRef.current.get(link.id) ?? newRuntime();
+            const raw = fusedValue * link.gain;
+            const smooth = prev.value * link.smoothing + raw * (1 - link.smoothing);
+            const clamped = Math.max(0, Math.min(1, link.invert ? 1 - smooth : smooth));
+
+            next = {
+              value: clamped,
+              norm: fusedValue,
+              logPower: 0,
+            };
+          } else {
+            // Unknown pipeline type
+            continue;
+          }
+          
           runtimeRef.current.set(link.id, next);
           const cur = weights.get(link.expression) ?? 0;
           if (next.value > cur) weights.set(link.expression, next.value);
@@ -573,7 +699,9 @@ export default function AvatarFoundation({ eegData, onExit }: ExperienceProps) {
 
   const handleStartTraining = useCallback(
     (expression: string, mode: "discover" | "refine", existingLinkId?: string) => {
-      setTraining({ expression, mode, existingLinkId });
+      // Auto-detect pipeline based on expression name
+      const pipeline = suggestPipeline(expression);
+      setTraining({ expression, mode, existingLinkId, pipeline });
     },
     [],
   );
@@ -650,7 +778,7 @@ export default function AvatarFoundation({ eegData, onExit }: ExperienceProps) {
         onExit={onExit}
       />
 
-      {training && (
+      {training && training.pipeline === "spectral" && (
         <TrainingOverlay
           expression={training.expression}
           mode={training.mode}
@@ -659,6 +787,47 @@ export default function AvatarFoundation({ eegData, onExit }: ExperienceProps) {
           frameRef={frameRef}
           onCancel={() => setTraining(null)}
           onApply={handleApplyTraining}
+        />
+      )}
+
+      {training && training.pipeline === "artifact" && (
+        <ArtifactTrainingOverlay
+          expression={training.expression}
+          mode={training.mode}
+          existingLinkId={training.existingLinkId}
+          numChannels={eegData.numChannels}
+          envelopeFrameRef={envelopeFrameRef}
+          onCancel={() => setTraining(null)}
+          onApply={handleApplyTraining}
+        />
+      )}
+
+      {training && training.pipeline === "hybrid" && (
+        <HybridTrainingOverlay
+          expression={training.expression}
+          eegData={eegData.data}
+          frameRef={frameRef}
+          envelopeFrameRef={envelopeFrameRef}
+          onCancel={() => setTraining(null)}
+          onDone={(hybridLink, spectralLink, artifactLink) => {
+            // Add all links to the collection
+            setLinks((prev) => {
+              const updated = [...prev];
+              // Add sub-links if they exist (hidden from UI, used only for evaluation)
+              if (spectralLink) {
+                spectralLink.enabled = false; // Hidden
+                updated.push(spectralLink);
+              }
+              if (artifactLink) {
+                artifactLink.enabled = false; // Hidden
+                updated.push(artifactLink);
+              }
+              // Add the hybrid link
+              updated.push(hybridLink);
+              return updated;
+            });
+            setTraining(null);
+          }}
         />
       )}
     </div>
