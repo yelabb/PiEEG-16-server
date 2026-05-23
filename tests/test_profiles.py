@@ -157,6 +157,19 @@ class TestLSLGroups:
         assert result["valid"] is True
         assert result["error"] is None
 
+    def test_validate_none_groups(self):
+        """None should be rejected (prevents null in JSON config)."""
+        result = validate_lsl_groups(None, num_hw_channels=8)
+        assert result["valid"] is False
+        assert "must be a list" in result["error"]
+
+    def test_validate_non_list_groups(self):
+        """Non-list types should be rejected."""
+        for invalid in ["string", 123, {"dict": "value"}, True]:
+            result = validate_lsl_groups(invalid, num_hw_channels=8)
+            assert result["valid"] is False
+            assert "must be a list" in result["error"]
+
     def test_validate_valid_single_group(self):
         """Single group with valid channels."""
         groups = [{"name": "EEG", "channels": [0, 1, 2, 3]}]

@@ -171,11 +171,13 @@ def validate_lsl_groups(groups: list[dict], num_hw_channels: int) -> dict:
     Returns:
         {"valid": bool, "error": str | None} — error is set if validation fails
     """
-    if not groups:
-        return {"valid": True, "error": None}
-
+    # Type check first - reject None and other non-list types
     if not isinstance(groups, list):
         return {"valid": False, "error": "Groups must be a list"}
+
+    # Empty list is valid (backward compatible - single default stream)
+    if not groups:
+        return {"valid": True, "error": None}
 
     seen_channels = set()
     for i, group in enumerate(groups):
