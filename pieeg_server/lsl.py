@@ -75,8 +75,15 @@ class LSLBridge:
             group_channels = group["channels"]
             num_ch = len(group_channels)
 
-            # Stream name format: {GroupName}_PiEEG (e.g., "EEG_PiEEG", "EOG_PiEEG")
-            stream_name = f"{group_name}_PiEEG" if group_name != "PiEEG" else "PiEEG"
+            # Stream name: use config base or group name
+            if group_name == "PiEEG":
+                stream_name = self._cfg.stream_name  # Use config value
+            else:
+                # Custom group: {GroupName}_{ConfigBase} (e.g., "EEG_PiEEG", "EOG_PiEEG")
+                stream_name = f"{group_name}_{self._cfg.stream_name}"
+
+            # Unique source_id per group (LSL requirement)
+            source_id = f"{self._cfg.source_id}_{group_name}" if len(self._groups) > 1 else self._cfg.source_id
 
             info = StreamInfo(
                 name=stream_name,
@@ -84,14 +91,16 @@ class LSLBridge:
                 channel_count=num_ch,
                 nominal_srate=SAMPLE_RATE,
                 channel_format="float32",
-                source_id=self._cfg.source_id,
+                source_id=source_id,
             )
 
             # Add channel labels to the stream description
+            # Use both stream-local index AND hardware channel number for clarity
             chns = info.desc().append_child("channels")
-            for ch_idx in group_channels:
+            for stream_idx, hw_ch_idx in enumerate(group_channels):
                 ch = chns.append_child("channel")
-                ch.append_child_value("label", f"Ch{ch_idx}")
+                ch.append_child_value("label", f"Ch{stream_idx}")  # Stream-local: Ch0, Ch1, Ch2...
+                ch.append_child_value("hw_channel", str(hw_ch_idx))  # Hardware channel for reference
                 ch.append_child_value("unit", "microvolts")
                 ch.append_child_value("type", "EEG")
 
