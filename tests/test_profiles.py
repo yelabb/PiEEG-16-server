@@ -297,3 +297,58 @@ class TestLSLGroups:
             with patch("pieeg_server.profiles._get_config_dir", return_value=config_dir):
                 loaded = load_lsl_groups()
                 assert loaded == []
+
+    def test_load_malformed_group_non_dict(self):
+        """Loading list with non-dict items returns empty list."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_dir = Path(tmpdir)
+            config_file = config_dir / "lsl_groups.json"
+            config_file.write_text('["string", {"name": "EEG", "channels": [0, 1]}]')
+
+            with patch("pieeg_server.profiles._get_config_dir", return_value=config_dir):
+                loaded = load_lsl_groups()
+                assert loaded == []
+
+    def test_load_malformed_group_missing_name(self):
+        """Loading groups missing 'name' field returns empty list."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_dir = Path(tmpdir)
+            config_file = config_dir / "lsl_groups.json"
+            config_file.write_text('[{"channels": [0, 1]}]')
+
+            with patch("pieeg_server.profiles._get_config_dir", return_value=config_dir):
+                loaded = load_lsl_groups()
+                assert loaded == []
+
+    def test_load_malformed_group_missing_channels(self):
+        """Loading groups missing 'channels' field returns empty list."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_dir = Path(tmpdir)
+            config_file = config_dir / "lsl_groups.json"
+            config_file.write_text('[{"name": "EEG"}]')
+
+            with patch("pieeg_server.profiles._get_config_dir", return_value=config_dir):
+                loaded = load_lsl_groups()
+                assert loaded == []
+
+    def test_load_malformed_group_name_not_string(self):
+        """Loading groups with non-string 'name' returns empty list."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_dir = Path(tmpdir)
+            config_file = config_dir / "lsl_groups.json"
+            config_file.write_text('[{"name": 123, "channels": [0, 1]}]')
+
+            with patch("pieeg_server.profiles._get_config_dir", return_value=config_dir):
+                loaded = load_lsl_groups()
+                assert loaded == []
+
+    def test_load_malformed_group_channels_not_list(self):
+        """Loading groups with non-list 'channels' returns empty list."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_dir = Path(tmpdir)
+            config_file = config_dir / "lsl_groups.json"
+            config_file.write_text('[{"name": "EEG", "channels": "not a list"}]')
+
+            with patch("pieeg_server.profiles._get_config_dir", return_value=config_dir):
+                loaded = load_lsl_groups()
+                assert loaded == []

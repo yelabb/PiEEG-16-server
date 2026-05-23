@@ -138,6 +138,22 @@ def load_lsl_groups() -> list[dict]:
         if not isinstance(data, list):
             logger.warning("Invalid lsl_groups.json format (not a list), ignoring")
             return []
+        
+        # Validate schema of each group entry to prevent crashes in LSLBridge
+        for i, item in enumerate(data):
+            if not isinstance(item, dict):
+                logger.warning("Invalid lsl_groups.json: item %d is not a dict, ignoring file", i)
+                return []
+            if "name" not in item or "channels" not in item:
+                logger.warning("Invalid lsl_groups.json: item %d missing 'name' or 'channels', ignoring file", i)
+                return []
+            if not isinstance(item["name"], str):
+                logger.warning("Invalid lsl_groups.json: item %d 'name' is not a string, ignoring file", i)
+                return []
+            if not isinstance(item["channels"], list):
+                logger.warning("Invalid lsl_groups.json: item %d 'channels' is not a list, ignoring file", i)
+                return []
+        
         return data
     except (json.JSONDecodeError, OSError) as e:
         logger.warning("Failed to load lsl_groups.json: %s", e)
