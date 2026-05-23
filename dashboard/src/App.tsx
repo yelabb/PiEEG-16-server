@@ -368,13 +368,17 @@ export default function App({ wsUrl, onDisconnect }: { wsUrl?: string; onDisconn
 
   // ── LSL streaming ───────────────────────────────────────────────────
   const [lslRunning, setLslRunning] = useState(false);
+  const [lslOutlets, setLslOutlets] = useState<Array<{ group: string; channels: number[]; sample_count: number }>>([]);
   const [lslGroups, setLslGroups] = useState<Array<{ name: string; channels: number[] }>>([]);
   const [lslGroupModalOpen, setLslGroupModalOpen] = useState(false);
 
   useEffect(() => {
     const handler = (msg: Record<string, unknown>) => {
-      const s = msg.lsl_status as { running?: boolean } | undefined;
-      if (s) setLslRunning(!!s.running);
+      const s = msg.lsl_status as { running?: boolean; outlets?: Array<{ group: string; channels: number[]; sample_count: number }> } | undefined;
+      if (s) {
+        setLslRunning(!!s.running);
+        if (s.outlets) setLslOutlets(s.outlets);
+      }
     };
     (window as unknown as Record<string, unknown>).__lslHandler = handler;
     eeg.sendCommand({ cmd: "lsl_status" });
@@ -748,6 +752,26 @@ export default function App({ wsUrl, onDisconnect }: { wsUrl?: string; onDisconn
           </span>
           <button className="btn relay-banner-stop" onClick={cloud.stopRelay} disabled={cloud.relayStopping}>
             {cloud.relayStopping ? "Stopping…" : "Stop"}
+          </button>
+        </div>
+      )}
+
+      {/* LSL Status banner */}
+      {lslRunning && lslOutlets.length > 0 && (
+        <div className="lsl-banner">
+          <span className="lsl-banner-dot" />
+          <span className="lsl-banner-label">
+            LSL Streaming: {lslOutlets.length} stream{lslOutlets.length > 1 ? "s" : ""}
+          </span>
+          <span className="lsl-banner-streams">
+            {lslOutlets.map((outlet, i) => (
+              <span key={i} className="lsl-banner-stream">
+                <strong>{outlet.group}</strong> ({outlet.channels.length} ch · {outlet.sample_count.toLocaleString()} samples)
+              </span>
+            ))}
+          </span>
+          <button className="btn lsl-banner-stop" onClick={() => eeg.sendCommand({ cmd: "lsl_stop" })}>
+            Stop
           </button>
         </div>
       )}
