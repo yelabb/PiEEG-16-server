@@ -45,6 +45,7 @@ class LSLBridge:
         acq: AcquisitionLoop,
         config: LSLConfig | None = None,
         groups: list[dict] | None = None,
+        status_callback = None,
     ):
         self._acq = acq
         self._cfg = config or LSLConfig()
@@ -52,6 +53,8 @@ class LSLBridge:
         self._running = False
         self._outlets = []  # List of (group_name, channels, StreamOutlet, sample_count)
         self._queue = None
+        self._status_callback = status_callback
+        self._last_status_sample = 0
 
     def _create_outlets(self):
         """Lazily import pylsl and create one StreamOutlet per channel group."""
@@ -132,6 +135,13 @@ class LSLBridge:
                     outlet.push_sample(group_data, frame["t"])
                     # Update sample count for this outlet
                     self._outlets[i] = (group_name, group_channels, outlet, count + 1)
+
+                # Broadcast status update every 250 samples (~1 second at 250 Hz)
+                if self._status_callback and self._outlets:
+                    first_count = self._outlets[0][3]  # Sample count of first outlet
+                    if first_count - self._last_status_sample >= 250:
+                        self._last_status_sample = first_count
+                        asyncio.create_task(self._status_callback())
 
         except asyncio.CancelledError:
             pass

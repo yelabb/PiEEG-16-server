@@ -103,7 +103,12 @@ class PiEEGServer:
 
     def enable_lsl(self, config: LSLConfig | None = None):
         """Pre-configure the LSL bridge (start via dashboard or --lsl flag)."""
-        self._lsl_bridge = LSLBridge(self._acq, config)
+        self._lsl_bridge = LSLBridge(
+            self._acq, 
+            config, 
+            groups=self._lsl_groups,
+            status_callback=self._broadcast_lsl_status
+        )
         logger.info("LSL bridge ready (start via dashboard or --lsl flag)")
 
     async def _lsl_autostart(self):
@@ -572,7 +577,12 @@ class PiEEGServer:
         if not self._lsl_bridge:
             cfg = LSLConfig.from_dict(config_patch) if config_patch else LSLConfig()
             # Use loaded groups from config file
-            self._lsl_bridge = LSLBridge(self._acq, cfg, groups=self._lsl_groups)
+            self._lsl_bridge = LSLBridge(
+                self._acq, 
+                cfg, 
+                groups=self._lsl_groups,
+                status_callback=self._broadcast_lsl_status
+            )
         elif config_patch:
             self._lsl_bridge.update_config(config_patch)
 
