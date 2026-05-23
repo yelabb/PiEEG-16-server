@@ -106,3 +106,110 @@ def get_profile(name: str | None) -> HardwareProfile:
             f"Available: {sorted(PROFILES)} (or 'auto')"
         )
     return PROFILES[name]
+
+
+# ── LSL Channel Groups Configuration ───────────────────────────────────
+
+
+def _get_config_dir() -> Path:
+    """Get or create the PiEEG config directory (~/.pieeg)."""
+    config_dir = Path.home() / ".pieeg"
+    config_dir.mkdir(exist_ok=True)
+    return config_dir
+
+
+def load_lsl_groups() -> list[dict]:
+    """Load LSL channel groups from ~/.pieeg/lsl_groups.json.
+
+    Returns an empty list if the file doesn't exist or is invalid JSON,
+    ensuring backward compatibility.
+
+    Returns:
+        List of dicts with format: [{"name": "EEG", "channels": [0,1,2,3]}, ...]
+    """
+    config_file = _get_config_dir() / "lsl_groups.json"
+    if not config_file.exists():
+        return []
+
+    try:
+        import json
+        with config_file.open("r") as f:
+            data = json.load(f)
+        if not isinstance(data, list):
+            logger.warning("Invalid lsl_groups.json format (not a list), ignoring")
+            return []
+        return data
+    except (json.JSONDecodeError, OSError) as e:
+        logger.warning("Failed to load lsl_groups.json: %s", e)
+        return []
+
+
+def save_lsl_groups(groups: list[dict]) -> None:
+    """Save LSL channel groups to ~/.pieeg/lsl_groups.json.
+
+    Args:
+        groups: List of dicts with format: [{"name": "EEG", "channels": [0,1,2,3]}, ...]
+    """
+    import json
+    config_file = _get_config_dir() / "lsl_groups.json"
+    try:
+        with config_file.open("w") as f:
+            json.dump(groups, f, indent=2)
+        logger.info("Saved %d LSL groups to %s", len(groups), config_file)
+    except OSError as e:
+        logger.error("Failed to save lsl_groups.json: %s", e)
+        raise
+
+
+def validate_lsl_groups(groups: list[dict], num_hw_channels: int) -> dict:
+    """Validate LSL channel group configuration.
+
+    Args:
+        groups: List of group dicts to validate
+        num_hw_channels: Number of available hardware channels
+
+    Returns:
+        {"valid": bool, "error": str | None} — error is set if validation fails
+    """
+    if not groups:
+        return {"valid": True, "error": None}
+
+    if not isinstance(groups, list):
+        return {"valid": False, "error": "Groups must be a list"}
+
+    seen_channels = set()
+    for i, group in enumerate(groups):
+        # Check required fields
+        if not isinstance(group, dict):
+            return {"valid": False, "error": f"Group {i} is not a dict"}
+        if "name" not in group or "channels" not in group:
+            return {"valid": False, "error": f"Group {i} missing 'name' or 'channels'"}
+
+        name = group["name"]
+        channels = group["channels"]
+
+        # Validate name
+        if not isinstance(name, str) or not name.strip():
+            return {"valid": False, "error": f"Group {i} has invalid name"}
+
+        # Validate channels
+        if not isinstance(channels, list):
+            return {"valid": False, "error": f"Group '{name}' channels must be a list"}
+        if not channels:
+            return {"valid": False, "error": f"Group '{name}' has no channels"}
+
+        for ch in channels:
+            if not isinstance(ch, int):
+                return {"valid": False, "error": f"Group '{name}' channel {ch} is not an integer"}
+            if ch < 0:
+                return {"valid": False, "error": f"Group '{name}' channel {ch} is negative"}
+            if ch >= num_hw_channels:
+                return {
+                    "valid": False,
+                    "error": f"Group '{name}' channel {ch} >= {num_hw_channels} (hardware limit)"
+                }
+            if ch in seen_channels:
+                return {"valid": False, "error": f"Channel {ch} used in multiple groups"}
+            seen_channels.add(ch)
+
+    return {"valid": True, "error": None}

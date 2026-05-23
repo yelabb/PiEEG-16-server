@@ -1,5 +1,7 @@
 """Tests for the hardware profile system."""
 
+import tempfile
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -10,6 +12,9 @@ from pieeg_server.profiles import (
     HardwareProfile,
     detect_profile,
     get_profile,
+    load_lsl_groups,
+    save_lsl_groups,
+    validate_lsl_groups,
 )
 
 
@@ -141,3 +146,141 @@ class TestHardwareIntegration:
         # _cs_fd is -1 and _manage_cs is False; should silently no-op.
         hw._cs_set(0)
         hw._cs_set(1)
+
+
+class TestLSLGroups:
+    """Tests for LSL channel group configuration."""
+
+    def test_validate_empty_groups(self):
+        """Empty groups list is valid (backward compat)."""
+        result = validate_lsl_groups([], num_hw_channels=8)
+        assert result["valid"] is True
+        assert result["error"] is None
+
+    def test_validate_valid_single_group(self):
+        """Single group with valid channels."""
+        groups = [{"name": "EEG", "channels": [0, 1, 2, 3]}]
+        result = validate_lsl_groups(groups, num_hw_channels=8)
+        assert result["valid"] is True
+        assert result["error"] is None
+
+    def test_validate_valid_multiple_groups(self):
+        """Multiple non-overlapping groups."""
+        groups = [
+            {"name": "EEG", "channels": [0, 1, 2, 3]},
+            {"name": "EOG", "channels": [4, 5]},
+            {"name": "EMG", "channels": [6, 7]},
+        ]
+        result = validate_lsl_groups(groups, num_hw_channels=8)
+        assert result["valid"] is True
+        assert result["error"] is None
+
+    def test_validate_overlapping_channels(self):
+        """Channels used in multiple groups should fail."""
+        groups = [
+            {"name": "EEG", "channels": [0, 1, 2]},
+            {"name": "EOG", "channels": [2, 3]},  # Channel 2 overlap
+        ]
+        result = validate_lsl_groups(groups, num_hw_channels=8)
+        assert result["valid"] is False
+        assert "multiple groups" in result["error"]
+
+    def test_validate_out_of_range_channel(self):
+        """Channel index >= num_hw_channels should fail."""
+        groups = [{"name": "EEG", "channels": [0, 1, 8]}]  # Ch8 >= 8
+        result = validate_lsl_groups(groups, num_hw_channels=8)
+        assert result["valid"] is False
+        assert "hardware limit" in result["error"]
+
+    def test_validate_negative_channel(self):
+        """Negative channel indices should fail."""
+        groups = [{"name": "EEG", "channels": [0, -1, 2]}]
+        result = validate_lsl_groups(groups, num_hw_channels=8)
+        assert result["valid"] is False
+        assert "negative" in result["error"]
+
+    def test_validate_missing_name(self):
+        """Groups must have a name."""
+        groups = [{"channels": [0, 1, 2]}]
+        result = validate_lsl_groups(groups, num_hw_channels=8)
+        assert result["valid"] is False
+        assert "name" in result["error"]
+
+    def test_validate_missing_channels(self):
+        """Groups must have channels."""
+        groups = [{"name": "EEG"}]
+        result = validate_lsl_groups(groups, num_hw_channels=8)
+        assert result["valid"] is False
+        assert "channels" in result["error"]
+
+    def test_validate_empty_channel_list(self):
+        """Groups must have at least one channel."""
+        groups = [{"name": "EEG", "channels": []}]
+        result = validate_lsl_groups(groups, num_hw_channels=8)
+        assert result["valid"] is False
+        assert "no channels" in result["error"]
+
+    def test_validate_invalid_channel_type(self):
+        """Channels must be integers."""
+        groups = [{"name": "EEG", "channels": [0, "1", 2]}]
+        result = validate_lsl_groups(groups, num_hw_channels=8)
+        assert result["valid"] is False
+        assert "not an integer" in result["error"]
+
+    def test_validate_empty_name(self):
+        """Group names must not be empty strings."""
+        groups = [{"name": "", "channels": [0, 1]}]
+        result = validate_lsl_groups(groups, num_hw_channels=8)
+        assert result["valid"] is False
+        assert "invalid name" in result["error"]
+
+    def test_save_and_load_groups(self):
+        """Save and load groups from temp file."""
+        groups = [
+            {"name": "EEG", "channels": [0, 1, 2, 3]},
+            {"name": "EOG", "channels": [4, 5]},
+        ]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_dir = Path(tmpdir)
+            config_file = config_dir / "lsl_groups.json"
+
+            # Patch config dir
+            with patch("pieeg_server.profiles._get_config_dir", return_value=config_dir):
+                # Save
+                save_lsl_groups(groups)
+                assert config_file.exists()
+
+                # Load
+                loaded = load_lsl_groups()
+                assert loaded == groups
+
+    def test_load_nonexistent_file_returns_empty(self):
+        """Loading from nonexistent file returns empty list."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_dir = Path(tmpdir)
+            with patch("pieeg_server.profiles._get_config_dir", return_value=config_dir):
+                loaded = load_lsl_groups()
+                assert loaded == []
+
+    def test_load_invalid_json_returns_empty(self):
+        """Loading invalid JSON returns empty list (doesn't crash)."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_dir = Path(tmpdir)
+            config_file = config_dir / "lsl_groups.json"
+            config_file.write_text("not valid json{")
+
+            with patch("pieeg_server.profiles._get_config_dir", return_value=config_dir):
+                loaded = load_lsl_groups()
+                assert loaded == []
+
+    def test_load_non_list_returns_empty(self):
+        """Loading non-list JSON returns empty list."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_dir = Path(tmpdir)
+            config_file = config_dir / "lsl_groups.json"
+            config_file.write_text('{"not": "a list"}')
+
+            with patch("pieeg_server.profiles._get_config_dir", return_value=config_dir):
+                loaded = load_lsl_groups()
+                assert loaded == []

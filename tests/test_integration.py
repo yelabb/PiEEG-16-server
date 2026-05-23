@@ -263,3 +263,78 @@ class TestMalformedInput:
                 assert "channels" in frame
 
         event_loop.run_until_complete(check())
+
+
+class TestLSLGroups:
+    """Test LSL channel groups configuration."""
+
+    async def _recv_command_response(self, ws, timeout=2.0):
+        """Receive next message, skipping data frames."""
+        deadline = asyncio.get_event_loop().time() + timeout
+        while True:
+            remaining = deadline - asyncio.get_event_loop().time()
+            if remaining <= 0:
+                raise asyncio.TimeoutError("Timeout waiting for command response")
+            raw = await asyncio.wait_for(ws.recv(), timeout=remaining)
+            msg = json.loads(raw)
+            # Skip data frames (they have 'channels' key)
+            if "channels" not in msg:
+                return msg
+
+    def test_lsl_groups_configuration(self, server_stack_8ch, event_loop):
+        """Test LSL channel groups configuration via WebSocket."""
+        async def check():
+            async with websockets.connect(f"ws://{TEST_HOST}:{TEST_PORT_8CH}") as ws:
+                await ws.recv()  # welcome
+
+                # 1. Get initial groups (should be empty)
+                await ws.send(json.dumps({"cmd": "lsl_groups_get"}))
+                msg = await self._recv_command_response(ws)
+                assert "lsl_groups" in msg
+                assert msg["lsl_groups"]["num_channels"] == 8
+                initial_groups = msg["lsl_groups"]["groups"]
+                # Initial groups might be empty or default, just check format
+                assert isinstance(initial_groups, list)
+
+                # 2. Set valid groups
+                groups = [
+                    {"name": "EEG", "channels": [0, 1, 2, 3]},
+                    {"name": "EOG", "channels": [4, 5]},
+                    {"name": "AUX", "channels": [6, 7]},
+                ]
+                await ws.send(json.dumps({"cmd": "lsl_groups_set", "groups": groups}))
+
+                # Expect success response
+                msg = await self._recv_command_response(ws)
+                assert "lsl_groups_set" in msg
+                assert msg["lsl_groups_set"]["success"] is True
+
+                # Also expect broadcast of new groups
+                msg = await self._recv_command_response(ws)
+                assert "lsl_groups" in msg
+                assert len(msg["lsl_groups"]["groups"]) == 3
+                assert msg["lsl_groups"]["groups"] == groups
+
+                # 3. Get groups again to verify persistence
+                await ws.send(json.dumps({"cmd": "lsl_groups_get"}))
+                msg = await self._recv_command_response(ws)
+                assert msg["lsl_groups"]["groups"] == groups
+
+                # 4. Try to set invalid groups (overlapping channels)
+                invalid_groups = [
+                    {"name": "EEG", "channels": [0, 1, 2]},
+                    {"name": "EOG", "channels": [2, 3]},  # Channel 2 overlap
+                ]
+                await ws.send(json.dumps({"cmd": "lsl_groups_set", "groups": invalid_groups}))
+                msg = await self._recv_command_response(ws)
+                assert "lsl_groups_set" in msg
+                assert msg["lsl_groups_set"]["success"] is False
+                assert "error" in msg["lsl_groups_set"]
+                assert "multiple groups" in msg["lsl_groups_set"]["error"]
+
+                # 5. Verify previous valid groups still in place
+                await ws.send(json.dumps({"cmd": "lsl_groups_get"}))
+                msg = await self._recv_command_response(ws)
+                assert msg["lsl_groups"]["groups"] == groups  # Still the valid ones
+
+        event_loop.run_until_complete(check())

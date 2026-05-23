@@ -639,6 +639,13 @@ def main():
     # --- Server ---
     server = PiEEGServer(acq, host=args.host, port=args.port, auth=auth,
                          num_channels=num_ch)
+
+    # Load LSL channel groups from config file
+    from . import profiles
+    server._lsl_groups = profiles.load_lsl_groups()
+    if server._lsl_groups:
+        logger.info("Loaded %d LSL channel groups from config", len(server._lsl_groups))
+
     if args.filter:
         server.enable_filter(args.lowcut, args.highcut)
         logger.info("Server-side filter: %.1f-%.1f Hz", args.lowcut, args.highcut)
