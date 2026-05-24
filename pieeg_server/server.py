@@ -33,6 +33,7 @@ from .recorder import Recorder
 from .webhooks import WebhookStore
 from .osc_vrchat import VRChatOSCBridge, OSCConfig
 from .lsl import LSLBridge, LSLConfig  # LSLBridge defers pylsl import to run()
+from . import profiles
 from . import __version__
 from . import _native
 
@@ -69,6 +70,7 @@ class PiEEGServer:
         self._osc_task: asyncio.Task | None = None
         self._lsl_bridge: LSLBridge | None = None
         self._lsl_task: asyncio.Task | None = None
+        self._lsl_groups: list[dict] = []  # Loaded from ~/.pieeg/lsl_groups.json
         self._cloud_relay: CloudRelayBridge | None = None
         self._cloud_relay_task: asyncio.Task | None = None
         self._cloud_relay_timeout_task: asyncio.Task | None = None
@@ -101,7 +103,12 @@ class PiEEGServer:
 
     def enable_lsl(self, config: LSLConfig | None = None):
         """Pre-configure the LSL bridge (start via dashboard or --lsl flag)."""
-        self._lsl_bridge = LSLBridge(self._acq, config)
+        self._lsl_bridge = LSLBridge(
+            self._acq, 
+            config, 
+            groups=self._lsl_groups,
+            status_callback=self._broadcast_lsl_status
+        )
         logger.info("LSL bridge ready (start via dashboard or --lsl flag)")
 
     async def _lsl_autostart(self):
@@ -287,6 +294,10 @@ class PiEEGServer:
             await self._ws_lsl_start(ws, msg)
         elif cmd == "lsl_stop":
             await self._ws_lsl_stop(ws)
+        elif cmd == "lsl_groups_get":
+            await self._ws_lsl_groups_get(ws)
+        elif cmd == "lsl_groups_set":
+            await self._ws_lsl_groups_set(ws, msg)
         # ── Cloud Relay commands ───────────────────────────────────────────
         elif cmd == "cloud_relay_status":
             await self._ws_cloud_relay_status(ws)
@@ -560,12 +571,18 @@ class PiEEGServer:
         await ws.send(json.dumps({"lsl_status": status}))
 
     async def _ws_lsl_start(self, ws, msg: dict):
-        """Start the LSL outlet."""
+        """Start the LSL outlet with configured channel groups."""
         config_patch = msg.get("config", {})
 
         if not self._lsl_bridge:
             cfg = LSLConfig.from_dict(config_patch) if config_patch else LSLConfig()
-            self._lsl_bridge = LSLBridge(self._acq, cfg)
+            # Use loaded groups from config file
+            self._lsl_bridge = LSLBridge(
+                self._acq, 
+                cfg, 
+                groups=self._lsl_groups,
+                status_callback=self._broadcast_lsl_status
+            )
         elif config_patch:
             self._lsl_bridge.update_config(config_patch)
 
@@ -616,6 +633,66 @@ class PiEEGServer:
             except websockets.ConnectionClosed:
                 stale.add(ws)
         self._clients -= stale
+
+    async def _ws_lsl_groups_get(self, ws):
+        """Send current LSL channel groups configuration to the client."""
+        response = {
+            "lsl_groups": {
+                "groups": self._lsl_groups,
+                "num_channels": self._num_channels,
+            }
+        }
+        await ws.send(json.dumps(response))
+
+    async def _ws_lsl_groups_set(self, ws, msg: dict):
+        """Update and save LSL channel groups configuration."""
+        groups = msg.get("groups", [])
+
+        # Validate groups
+        validation = profiles.validate_lsl_groups(groups, self._num_channels)
+        if not validation["valid"]:
+            response = {
+                "lsl_groups_set": {
+                    "success": False,
+                    "error": validation["error"],
+                }
+            }
+            await ws.send(json.dumps(response))
+            return
+
+        # Save to disk
+        try:
+            profiles.save_lsl_groups(groups)
+            self._lsl_groups = groups
+            logger.info("LSL channel groups updated: %d groups", len(groups))
+
+            # Confirm to sender first
+            await ws.send(json.dumps({"lsl_groups_set": {"success": True}}))
+
+            # Broadcast to all clients
+            response = {
+                "lsl_groups": {
+                    "groups": self._lsl_groups,
+                    "num_channels": self._num_channels,
+                }
+            }
+            payload = json.dumps(response)
+            stale = set()
+            for client_ws in list(self._clients):
+                try:
+                    await client_ws.send(payload)
+                except websockets.ConnectionClosed:
+                    stale.add(client_ws)
+            self._clients -= stale
+
+        except Exception as e:
+            logger.error("Failed to save LSL groups: %s", e)
+            await ws.send(json.dumps({
+                "lsl_groups_set": {
+                    "success": False,
+                    "error": str(e),
+                }
+            }))
 
     # ── Cloud Relay WebSocket handlers ─────────────────────────────────
 

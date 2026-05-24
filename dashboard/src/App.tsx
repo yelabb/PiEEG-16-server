@@ -20,6 +20,7 @@ import WebhookPanel from "./components/WebhookPanel";
 import CloudPanel from "./components/CloudPanel";
 import RegisterPanel from "./components/RegisterPanel";
 import ExperiencesPage from "./components/ExperiencesPage";
+import LSLGroupModal from "./components/LSLGroupModal";
 import { useWebhooks } from "./hooks/useWebhooks";
 import { useCloud, RELAY_MAX_MINUTES } from "./hooks/useCloud";
 import { useTheme } from "./hooks/useTheme";
@@ -367,11 +368,17 @@ export default function App({ wsUrl, onDisconnect }: { wsUrl?: string; onDisconn
 
   // ── LSL streaming ───────────────────────────────────────────────────
   const [lslRunning, setLslRunning] = useState(false);
+  const [lslOutlets, setLslOutlets] = useState<Array<{ group: string; channels: number[]; sample_count: number }>>([]);
+  const [lslGroups, setLslGroups] = useState<Array<{ name: string; channels: number[] }>>([]);
+  const [lslGroupModalOpen, setLslGroupModalOpen] = useState(false);
 
   useEffect(() => {
     const handler = (msg: Record<string, unknown>) => {
-      const s = msg.lsl_status as { running?: boolean } | undefined;
-      if (s) setLslRunning(!!s.running);
+      const s = msg.lsl_status as { running?: boolean; outlets?: Array<{ group: string; channels: number[]; sample_count: number }> } | undefined;
+      if (s) {
+        setLslRunning(!!s.running);
+        if (s.outlets) setLslOutlets(s.outlets);
+      }
     };
     (window as unknown as Record<string, unknown>).__lslHandler = handler;
     eeg.sendCommand({ cmd: "lsl_status" });
@@ -380,9 +387,28 @@ export default function App({ wsUrl, onDisconnect }: { wsUrl?: string; onDisconn
     };
   }, []);
 
+  useEffect(() => {
+    const handler = (msg: Record<string, unknown>) => {
+      const data = msg.lsl_groups as { groups?: Array<{ name: string; channels: number[] }>; num_channels?: number } | undefined;
+      if (data && data.groups) {
+        setLslGroups(data.groups);
+      }
+    };
+    (window as unknown as Record<string, unknown>).__lslGroupsHandler = handler;
+    eeg.sendCommand({ cmd: "lsl_groups_get" });
+    return () => {
+      delete (window as unknown as Record<string, unknown>).__lslGroupsHandler;
+    };
+  }, [eeg.sendCommand]);
+
   const toggleLSL = useCallback(() => {
+    // Always just toggle LSL — no groups = single default stream "PiEEG"
     eeg.sendCommand({ cmd: lslRunning ? "lsl_stop" : "lsl_start" });
   }, [lslRunning, eeg.sendCommand]);
+
+  const handleSaveLSLGroups = useCallback((groups: Array<{ name: string; channels: number[] }>) => {
+    eeg.sendCommand({ cmd: "lsl_groups_set", groups });
+  }, [eeg.sendCommand]);
 
   // ── Guided presets ──────────────────────────────────────────────────
   const [activePreset, setActivePreset] = useState<GuidedPreset | null>(null);
@@ -730,6 +756,26 @@ export default function App({ wsUrl, onDisconnect }: { wsUrl?: string; onDisconn
         </div>
       )}
 
+      {/* LSL Status banner */}
+      {lslRunning && lslOutlets.length > 0 && (
+        <div className="lsl-banner">
+          <span className="lsl-banner-dot" />
+          <span className="lsl-banner-label">
+            LSL Streaming: {lslOutlets.length} stream{lslOutlets.length > 1 ? "s" : ""}
+          </span>
+          <span className="lsl-banner-streams">
+            {lslOutlets.map((outlet, i) => (
+              <span key={i} className="lsl-banner-stream">
+                <strong>{outlet.group}</strong> ({outlet.channels.length} ch · {outlet.sample_count.toLocaleString()} samples)
+              </span>
+            ))}
+          </span>
+          <button className="btn lsl-banner-stop" onClick={() => eeg.sendCommand({ cmd: "lsl_stop" })}>
+            Stop
+          </button>
+        </div>
+      )}
+
       {/* ═══ Body: sidebar + content ═══ */}
       <div className="app-body">
         {/* ── Left Sidebar ── */}
@@ -933,9 +979,18 @@ export default function App({ wsUrl, onDisconnect }: { wsUrl?: string; onDisconn
               <button
                 className={`btn btn-lsl${lslRunning ? " active" : ""}`}
                 onClick={toggleLSL}
-                title="Lab Streaming Layer — stream EEG to external apps"
+                title={lslGroups.length === 0 
+                  ? "Lab Streaming Layer — single stream 'PiEEG' with all channels" 
+                  : `Lab Streaming Layer — ${lslGroups.length} stream${lslGroups.length > 1 ? 's' : ''} (${lslGroups.map(g => g.name).join(', ')})`}
               >
                 LSL {lslRunning ? "ON" : "OFF"}
+              </button>
+              <button
+                className="btn btn-sm"
+                onClick={() => setLslGroupModalOpen(true)}
+                title="Create separate LSL streams per signal type (EEG, EOG, EMG, etc.)"
+              >
+                Edit LSL Groups
               </button>
               <button
                 className={`btn btn-cloud${showCloud ? " active" : ""}${cloud.loggedIn ? " cloud-logged-in" : ""}`}
@@ -1162,6 +1217,15 @@ export default function App({ wsUrl, onDisconnect }: { wsUrl?: string; onDisconn
         onClose={() => setShowRegisters(false)}
         numChannels={numCh}
         sendCommand={eeg.sendCommand}
+      />
+
+      {/* LSL Groups configuration modal */}
+      <LSLGroupModal
+        open={lslGroupModalOpen}
+        onClose={() => setLslGroupModalOpen(false)}
+        numChannels={numCh}
+        onSave={handleSaveLSLGroups}
+        initialGroups={lslGroups}
       />
 
       {/* Keyboard shortcut help (press ? to toggle) */}

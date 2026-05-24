@@ -291,6 +291,7 @@ That's it. Every frame is plain JSON — no SDK, no binary protocol, works in an
 | **Statistics panel** | 10 metrics per channel; sortable columns; CSV export |
 | **Filter preview** | Live Butterworth magnitude response with –3 dB reference |
 | **Session library** | Browse, replay recordings; play/pause, seek, speed control (0.5×–2×); annotations |
+| **LSL channel groups** | Create separate LSL streams per signal type (EEG, EOG, EMG); config UI with channel selection; persists to `~/.pieeg/lsl_groups.json` |
 | **AI chat assistant** | BYO provider (OpenAI, Anthropic, Ollama, Groq, LM Studio); SSE streaming |
 | **Webhook panel** | Visual rule builder; POST/PUT/PATCH/GET; Authorization headers; IFTTT & Zapier |
 | **Webcam feed** | Optional video overlay |
@@ -573,7 +574,17 @@ async function connectAuthenticated(code: string): Promise<WebSocket> {
 {"cmd": "lsl_start"}
 {"cmd": "lsl_stop"}
 {"cmd": "lsl_status"}
+{"cmd": "lsl_groups_get"}
+{"cmd": "lsl_groups_set", "groups": [
+  {"name": "EEG", "channels": [0, 1, 2, 3]},
+  {"name": "EOG", "channels": [4, 5]}
+]}
 ```
+
+**Channel groups** let you create separate LSL streams per signal type (EEG, EOG, EMG, etc.):
+- `lsl_groups_get` → `{"num_channels": 8, "groups": [...]}`
+- `lsl_groups_set` validates no overlap, saves to `~/.pieeg/lsl_groups.json`, broadcasts to all clients
+- Empty groups `[]` → single default stream `PiEEG` with all channels (backward compatible)
 
 **ADS1299 Registers** (see [full details](#ads1299-register-configuration))
 ```json
@@ -733,12 +744,35 @@ pieeg-server --lsl --lsl-name MyEEG   # custom stream name
 
 Toggle at runtime via dashboard or WebSocket (`lsl_start` / `lsl_stop`).
 
+### Channel Groups
+
+**Create separate LSL streams for different signal types** (e.g., EEG, EOG, EMG) using the dashboard:
+
+1. Click **"Enable LSL"** → modal opens (first time)
+2. Define groups: name + select channels (e.g., "EEG: ch0-3", "EOG: ch4-5")
+3. **Save** → server creates multiple LSL outlets:
+   - `EEG_PiEEG` (4 channels: ch0, ch1, ch2, ch3)
+   - `EOG_PiEEG` (2 channels: ch4, ch5)
+4. **LabRecorder** sees N separate streams with correct channel counts
+5. Groups persist to `~/.pieeg/lsl_groups.json` (auto-loaded on restart)
+
+Click **"Edit LSL Groups"** anytime to reconfigure.
+
+**No groups configured?** → Single default stream `PiEEG` with all channels (backward compatible).
+
 **Receive in Python:**
 ```python
 from pylsl import StreamInlet, resolve_stream
-streams = resolve_stream('name', 'PiEEG')
+
+# Resolve specific group stream
+streams = resolve_stream('name', 'EEG_PiEEG')
 inlet = StreamInlet(streams[0])
-sample, timestamp = inlet.pull_sample()
+sample, timestamp = inlet.pull_sample()  # Only EEG channels
+
+# Or resolve all PiEEG streams
+all_streams = resolve_stream('type', 'EEG')
+for stream in all_streams:
+    print(f"{stream.name()}: {stream.channel_count()} channels")
 ```
 
 <sup>[↑ Navigation](#nav)</sup>
