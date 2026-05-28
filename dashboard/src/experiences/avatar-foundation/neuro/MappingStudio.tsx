@@ -507,9 +507,11 @@ function LinkCard({
   numChannels: number;
 }) {
   const value = runtime?.value ?? 0;
-  const d = cohenD(link.cal.rest, link.cal.active);
+  const isSpectral = link.pipeline === "spectral";
+  const isArtifact = link.pipeline === "artifact";
+  const d = isSpectral && link.cal ? cohenD(link.cal.rest, link.cal.active) : 0;
   const well = isLinkWellTrained(link);
-  const accent = BAND_COLORS[link.band];
+  const accent = isSpectral && link.band ? BAND_COLORS[link.band] : "#22c55e"; // Default green for artifact
 
   return (
     <div
@@ -540,18 +542,30 @@ function LinkCard({
             </option>
           ))}
         </select>
-        <span style={{ color: TOKENS.textFaint }}>·</span>
-        <select
-          value={link.band}
-          onChange={(e) => onUpdate({ band: e.target.value as BandName })}
-          style={{ ...styles.compactSelect, color: accent }}
-        >
-          {BAND_NAMES.map((b) => (
-            <option key={b} value={b}>
-              {b}
-            </option>
-          ))}
-        </select>
+        {isSpectral && (
+          <>
+            <span style={{ color: TOKENS.textFaint }}>·</span>
+            <select
+              value={link.band}
+              onChange={(e) => onUpdate({ band: e.target.value as BandName })}
+              style={{ ...styles.compactSelect, color: accent }}
+            >
+              {BAND_NAMES.map((b) => (
+                <option key={b} value={b}>
+                  {b}
+                </option>
+              ))}
+            </select>
+          </>
+        )}
+        {isArtifact && (
+          <>
+            <span style={{ color: TOKENS.textFaint }}>·</span>
+            <span style={{ ...styles.compactSelect, color: accent, border: "none", background: "transparent" }}>
+              Artifact
+            </span>
+          </>
+        )}
         <span style={{ color: TOKENS.textFaint, fontSize: 11 }}>→</span>
         <select
           value={link.expression}
@@ -620,13 +634,38 @@ function LinkCard({
 
       {/* Footer stats */}
       <div style={styles.linkFooter}>
-        <SnrBadge d={d} well={well} />
-        <span style={styles.statText} title="REST log-power mean">
-          R {fmt(link.cal.rest.mean)}
-        </span>
-        <span style={styles.statText} title="ACTIVE log-power mean">
-          A {fmt(link.cal.active.mean)}
-        </span>
+        {isSpectral && link.cal && (
+          <>
+            <SnrBadge d={d} well={well} />
+            <span style={styles.statText} title="REST log-power mean">
+              R {fmt(link.cal.rest.mean)}
+            </span>
+            <span style={styles.statText} title="ACTIVE log-power mean">
+              A {fmt(link.cal.active.mean)}
+            </span>
+          </>
+        )}
+        {isArtifact && link.artifactCal && (
+          <>
+            <span
+              style={{
+                ...styles.snrBadge,
+                color: link.artifactCal.nDetections >= 5 ? TOKENS.success : TOKENS.textFaint,
+                borderColor: link.artifactCal.nDetections >= 5 ? TOKENS.success + "55" : TOKENS.border,
+                background: link.artifactCal.nDetections >= 5 ? TOKENS.success + "11" : "transparent",
+              }}
+              title={`Detected ${link.artifactCal.nDetections} events during calibration`}
+            >
+              {link.artifactCal.nDetections} events
+            </span>
+            <span style={styles.statText} title="Baseline (noise floor)">
+              B {link.artifactCal.baseline.toFixed(1)}µV
+            </span>
+            <span style={styles.statText} title="Threshold">
+              T {link.artifactCal.threshold.toFixed(1)}µV
+            </span>
+          </>
+        )}
         <div style={{ flex: 1 }} />
         <button onClick={onRetrain} style={styles.tinyBtn} disabled={disabled}>
           ⌖ Re-train

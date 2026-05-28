@@ -59,6 +59,11 @@ export function ArtifactTrainingOverlay({
   const [selectedChannel, setSelectedChannel] = useState<number | null>(null);
   const [previewChannel, setPreviewChannel] = useState<number | null>(null);
 
+  // Real-time detection state for repetitions phase
+  const baselineThresholdRef = useRef<number>(0);
+  const lastPeakTimeRef = useRef<number>(0);
+  const peakStateRef = useRef<"idle" | "in-peak">("idle");
+
   // ── Phase Machine ────────────────────────────────────────────────────
 
   useEffect(() => {
@@ -84,6 +89,28 @@ export function ArtifactTrainingOverlay({
         if (p >= 1) {
           clearInterval(progressTimer);
           clearInterval(pollTimer);
+          
+          // Compute baseline threshold for real-time detection
+          // Use simple average across all channels
+          let totalBaseline = 0;
+          let count = 0;
+          for (let ch = 0; ch < numChannels; ch++) {
+            let sum = 0;
+            let n = 0;
+            for (const frame of baselineFramesRef.current) {
+              const snap = frame.channels[ch];
+              if (snap && Number.isFinite(snap.envelope)) {
+                sum += snap.envelope;
+                n++;
+              }
+            }
+            if (n > 0) {
+              totalBaseline += sum / n;
+              count++;
+            }
+          }
+          baselineThresholdRef.current = count > 0 ? (totalBaseline / count) * 2.5 : 10;
+          
           setPhase("repetitions");
         }
       }, 50);
@@ -97,11 +124,44 @@ export function ArtifactTrainingOverlay({
     if (phase === "repetitions") {
       repetitionFramesRef.current = [];
       setDetectedCount(0);
+      peakStateRef.current = "idle";
+      lastPeakTimeRef.current = 0;
+
+      const REFRACTORY_MS = 400; // Minimum time between detections
+      const MIN_PEAK_WIDTH_MS = 50; // Minimum duration above threshold
 
       const pollTimer = setInterval(() => {
         const f = envelopeFrameRef.current;
         if (f.ready) {
           repetitionFramesRef.current.push(deepCopyEnvelopeFrame(f));
+          
+          // Real-time peak detection for feedback
+          // Average envelope across all channels
+          let totalEnv = 0;
+          let envCount = 0;
+          for (let ch = 0; ch < numChannels; ch++) {
+            const snap = f.channels[ch];
+            if (snap && Number.isFinite(snap.envelope)) {
+              totalEnv += snap.envelope;
+              envCount++;
+            }
+          }
+          const avgEnv = envCount > 0 ? totalEnv / envCount : 0;
+          const now = performance.now();
+          
+          // Simple state machine for peak detection
+          if (peakStateRef.current === "idle") {
+            if (avgEnv > baselineThresholdRef.current && now - lastPeakTimeRef.current > REFRACTORY_MS) {
+              peakStateRef.current = "in-peak";
+            }
+          } else if (peakStateRef.current === "in-peak") {
+            if (avgEnv <= baselineThresholdRef.current * 0.7) {
+              // Dropped below threshold - peak detected!
+              lastPeakTimeRef.current = now;
+              peakStateRef.current = "idle";
+              setDetectedCount((c) => c + 1);
+            }
+          }
         }
       }, Math.round(1000 / POLL_HZ));
 
