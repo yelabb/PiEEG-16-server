@@ -510,7 +510,7 @@ function LinkCard({
   const isSpectral = link.pipeline === "spectral";
   const isArtifact = link.pipeline === "artifact";
   const d = isSpectral && link.cal ? cohenD(link.cal.rest, link.cal.active) : 0;
-  const well = isLinkWellTrained(link);
+  const well = isWellTrainedSpectral(link) || isWellTrainedArtifact(link);
   const accent = isSpectral && link.band ? BAND_COLORS[link.band] : "#22c55e"; // Default green for artifact
 
   return (
