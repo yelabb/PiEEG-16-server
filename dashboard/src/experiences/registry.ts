@@ -74,6 +74,9 @@ const PremeditatioMalorumExperience = lazy(
 const AvatarFoundationExperience = lazy(
   () => import("./avatar-foundation/AvatarFoundation"),
 );
+const GlitchingRealityExperience = lazy(
+  () => import("./glitching-reality/GlitchingReality"),
+);
 
 export const EXPERIENCES: ExperienceEntry[] = [
   {
@@ -199,6 +202,16 @@ export const EXPERIENCES: ExperienceEntry[] = [
     gradient: ["#5cf2ff", "#b388ff"],
     component: PremeditatioMalorumExperience,
     vr: true,
+    author: "PiEEG community",
+  },
+  {
+    id: "glitching-reality",
+    name: "The Glitching Reality",
+    description:
+      "I wired my brain to my room. If I lose focus, reality breaks. A mixed-reality demonstration of Frontal Alpha Asymmetry — your device camera becomes a passthrough layer, a WebGL2 shader composites EEG-driven glitches on top. Equanimity keeps the room pristine; cognitive load shreds it with RGB split, slice tear, harsh light, and noise. A deep breath snaps reality back to clarity. Includes an optional timed mental-arithmetic stressor.",
+    tag: "MR / Shader",
+    gradient: ["#ff3366", "#5cf2ff"],
+    component: GlitchingRealityExperience,
     author: "PiEEG community",
   },
 ];

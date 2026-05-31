@@ -1,0 +1,494 @@
+/* ─────────────────────────────────────────────────────────────────────────
+ * The Glitching Reality — minimal MR HUD styling.
+ * Black-on-near-black with hot accent colours so the camera image dominates.
+ * ───────────────────────────────────────────────────────────────────────── */
+
+:root {
+  --gl-bg:     #02030a;
+  --gl-panel:  rgba(6, 10, 22, 0.82);
+  --gl-line:   rgba(120, 200, 255, 0.28);
+  --gl-cyan:   #5cf2ff;
+  --gl-rose:   #ff3366;
+  --gl-amber:  #ffb347;
+  --gl-fg:     #e6f6ff;
+  --gl-dim:    rgba(180, 220, 255, 0.55);
+  --gl-mono:   ui-monospace, "JetBrains Mono", "Fira Code", Menlo, Consolas, monospace;
+}
+
+.glitch-root {
+  position: fixed;
+  inset: 0;
+  background: #000;
+  color: var(--gl-fg);
+  font-family: var(--gl-mono);
+  overflow: hidden;
+  z-index: 9999;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.glitch-root *, .glitch-root *::before, .glitch-root *::after {
+  box-sizing: border-box;
+}
+
+/* ── Camera + shader canvas (both fullscreen) ─────────────────────── */
+.glitch-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: 0;
+  opacity: 0; /* sampled by WebGL — actual pixels drawn on canvas */
+  pointer-events: none;
+}
+
+.glitch-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.glitch-canvas.is-live { background: #000; }
+
+/* ── Intro panel ──────────────────────────────────────────────────── */
+.glitch-panel {
+  position: relative;
+  z-index: 10;
+  margin: 4vh auto;
+  max-width: 640px;
+  background: var(--gl-panel);
+  border: 1px solid var(--gl-line);
+  border-radius: 14px;
+  padding: 28px 30px 24px;
+  box-shadow: 0 8px 40px rgba(0, 200, 255, 0.06), 0 0 0 1px rgba(0,0,0,0.5);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.glitch-intro h1 {
+  margin: 0 0 6px;
+  font-size: clamp(22px, 3.4vw, 32px);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--gl-cyan);
+  text-shadow: 0 0 18px rgba(92, 242, 255, 0.45);
+}
+
+.glitch-tag {
+  margin: 0 0 18px;
+  font-style: italic;
+  color: var(--gl-dim);
+  font-size: 14px;
+}
+
+.glitch-prose {
+  margin: 0 0 12px;
+  line-height: 1.55;
+  font-size: 14px;
+  color: var(--gl-fg);
+}
+
+.glitch-prose.glitch-dim { color: var(--gl-dim); font-size: 12.5px; }
+
+.glitch-list {
+  margin: 6px 0 18px;
+  padding: 0;
+  list-style: none;
+  font-size: 13.5px;
+  line-height: 1.6;
+}
+.glitch-list li { display: flex; gap: 10px; }
+.glitch-list li span { color: var(--gl-cyan); }
+
+.glitch-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.glitch-btn {
+  appearance: none;
+  border: 1px solid var(--gl-line);
+  background: rgba(20, 30, 50, 0.5);
+  color: var(--gl-fg);
+  font: inherit;
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 10px 18px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, transform 0.05s;
+}
+.glitch-btn:hover { background: rgba(40, 60, 100, 0.55); border-color: var(--gl-cyan); }
+.glitch-btn:active { transform: translateY(1px); }
+
+.glitch-btn--primary {
+  background: linear-gradient(135deg, rgba(92,242,255,0.18), rgba(179,136,255,0.18));
+  border-color: var(--gl-cyan);
+  color: var(--gl-cyan);
+  text-shadow: 0 0 12px rgba(92, 242, 255, 0.5);
+}
+
+.glitch-err {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 51, 102, 0.5);
+  background: rgba(60, 0, 20, 0.4);
+  color: #ffd5e0;
+  font-size: 12.5px;
+  border-radius: 8px;
+}
+
+/* ── Exit ─────────────────────────────────────────────────────────── */
+.glitch-exit {
+  appearance: none;
+  border: 1px solid var(--gl-line);
+  background: rgba(0, 0, 0, 0.45);
+  color: var(--gl-dim);
+  font: inherit;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  padding: 6px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.glitch-exit:hover { color: var(--gl-cyan); border-color: var(--gl-cyan); }
+
+.glitch-intro .glitch-exit {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+}
+
+.glitch-exit--floating {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 20;
+}
+
+/* ── HUD panels — futuristic Quest-optimised layout ──────────────── */
+
+/* Shared panel base */
+.gl-panel {
+  position: absolute;
+  z-index: 15;
+  padding: 16px 18px 14px;
+  background: rgba(4, 8, 20, 0.78);
+  border: 1px solid rgba(92, 242, 255, 0.22);
+  border-radius: 16px;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  pointer-events: auto;
+  /* sci-fi corner clip */
+  clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 12px 100%, 0 calc(100% - 12px));
+}
+
+.gl-panel--tl { top: 16px; left: 16px; min-width: 160px; }
+.gl-panel--tr { top: 16px; right: 16px; min-width: 180px; max-width: 280px; }
+
+/* Panel section label */
+.gl-panel-label {
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: rgba(92, 242, 255, 0.6);
+  margin-bottom: 8px;
+}
+
+/* ── Integrity gauge (SVG arc) ────────────────────────────────────── */
+.gl-gauge-svg {
+  display: block;
+  width: 140px;
+  height: 140px;
+  margin: 0 auto 6px;
+  overflow: visible;
+}
+
+.gl-gauge-track {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.06);
+  stroke-width: 10;
+  stroke-linecap: round;
+}
+
+.gl-gauge-fill {
+  fill: none;
+  stroke-width: 10;
+  stroke-linecap: round;
+  transition: stroke-dasharray 0.3s ease;
+}
+
+.gl-gauge-pct {
+  font-family: var(--gl-mono);
+  font-size: 28px;
+  font-weight: 700;
+  text-anchor: middle;
+  dominant-baseline: middle;
+  letter-spacing: -0.02em;
+}
+
+.gl-gauge-unit {
+  font-family: var(--gl-mono);
+  font-size: 13px;
+  fill: rgba(230, 246, 255, 0.45);
+  text-anchor: middle;
+  dominant-baseline: middle;
+}
+
+/* ── State label ──────────────────────────────────────────────────── */
+.gl-state-label {
+  text-align: center;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin-bottom: 10px;
+  line-height: 1.2;
+}
+.gl-state-label.lvl-calm  { color: var(--gl-cyan);  text-shadow: 0 0 14px rgba(92,242,255,0.55); }
+.gl-state-label.lvl-drift { color: #c4f0ff; }
+.gl-state-label.lvl-tear  { color: var(--gl-amber); text-shadow: 0 0 12px rgba(255,179,71,0.5); }
+.gl-state-label.lvl-frac  { color: var(--gl-rose);  text-shadow: 0 0 16px rgba(255,51,102,0.7); }
+.gl-state-label.lvl-snap  { color: #fff;             text-shadow: 0 0 22px rgba(255,255,255,1); }
+
+/* ── Score row ────────────────────────────────────────────────────── */
+.gl-score-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  border-top: 1px solid rgba(92,242,255,0.1);
+  padding-top: 8px;
+  margin-top: 2px;
+}
+.gl-score-k {
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgba(180,220,255,0.5);
+}
+.gl-score-v {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--gl-cyan);
+  text-shadow: 0 0 14px rgba(92,242,255,0.6);
+  letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Controls panel (TR) ──────────────────────────────────────────── */
+.gl-info-btn {
+  appearance: none;
+  display: block;
+  width: 100%;
+  background: none;
+  border: 1px solid rgba(92,242,255,0.2);
+  color: rgba(180,220,255,0.7);
+  font: inherit;
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 8px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  text-align: left;
+  margin-bottom: 10px;
+  transition: border-color 0.15s, color 0.15s;
+}
+.gl-info-btn:hover { border-color: var(--gl-cyan); color: var(--gl-cyan); }
+
+.gl-guide {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  background: rgba(0,0,0,0.4);
+  border-radius: 10px;
+  border: 1px solid rgba(92,242,255,0.08);
+  font-size: 12.5px;
+  line-height: 1.65;
+  color: var(--gl-fg);
+}
+.gl-guide p { margin: 0 0 8px; }
+.gl-guide ul { margin: 0 0 8px; padding: 0; list-style: none; }
+.gl-guide li { margin: 3px 0; display: flex; align-items: center; gap: 8px; }
+.gl-guide strong { color: var(--gl-cyan); }
+
+.gl-dot {
+  display: inline-block;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.gl-dot.cyan  { background: var(--gl-cyan);  box-shadow: 0 0 6px var(--gl-cyan); }
+.gl-dot.amber { background: var(--gl-amber); box-shadow: 0 0 6px var(--gl-amber); }
+.gl-dot.rose  { background: var(--gl-rose);  box-shadow: 0 0 6px var(--gl-rose); }
+.gl-dot.white { background: #fff;            box-shadow: 0 0 6px #fff; }
+
+.gl-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  cursor: pointer;
+  color: var(--gl-fg);
+  margin-bottom: 10px;
+}
+.gl-toggle input { accent-color: var(--gl-cyan); width: 16px; height: 16px; }
+
+.gl-diff {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.gl-diff-k {
+  font-size: 10px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: rgba(180,220,255,0.5);
+}
+.gl-diff-btns { display: flex; gap: 5px; }
+.gl-diff-btn {
+  appearance: none;
+  width: 28px; height: 28px;
+  border-radius: 6px;
+  border: 1px solid rgba(92,242,255,0.18);
+  background: transparent;
+  color: var(--gl-fg);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+.gl-diff-btn.is-on {
+  background: rgba(92,242,255,0.2);
+  border-color: var(--gl-cyan);
+  color: var(--gl-cyan);
+  box-shadow: 0 0 8px rgba(92,242,255,0.3);
+}
+
+/* ── Coaching tip (bottom-center) ────────────────────────────────── */
+.gl-coaching {
+  position: absolute;
+  z-index: 16;
+  bottom: 36px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 12px 28px;
+  background: rgba(4, 8, 20, 0.8);
+  border: 1px solid rgba(92,242,255,0.2);
+  border-radius: 30px;
+  font-size: 15px;
+  font-style: italic;
+  color: var(--gl-dim);
+  text-align: center;
+  pointer-events: none;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  max-width: 520px;
+  white-space: nowrap;
+  clip-path: polygon(12px 0%, calc(100% - 12px) 0%, 100% 12px, 100% 100%, calc(100% - 12px) 100%, 12px 100%, 0% calc(100% - 12px), 0% 12px);
+  transition: color 0.8s, border-color 0.8s;
+  animation: gl-tip-in 0.5s ease both;
+}
+@keyframes gl-tip-in {
+  from { opacity: 0; transform: translateX(-50%) translateY(8px); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+.gl-coaching.lvl-calm  { color: var(--gl-cyan);  border-color: rgba(92,242,255,0.3); }
+.gl-coaching.lvl-drift { color: #c4f0ff; }
+.gl-coaching.lvl-tear  { color: var(--gl-amber); border-color: rgba(255,179,71,0.35); }
+.gl-coaching.lvl-frac  { color: var(--gl-rose);  border-color: rgba(255,51,102,0.45); }
+
+/* ── Calm strip (bottom edge indicator) ─────────────────────────── */
+.gl-calm-strip {
+  position: absolute;
+  z-index: 14;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: linear-gradient(to right, transparent, var(--calm-color, var(--gl-cyan)) var(--calm-pct, 50%), transparent);
+  opacity: 0.75;
+  pointer-events: none;
+  transition: --calm-pct 0.3s ease, --calm-color 0.6s ease;
+}
+
+/* ── Puzzle ───────────────────────────────────────────────────────── */
+.glitch-puzzle {
+  position: absolute;
+  z-index: 16;
+  left: 50%;
+  bottom: 6vh;
+  transform: translateX(-50%);
+  min-width: 300px;
+  padding: 20px 26px;
+  background: rgba(4, 8, 20, 0.88);
+  border: 1px solid var(--gl-rose);
+  border-radius: 16px;
+  text-align: center;
+  box-shadow: 0 0 40px rgba(255, 51, 102, 0.2);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 14px 100%, 0 calc(100% - 14px));
+}
+
+.glitch-puzzle-q {
+  font-size: clamp(26px, 3.6vw, 36px);
+  letter-spacing: 0.06em;
+  color: var(--gl-fg);
+  margin-bottom: 14px;
+  text-shadow: 0 0 14px rgba(255,51,102,0.35);
+}
+
+.glitch-puzzle-input {
+  width: 100%;
+  appearance: none;
+  background: rgba(0,0,0,0.5);
+  border: 1px solid rgba(92,242,255,0.25);
+  border-radius: 10px;
+  color: var(--gl-fg);
+  font: inherit;
+  font-size: 20px;
+  text-align: center;
+  padding: 12px;
+  margin-bottom: 10px;
+}
+.glitch-puzzle-input:focus {
+  outline: none;
+  border-color: var(--gl-cyan);
+  box-shadow: 0 0 14px rgba(92,242,255,0.3);
+}
+
+.glitch-puzzle-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+  font-size: 13px;
+  color: var(--gl-dim);
+}
+.glitch-puzzle-timer { font-variant-numeric: tabular-nums; color: var(--gl-amber); }
+.glitch-puzzle-timer.is-low { color: var(--gl-rose); animation: gl-pulse 0.5s ease-in-out infinite alternate; }
+.glitch-puzzle-flash.is-correct { color: var(--gl-cyan); }
+.glitch-puzzle-flash.is-wrong   { color: var(--gl-rose); }
+
+@keyframes gl-pulse {
+  from { opacity: 0.6; }
+  to   { opacity: 1; }
+}
+
+/* ── Responsive (Quest / phone portrait) ─────────────────────────── */
+@media (max-width: 540px) {
+  .gl-panel { padding: 12px 14px; }
+  .gl-gauge-svg { width: 110px; height: 110px; }
+  .gl-state-label { font-size: 13px; }
+  .gl-coaching { font-size: 13px; padding: 10px 18px; max-width: 90vw; white-space: normal; }
+  .glitch-puzzle { min-width: 260px; bottom: 4vh; }
+}
