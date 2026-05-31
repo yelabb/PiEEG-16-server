@@ -1,4 +1,4 @@
-# The Glitching Reality — Science
+# The Glitching Reality
 
 ## What you are actually measuring
 
