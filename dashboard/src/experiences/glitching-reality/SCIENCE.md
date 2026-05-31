@@ -2,7 +2,7 @@
 
 ## What you are actually measuring
 
-> **Framing note:** The thresholds and shader mapping below are intentionally heuristic —
+> The thresholds and shader mapping below are intentionally heuristic —
 > calibrated for interactive feedback, not diagnosis or precise emotion classification.
 > This is a neuroscience-*inspired* control model for an EEG-driven MR experience.
 
