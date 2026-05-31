@@ -173,155 +173,251 @@
   z-index: 20;
 }
 
-/* ── HUD panels ───────────────────────────────────────────────────── */
-.glitch-hud {
+/* ── HUD panels — futuristic Quest-optimised layout ──────────────── */
+
+/* Shared panel base */
+.gl-panel {
   position: absolute;
   z-index: 15;
-  min-width: 220px;
-  max-width: 320px;
-  padding: 12px 14px;
-  background: var(--gl-panel);
-  border: 1px solid var(--gl-line);
-  border-radius: 10px;
-  font-size: 11.5px;
-  color: var(--gl-fg);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
+  padding: 16px 18px 14px;
+  background: rgba(4, 8, 20, 0.78);
+  border: 1px solid rgba(92, 242, 255, 0.22);
+  border-radius: 16px;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   pointer-events: auto;
+  /* sci-fi corner clip */
+  clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 12px 100%, 0 calc(100% - 12px));
 }
 
-.glitch-hud--tl { top: 14px; left: 14px; }
-.glitch-hud--tr { top: 14px; right: 14px; }
+.gl-panel--tl { top: 16px; left: 16px; min-width: 160px; }
+.gl-panel--tr { top: 16px; right: 16px; min-width: 180px; max-width: 280px; }
 
-.glitch-hud-title {
-  font-size: 10.5px;
-  letter-spacing: 0.18em;
+/* Panel section label */
+.gl-panel-label {
+  font-size: 10px;
+  letter-spacing: 0.22em;
   text-transform: uppercase;
-  color: var(--gl-cyan);
+  color: rgba(92, 242, 255, 0.6);
   margin-bottom: 8px;
 }
 
-.glitch-hud-row {
+/* ── Integrity gauge (SVG arc) ────────────────────────────────────── */
+.gl-gauge-svg {
+  display: block;
+  width: 140px;
+  height: 140px;
+  margin: 0 auto 6px;
+  overflow: visible;
+}
+
+.gl-gauge-track {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.06);
+  stroke-width: 10;
+  stroke-linecap: round;
+}
+
+.gl-gauge-fill {
+  fill: none;
+  stroke-width: 10;
+  stroke-linecap: round;
+  transition: stroke-dasharray 0.3s ease;
+}
+
+.gl-gauge-pct {
+  font-family: var(--gl-mono);
+  font-size: 28px;
+  font-weight: 700;
+  text-anchor: middle;
+  dominant-baseline: middle;
+  letter-spacing: -0.02em;
+}
+
+.gl-gauge-unit {
+  font-family: var(--gl-mono);
+  font-size: 13px;
+  fill: rgba(230, 246, 255, 0.45);
+  text-anchor: middle;
+  dominant-baseline: middle;
+}
+
+/* ── State label ──────────────────────────────────────────────────── */
+.gl-state-label {
+  text-align: center;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin-bottom: 10px;
+  line-height: 1.2;
+}
+.gl-state-label.lvl-calm  { color: var(--gl-cyan);  text-shadow: 0 0 14px rgba(92,242,255,0.55); }
+.gl-state-label.lvl-drift { color: #c4f0ff; }
+.gl-state-label.lvl-tear  { color: var(--gl-amber); text-shadow: 0 0 12px rgba(255,179,71,0.5); }
+.gl-state-label.lvl-frac  { color: var(--gl-rose);  text-shadow: 0 0 16px rgba(255,51,102,0.7); }
+.gl-state-label.lvl-snap  { color: #fff;             text-shadow: 0 0 22px rgba(255,255,255,1); }
+
+/* ── Score row ────────────────────────────────────────────────────── */
+.gl-score-row {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
-  gap: 12px;
-  margin-bottom: 4px;
+  border-top: 1px solid rgba(92,242,255,0.1);
+  padding-top: 8px;
+  margin-top: 2px;
 }
-
-.glitch-hud-k {
+.gl-score-k {
   font-size: 10px;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: var(--gl-dim);
+  color: rgba(180,220,255,0.5);
 }
-
-.glitch-hud-v {
-  font-variant-numeric: tabular-nums;
-  font-size: 12px;
-  color: var(--gl-fg);
-}
-
-.glitch-hud-dim { color: var(--gl-dim); font-size: 10.5px; }
-
-.glitch-hud-faa { margin-top: 8px; }
-
-.glitch-hud-state {
-  font-weight: 600;
-  letter-spacing: 0.1em;
-}
-.glitch-hud-state.lvl-calm  { color: var(--gl-cyan); text-shadow: 0 0 10px rgba(92,242,255,0.5); }
-.glitch-hud-state.lvl-drift { color: #c4f0ff; }
-.glitch-hud-state.lvl-tear  { color: var(--gl-amber); text-shadow: 0 0 10px rgba(255,179,71,0.45); }
-.glitch-hud-state.lvl-frac  { color: var(--gl-rose); text-shadow: 0 0 12px rgba(255,51,102,0.65); }
-.glitch-hud-state.lvl-snap  { color: #fff; text-shadow: 0 0 18px rgba(255,255,255,0.95); }
-
-/* ── Bars ─────────────────────────────────────────────────────────── */
-.glitch-bar { margin: 6px 0 4px; }
-.glitch-bar-head {
-  display: flex;
-  justify-content: space-between;
-  margin-bottom: 3px;
-}
-.glitch-bar-track {
-  position: relative;
-  width: 100%;
-  height: 6px;
-  background: rgba(255,255,255,0.06);
-  border-radius: 3px;
-  overflow: hidden;
-}
-.glitch-bar-fill {
-  height: 100%;
-  border-radius: 3px;
-  transition: width 0.2s ease;
-  box-shadow: 0 0 8px currentColor;
-}
-
-/* ── Band power chips ─────────────────────────────────────────────── */
-.glitch-hud-bands {
-  display: flex;
-  gap: 6px;
-  margin-top: 6px;
-  flex-wrap: wrap;
-}
-.glitch-band-chip {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  font-size: 0.62rem;
-  text-transform: uppercase;
+.gl-score-v {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--gl-cyan);
+  text-shadow: 0 0 14px rgba(92,242,255,0.6);
   letter-spacing: 0.04em;
-  opacity: 0.85;
-}
-.glitch-band-val {
-  font-size: 0.7rem;
-  color: var(--gl-fg);
-  opacity: 0.9;
+  font-variant-numeric: tabular-nums;
 }
 
-/* ── Stressor controls ────────────────────────────────────────────── */
-.glitch-toggle {
+/* ── Controls panel (TR) ──────────────────────────────────────────── */
+.gl-info-btn {
+  appearance: none;
+  display: block;
+  width: 100%;
+  background: none;
+  border: 1px solid rgba(92,242,255,0.2);
+  color: rgba(180,220,255,0.7);
+  font: inherit;
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 8px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  text-align: left;
+  margin-bottom: 10px;
+  transition: border-color 0.15s, color 0.15s;
+}
+.gl-info-btn:hover { border-color: var(--gl-cyan); color: var(--gl-cyan); }
+
+.gl-guide {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  background: rgba(0,0,0,0.4);
+  border-radius: 10px;
+  border: 1px solid rgba(92,242,255,0.08);
+  font-size: 12.5px;
+  line-height: 1.65;
+  color: var(--gl-fg);
+}
+.gl-guide p { margin: 0 0 8px; }
+.gl-guide ul { margin: 0 0 8px; padding: 0; list-style: none; }
+.gl-guide li { margin: 3px 0; display: flex; align-items: center; gap: 8px; }
+.gl-guide strong { color: var(--gl-cyan); }
+
+.gl-dot {
+  display: inline-block;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.gl-dot.cyan  { background: var(--gl-cyan);  box-shadow: 0 0 6px var(--gl-cyan); }
+.gl-dot.amber { background: var(--gl-amber); box-shadow: 0 0 6px var(--gl-amber); }
+.gl-dot.rose  { background: var(--gl-rose);  box-shadow: 0 0 6px var(--gl-rose); }
+.gl-dot.white { background: #fff;            box-shadow: 0 0 6px #fff; }
+
+.gl-toggle {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 6px;
+  gap: 10px;
+  font-size: 13px;
   cursor: pointer;
-  font-size: 12px;
+  color: var(--gl-fg);
+  margin-bottom: 10px;
 }
-.glitch-toggle input { accent-color: var(--gl-cyan); }
+.gl-toggle input { accent-color: var(--gl-cyan); width: 16px; height: 16px; }
 
-.glitch-diff {
+.gl-diff {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin: 6px 0 4px;
-  font-size: 11px;
-  color: var(--gl-dim);
+  gap: 10px;
+  margin-bottom: 8px;
 }
-.glitch-diff > div { display: flex; gap: 4px; }
-.glitch-diff-btn {
+.gl-diff-k {
+  font-size: 10px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: rgba(180,220,255,0.5);
+}
+.gl-diff-btns { display: flex; gap: 5px; }
+.gl-diff-btn {
   appearance: none;
-  width: 22px; height: 22px;
-  border-radius: 5px;
-  border: 1px solid var(--gl-line);
+  width: 28px; height: 28px;
+  border-radius: 6px;
+  border: 1px solid rgba(92,242,255,0.18);
   background: transparent;
   color: var(--gl-fg);
   font: inherit;
-  font-size: 11px;
+  font-size: 12px;
   cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
 }
-.glitch-diff-btn.is-on {
-  background: rgba(92,242,255,0.18);
+.gl-diff-btn.is-on {
+  background: rgba(92,242,255,0.2);
   border-color: var(--gl-cyan);
   color: var(--gl-cyan);
+  box-shadow: 0 0 8px rgba(92,242,255,0.3);
 }
 
-.glitch-hint {
-  margin: 8px 0 0;
-  font-size: 11px;
-  color: var(--gl-dim);
+/* ── Coaching tip (bottom-center) ────────────────────────────────── */
+.gl-coaching {
+  position: absolute;
+  z-index: 16;
+  bottom: 36px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 12px 28px;
+  background: rgba(4, 8, 20, 0.8);
+  border: 1px solid rgba(92,242,255,0.2);
+  border-radius: 30px;
+  font-size: 15px;
   font-style: italic;
+  color: var(--gl-dim);
+  text-align: center;
+  pointer-events: none;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  max-width: 520px;
+  white-space: nowrap;
+  clip-path: polygon(12px 0%, calc(100% - 12px) 0%, 100% 12px, 100% 100%, calc(100% - 12px) 100%, 12px 100%, 0% calc(100% - 12px), 0% 12px);
+  transition: color 0.8s, border-color 0.8s;
+  animation: gl-tip-in 0.5s ease both;
+}
+@keyframes gl-tip-in {
+  from { opacity: 0; transform: translateX(-50%) translateY(8px); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+.gl-coaching.lvl-calm  { color: var(--gl-cyan);  border-color: rgba(92,242,255,0.3); }
+.gl-coaching.lvl-drift { color: #c4f0ff; }
+.gl-coaching.lvl-tear  { color: var(--gl-amber); border-color: rgba(255,179,71,0.35); }
+.gl-coaching.lvl-frac  { color: var(--gl-rose);  border-color: rgba(255,51,102,0.45); }
+
+/* ── Calm strip (bottom edge indicator) ─────────────────────────── */
+.gl-calm-strip {
+  position: absolute;
+  z-index: 14;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: linear-gradient(to right, transparent, var(--calm-color, var(--gl-cyan)) var(--calm-pct, 50%), transparent);
+  opacity: 0.75;
+  pointer-events: none;
+  transition: --calm-pct 0.3s ease, --calm-color 0.6s ease;
 }
 
 /* ── Puzzle ───────────────────────────────────────────────────────── */
@@ -331,60 +427,55 @@
   left: 50%;
   bottom: 6vh;
   transform: translateX(-50%);
-  min-width: 280px;
-  padding: 16px 22px;
-  background: var(--gl-panel);
+  min-width: 300px;
+  padding: 20px 26px;
+  background: rgba(4, 8, 20, 0.88);
   border: 1px solid var(--gl-rose);
-  border-radius: 12px;
+  border-radius: 16px;
   text-align: center;
-  box-shadow: 0 0 28px rgba(255, 51, 102, 0.25);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  box-shadow: 0 0 40px rgba(255, 51, 102, 0.2);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 14px 100%, 0 calc(100% - 14px));
 }
 
 .glitch-puzzle-q {
-  font-size: clamp(24px, 3.4vw, 32px);
-  letter-spacing: 0.05em;
+  font-size: clamp(26px, 3.6vw, 36px);
+  letter-spacing: 0.06em;
   color: var(--gl-fg);
-  margin-bottom: 10px;
-  text-shadow: 0 0 12px rgba(255,51,102,0.35);
+  margin-bottom: 14px;
+  text-shadow: 0 0 14px rgba(255,51,102,0.35);
 }
 
 .glitch-puzzle-input {
   width: 100%;
   appearance: none;
   background: rgba(0,0,0,0.5);
-  border: 1px solid var(--gl-line);
-  border-radius: 8px;
+  border: 1px solid rgba(92,242,255,0.25);
+  border-radius: 10px;
   color: var(--gl-fg);
   font: inherit;
-  font-size: 18px;
+  font-size: 20px;
   text-align: center;
-  padding: 10px 12px;
-  margin-bottom: 8px;
+  padding: 12px;
+  margin-bottom: 10px;
 }
 .glitch-puzzle-input:focus {
   outline: none;
   border-color: var(--gl-cyan);
-  box-shadow: 0 0 12px rgba(92,242,255,0.35);
+  box-shadow: 0 0 14px rgba(92,242,255,0.3);
 }
 
 .glitch-puzzle-meta {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 12px;
-  font-size: 12px;
+  gap: 14px;
+  font-size: 13px;
   color: var(--gl-dim);
 }
-.glitch-puzzle-timer {
-  font-variant-numeric: tabular-nums;
-  color: var(--gl-amber);
-}
-.glitch-puzzle-timer.is-low {
-  color: var(--gl-rose);
-  animation: gl-pulse 0.5s ease-in-out infinite alternate;
-}
+.glitch-puzzle-timer { font-variant-numeric: tabular-nums; color: var(--gl-amber); }
+.glitch-puzzle-timer.is-low { color: var(--gl-rose); animation: gl-pulse 0.5s ease-in-out infinite alternate; }
 .glitch-puzzle-flash.is-correct { color: var(--gl-cyan); }
 .glitch-puzzle-flash.is-wrong   { color: var(--gl-rose); }
 
@@ -393,118 +484,11 @@
   to   { opacity: 1; }
 }
 
-/* ── Small screens / phone portrait ───────────────────────────────── */
+/* ── Responsive (Quest / phone portrait) ─────────────────────────── */
 @media (max-width: 540px) {
-  .glitch-hud { min-width: 0; max-width: 46vw; font-size: 10.5px; padding: 8px 10px; }
-  .glitch-hud-v { font-size: 11px; }
-  .glitch-puzzle { min-width: 240px; bottom: 4vh; }
+  .gl-panel { padding: 12px 14px; }
+  .gl-gauge-svg { width: 110px; height: 110px; }
+  .gl-state-label { font-size: 13px; }
+  .gl-coaching { font-size: 13px; padding: 10px 18px; max-width: 90vw; white-space: normal; }
+  .glitch-puzzle { min-width: 260px; bottom: 4vh; }
 }
-
-/* ── Tooltip ──────────────────────────────────────────────────────── */
-.gl-tip-wrap {
-  position: relative;
-  display: inline-flex;
-  align-items: baseline;
-}
-.gl-tip {
-  display: none;
-  position: absolute;
-  bottom: calc(100% + 6px);
-  left: 50%;
-  transform: translateX(-50%);
-  min-width: 200px;
-  max-width: 280px;
-  padding: 7px 10px;
-  background: rgba(6, 14, 30, 0.96);
-  border: 1px solid var(--gl-line);
-  border-radius: 7px;
-  color: var(--gl-fg);
-  font-size: 11px;
-  line-height: 1.5;
-  text-transform: none;
-  letter-spacing: 0;
-  font-weight: 400;
-  pointer-events: none;
-  white-space: normal;
-  z-index: 50;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.5);
-}
-.gl-tip-wrap:hover .gl-tip,
-.gl-tip-wrap:focus-within .gl-tip { display: block; }
-
-.glitch-tip-label {
-  cursor: help;
-}
-
-/* ── Session score ────────────────────────────────────────────────── */
-.glitch-hud-score-row { margin-bottom: 6px; }
-.glitch-score {
-  font-size: 16px;
-  font-weight: 700;
-  color: var(--gl-cyan);
-  text-shadow: 0 0 14px rgba(92,242,255,0.6);
-  letter-spacing: 0.06em;
-}
-
-/* ── Coaching tip (bottom-center) ────────────────────────────────── */
-.glitch-coaching {
-  position: absolute;
-  z-index: 16;
-  bottom: 22px;
-  left: 50%;
-  transform: translateX(-50%);
-  padding: 8px 18px;
-  background: rgba(6, 10, 22, 0.78);
-  border: 1px solid var(--gl-line);
-  border-radius: 20px;
-  font-size: 12.5px;
-  font-style: italic;
-  color: var(--gl-dim);
-  text-align: center;
-  pointer-events: none;
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
-  transition: color 0.6s;
-  max-width: 420px;
-  white-space: nowrap;
-}
-.glitch-coaching.lvl-calm  { color: var(--gl-cyan); border-color: rgba(92,242,255,0.25); }
-.glitch-coaching.lvl-drift { color: #c4f0ff; }
-.glitch-coaching.lvl-tear  { color: var(--gl-amber); border-color: rgba(255,179,71,0.3); }
-.glitch-coaching.lvl-frac  { color: var(--gl-rose);  border-color: rgba(255,51,102,0.4); }
-
-/* ── How to play panel ────────────────────────────────────────────── */
-.glitch-hud-title-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 8px;
-}
-.glitch-how-btn {
-  appearance: none;
-  background: none;
-  border: 1px solid var(--gl-line);
-  color: var(--gl-dim);
-  font: inherit;
-  font-size: 10px;
-  letter-spacing: 0.06em;
-  padding: 2px 7px;
-  border-radius: 5px;
-  cursor: pointer;
-}
-.glitch-how-btn:hover { color: var(--gl-cyan); border-color: var(--gl-cyan); }
-
-.glitch-how {
-  margin-bottom: 10px;
-  padding: 10px 12px;
-  background: rgba(0,0,0,0.35);
-  border-radius: 8px;
-  border: 1px solid rgba(92,242,255,0.1);
-  font-size: 11.5px;
-  line-height: 1.6;
-  color: var(--gl-fg);
-}
-.glitch-how p { margin: 0 0 6px; }
-.glitch-how ul { margin: 0 0 6px; padding-left: 4px; list-style: none; }
-.glitch-how li { margin: 2px 0; }
-.glitch-how strong { color: var(--gl-cyan); }
