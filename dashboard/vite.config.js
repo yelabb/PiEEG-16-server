@@ -22,6 +22,7 @@ export default defineConfig(({ mode }) => ({
   server: {
     port: 3000,
     strictPort: true,
+    allowedHosts: [".loca.lt"],
     proxy: {
       "/ws": {
         target: mode === "https" ? "wss://localhost:1616" : "ws://localhost:1616",

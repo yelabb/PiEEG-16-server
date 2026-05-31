@@ -1,0 +1,379 @@
+/* ─────────────────────────────────────────────────────────────────────────
+ * The Glitching Reality — minimal MR HUD styling.
+ * Black-on-near-black with hot accent colours so the camera image dominates.
+ * ───────────────────────────────────────────────────────────────────────── */
+
+:root {
+  --gl-bg:     #02030a;
+  --gl-panel:  rgba(6, 10, 22, 0.82);
+  --gl-line:   rgba(120, 200, 255, 0.28);
+  --gl-cyan:   #5cf2ff;
+  --gl-rose:   #ff3366;
+  --gl-amber:  #ffb347;
+  --gl-fg:     #e6f6ff;
+  --gl-dim:    rgba(180, 220, 255, 0.55);
+  --gl-mono:   ui-monospace, "JetBrains Mono", "Fira Code", Menlo, Consolas, monospace;
+}
+
+.glitch-root {
+  position: fixed;
+  inset: 0;
+  background: #000;
+  color: var(--gl-fg);
+  font-family: var(--gl-mono);
+  overflow: hidden;
+  z-index: 9999;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.glitch-root *, .glitch-root *::before, .glitch-root *::after {
+  box-sizing: border-box;
+}
+
+/* ── Camera + shader canvas (both fullscreen) ─────────────────────── */
+.glitch-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: 0;
+  opacity: 0; /* sampled by WebGL — actual pixels drawn on canvas */
+  pointer-events: none;
+}
+
+.glitch-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.glitch-canvas.is-live { background: #000; }
+
+/* ── Intro panel ──────────────────────────────────────────────────── */
+.glitch-panel {
+  position: relative;
+  z-index: 10;
+  margin: 4vh auto;
+  max-width: 640px;
+  background: var(--gl-panel);
+  border: 1px solid var(--gl-line);
+  border-radius: 14px;
+  padding: 28px 30px 24px;
+  box-shadow: 0 8px 40px rgba(0, 200, 255, 0.06), 0 0 0 1px rgba(0,0,0,0.5);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.glitch-intro h1 {
+  margin: 0 0 6px;
+  font-size: clamp(22px, 3.4vw, 32px);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--gl-cyan);
+  text-shadow: 0 0 18px rgba(92, 242, 255, 0.45);
+}
+
+.glitch-tag {
+  margin: 0 0 18px;
+  font-style: italic;
+  color: var(--gl-dim);
+  font-size: 14px;
+}
+
+.glitch-prose {
+  margin: 0 0 12px;
+  line-height: 1.55;
+  font-size: 14px;
+  color: var(--gl-fg);
+}
+
+.glitch-prose.glitch-dim { color: var(--gl-dim); font-size: 12.5px; }
+
+.glitch-list {
+  margin: 6px 0 18px;
+  padding: 0;
+  list-style: none;
+  font-size: 13.5px;
+  line-height: 1.6;
+}
+.glitch-list li { display: flex; gap: 10px; }
+.glitch-list li span { color: var(--gl-cyan); }
+
+.glitch-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.glitch-btn {
+  appearance: none;
+  border: 1px solid var(--gl-line);
+  background: rgba(20, 30, 50, 0.5);
+  color: var(--gl-fg);
+  font: inherit;
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 10px 18px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, transform 0.05s;
+}
+.glitch-btn:hover { background: rgba(40, 60, 100, 0.55); border-color: var(--gl-cyan); }
+.glitch-btn:active { transform: translateY(1px); }
+
+.glitch-btn--primary {
+  background: linear-gradient(135deg, rgba(92,242,255,0.18), rgba(179,136,255,0.18));
+  border-color: var(--gl-cyan);
+  color: var(--gl-cyan);
+  text-shadow: 0 0 12px rgba(92, 242, 255, 0.5);
+}
+
+.glitch-err {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 51, 102, 0.5);
+  background: rgba(60, 0, 20, 0.4);
+  color: #ffd5e0;
+  font-size: 12.5px;
+  border-radius: 8px;
+}
+
+/* ── Exit ─────────────────────────────────────────────────────────── */
+.glitch-exit {
+  appearance: none;
+  border: 1px solid var(--gl-line);
+  background: rgba(0, 0, 0, 0.45);
+  color: var(--gl-dim);
+  font: inherit;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  padding: 6px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.glitch-exit:hover { color: var(--gl-cyan); border-color: var(--gl-cyan); }
+
+.glitch-intro .glitch-exit {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+}
+
+.glitch-exit--floating {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 20;
+}
+
+/* ── HUD panels ───────────────────────────────────────────────────── */
+.glitch-hud {
+  position: absolute;
+  z-index: 15;
+  min-width: 220px;
+  max-width: 320px;
+  padding: 12px 14px;
+  background: var(--gl-panel);
+  border: 1px solid var(--gl-line);
+  border-radius: 10px;
+  font-size: 11.5px;
+  color: var(--gl-fg);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  pointer-events: auto;
+}
+
+.glitch-hud--tl { top: 14px; left: 14px; }
+.glitch-hud--tr { top: 14px; right: 14px; }
+
+.glitch-hud-title {
+  font-size: 10.5px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--gl-cyan);
+  margin-bottom: 8px;
+}
+
+.glitch-hud-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+
+.glitch-hud-k {
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--gl-dim);
+}
+
+.glitch-hud-v {
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  color: var(--gl-fg);
+}
+
+.glitch-hud-dim { color: var(--gl-dim); font-size: 10.5px; }
+
+.glitch-hud-faa { margin-top: 8px; }
+
+.glitch-hud-state {
+  font-weight: 600;
+  letter-spacing: 0.1em;
+}
+.glitch-hud-state.lvl-calm  { color: var(--gl-cyan); text-shadow: 0 0 10px rgba(92,242,255,0.5); }
+.glitch-hud-state.lvl-drift { color: #c4f0ff; }
+.glitch-hud-state.lvl-tear  { color: var(--gl-amber); text-shadow: 0 0 10px rgba(255,179,71,0.45); }
+.glitch-hud-state.lvl-frac  { color: var(--gl-rose); text-shadow: 0 0 12px rgba(255,51,102,0.65); }
+.glitch-hud-state.lvl-snap  { color: #fff; text-shadow: 0 0 18px rgba(255,255,255,0.95); }
+
+/* ── Bars ─────────────────────────────────────────────────────────── */
+.glitch-bar { margin: 6px 0 4px; }
+.glitch-bar-head {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 3px;
+}
+.glitch-bar-track {
+  position: relative;
+  width: 100%;
+  height: 6px;
+  background: rgba(255,255,255,0.06);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.glitch-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.2s ease;
+  box-shadow: 0 0 8px currentColor;
+}
+
+/* ── Stressor controls ────────────────────────────────────────────── */
+.glitch-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.glitch-toggle input { accent-color: var(--gl-cyan); }
+
+.glitch-diff {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 6px 0 4px;
+  font-size: 11px;
+  color: var(--gl-dim);
+}
+.glitch-diff > div { display: flex; gap: 4px; }
+.glitch-diff-btn {
+  appearance: none;
+  width: 22px; height: 22px;
+  border-radius: 5px;
+  border: 1px solid var(--gl-line);
+  background: transparent;
+  color: var(--gl-fg);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.glitch-diff-btn.is-on {
+  background: rgba(92,242,255,0.18);
+  border-color: var(--gl-cyan);
+  color: var(--gl-cyan);
+}
+
+.glitch-hint {
+  margin: 8px 0 0;
+  font-size: 11px;
+  color: var(--gl-dim);
+  font-style: italic;
+}
+
+/* ── Puzzle ───────────────────────────────────────────────────────── */
+.glitch-puzzle {
+  position: absolute;
+  z-index: 16;
+  left: 50%;
+  bottom: 6vh;
+  transform: translateX(-50%);
+  min-width: 280px;
+  padding: 16px 22px;
+  background: var(--gl-panel);
+  border: 1px solid var(--gl-rose);
+  border-radius: 12px;
+  text-align: center;
+  box-shadow: 0 0 28px rgba(255, 51, 102, 0.25);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.glitch-puzzle-q {
+  font-size: clamp(24px, 3.4vw, 32px);
+  letter-spacing: 0.05em;
+  color: var(--gl-fg);
+  margin-bottom: 10px;
+  text-shadow: 0 0 12px rgba(255,51,102,0.35);
+}
+
+.glitch-puzzle-input {
+  width: 100%;
+  appearance: none;
+  background: rgba(0,0,0,0.5);
+  border: 1px solid var(--gl-line);
+  border-radius: 8px;
+  color: var(--gl-fg);
+  font: inherit;
+  font-size: 18px;
+  text-align: center;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+}
+.glitch-puzzle-input:focus {
+  outline: none;
+  border-color: var(--gl-cyan);
+  box-shadow: 0 0 12px rgba(92,242,255,0.35);
+}
+
+.glitch-puzzle-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
+  color: var(--gl-dim);
+}
+.glitch-puzzle-timer {
+  font-variant-numeric: tabular-nums;
+  color: var(--gl-amber);
+}
+.glitch-puzzle-timer.is-low {
+  color: var(--gl-rose);
+  animation: gl-pulse 0.5s ease-in-out infinite alternate;
+}
+.glitch-puzzle-flash.is-correct { color: var(--gl-cyan); }
+.glitch-puzzle-flash.is-wrong   { color: var(--gl-rose); }
+
+@keyframes gl-pulse {
+  from { opacity: 0.6; }
+  to   { opacity: 1; }
+}
+
+/* ── Small screens / phone portrait ───────────────────────────────── */
+@media (max-width: 540px) {
+  .glitch-hud { min-width: 0; max-width: 46vw; font-size: 10.5px; padding: 8px 10px; }
+  .glitch-hud-v { font-size: 11px; }
+  .glitch-puzzle { min-width: 240px; bottom: 4vh; }
+}
