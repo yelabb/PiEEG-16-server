@@ -17,7 +17,21 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ExperienceProps } from "../registry";
 import { useFAA } from "./useFAA";
 import { FRAGMENT_SRC, VERTEX_SRC } from "./glitchShader";
+import { FREQUENCY_BANDS } from "../../lib/fftEngine";
 import "./glitch.css";
+
+// ─────────────────────────────────────────────────────────────────────────
+// Tooltip
+// ─────────────────────────────────────────────────────────────────────────
+
+function Tooltip({ text, children }: { text: string; children: React.ReactNode }) {
+  return (
+    <span className="gl-tip-wrap">
+      {children}
+      <span className="gl-tip" role="tooltip">{text}</span>
+    </span>
+  );
+}
 
 type Stage = "intro" | "camera" | "live";
 
@@ -86,6 +100,14 @@ function buildProgram(gl: WebGL2RenderingContext) {
 // Component
 // ─────────────────────────────────────────────────────────────────────────
 
+// Coaching tips shown bottom-center, cycling based on state.
+const TIPS: Record<string, string[]> = {
+  calm:  ["Keep it up — eyes soft, jaw loose.", "Feel your exhale lengthen.", "Let thoughts pass without engaging them."],
+  drift: ["Slow down your breathing — 4 s in, 6 s out.", "Drop your shoulders. Relax your eyes.", "Observe the distortion without reacting to it."],
+  tear:  ["Take one slow, deep belly breath now.", "Close your eyes for 2 seconds, then re-open.", "Unclench your jaw and forehead."],
+  frac:  ["Stop the puzzle. Breathe first.", "Long exhale — let beta fall.", "Eyes closed, 3 slow breaths."],
+};
+
 export default function GlitchingReality({ eegData, onExit }: ExperienceProps) {
   const [stage, setStage] = useState<Stage>("intro");
   const [error, setError] = useState<string | null>(null);
@@ -93,6 +115,10 @@ export default function GlitchingReality({ eegData, onExit }: ExperienceProps) {
   const [difficulty, setDifficulty] = useState(3);
   const [puzzle, setPuzzle] = useState<PuzzleState | null>(null);
   const [answerInput, setAnswerInput] = useState("");
+  const [showHow, setShowHow] = useState(false);
+  // Session score: +1/s while calm, −2/s while fractured.
+  const [score, setScore] = useState(0);
+  const [tipIdx, setTipIdx] = useState(0);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -221,6 +247,20 @@ export default function GlitchingReality({ eegData, onExit }: ExperienceProps) {
     };
   }, [stage, liveRef]);
 
+  // ── Session score + coaching tip ticker ──────────────────────────────
+  useEffect(() => {
+    if (stage !== "live") return;
+    const id = setInterval(() => {
+      setScore((s) => {
+        const inst = liveRef.current.instability;
+        const delta = inst > 0.75 ? -2 : inst > 0.5 ? -0.5 : inst < 0.25 ? 1 : 0;
+        return Math.max(0, s + delta);
+      });
+      setTipIdx((i) => (i + 1) % 3);
+    }, 1000);
+    return () => clearInterval(id);
+  }, [stage, liveRef]);
+
   // ── Mental arithmetic puzzle (deliberate stressor) ───────────────────
   useEffect(() => {
     if (!puzzleOn) { setPuzzle(null); setAnswerInput(""); return; }
@@ -290,6 +330,13 @@ export default function GlitchingReality({ eegData, onExit }: ExperienceProps) {
     snapshot.instability > 0.25 ? "DRIFTING" :
     "EQUANIMITY";
 
+  const stateKey: keyof typeof TIPS =
+    snapshot.instability > 0.75 ? "frac" :
+    snapshot.instability > 0.5  ? "tear" :
+    snapshot.instability > 0.25 ? "drift" : "calm";
+
+  const currentTip = TIPS[stateKey][tipIdx % TIPS[stateKey].length];
+
   const puzzleTimeLeft = puzzle ? Math.max(0, puzzle.deadline - performance.now()) / 1000 : 0;
 
   // ─────────────────────────────────────────────────────────────────────
@@ -356,8 +403,16 @@ export default function GlitchingReality({ eegData, onExit }: ExperienceProps) {
           </button>
 
           <div className="glitch-hud glitch-hud--tl">
-            <div className="glitch-hud-row">
-              <span className="glitch-hud-k">STATE</span>
+            <div className="glitch-hud-row glitch-hud-score-row">
+              <Tooltip text="Score: +1 pts/s while calm, −2 pts/s while fractured. Keep reality stable to grow your score.">
+                <span className="glitch-hud-k glitch-tip-label">SCORE ⓘ</span>
+              </Tooltip>
+              <span className="glitch-hud-v glitch-score">{Math.floor(score)}</span>
+            </div>
+            <div className="glitch-hud-row" style={{ marginBottom: 8 }}>
+              <Tooltip text="Composite instability driving the shader. Rises with beta and cognitive load, falls with calm alpha.">
+                <span className="glitch-hud-k glitch-tip-label">STATE ⓘ</span>
+              </Tooltip>
               <span className={`glitch-hud-v glitch-hud-state lvl-${
                 snapshot.snapping ? "snap" :
                 snapshot.instability > 0.75 ? "frac" :
@@ -365,28 +420,78 @@ export default function GlitchingReality({ eegData, onExit }: ExperienceProps) {
                 snapshot.instability > 0.25 ? "drift" : "calm"
               }`}>{stateLabel}</span>
             </div>
-            <Bar label="INSTABILITY" pct={instPct} color="#ff3366" />
-            <Bar label="CALM α/(α+β)" pct={calmPct} color="#5cf2ff" />
-            <Bar label="β SURGE" pct={surgePct} color="#ffb347" />
+            <Tooltip text="How fractured reality is right now. Goal: keep this below 25%.">
+              <span className="glitch-tip-label">
+                <Bar label="INSTABILITY ⓘ" pct={instPct} color="#ff3366" />
+              </span>
+            </Tooltip>
+            <Tooltip text="Alpha / (Alpha + Beta) — how much your brain is in idle/relaxed alpha vs active beta. Higher is calmer.">
+              <span className="glitch-tip-label">
+                <Bar label="CALM α/(α+β) ⓘ" pct={calmPct} color="#5cf2ff" />
+              </span>
+            </Tooltip>
+            <Tooltip text="Beta power vs your 30-second rolling baseline. Spikes during mental effort or stress.">
+              <span className="glitch-tip-label">
+                <Bar label="β SURGE ⓘ" pct={surgePct} color="#ffb347" />
+              </span>
+            </Tooltip>
             <div className="glitch-hud-row glitch-hud-faa">
-              <span className="glitch-hud-k">FAA</span>
+              <Tooltip text="Frontal Alpha Asymmetry: ln(α_ch2) − ln(α_ch1). Positive = approach/positive affect. Negative = withdrawal/frustration.">
+                <span className="glitch-hud-k glitch-tip-label">FAA ⓘ</span>
+              </Tooltip>
               <span className="glitch-hud-v">
                 {faaTxt} <span className="glitch-hud-dim">
                   ({snapshot.faa > 0.05 ? "approach" : snapshot.faa < -0.05 ? "withdraw" : "neutral"})
                 </span>
               </span>
             </div>
+            <div className="glitch-hud-row glitch-hud-bands">
+              {FREQUENCY_BANDS.map((b) => (
+                <Tooltip key={b.name} text={`${b.label} (${b.low}–${b.high} Hz) — avg power across all channels (µV²/Hz × 10⁻⁶)`}>
+                  <span className="glitch-band-chip" style={{ color: b.color }}>
+                    {b.label.charAt(0)}
+                    <span className="glitch-band-val">
+                      {((snapshot.bands[b.name] ?? 0) * 1e6).toFixed(0)}
+                    </span>
+                  </span>
+                </Tooltip>
+              ))}
+            </div>
+            <div className="glitch-hud-row glitch-hud-dim" style={{ fontSize: "0.7rem", marginTop: 2 }}>
+              <span className="glitch-hud-k">CH</span>
+              <span className="glitch-hud-v">{snapshot.activeChannels} active</span>
+            </div>
           </div>
 
           <div className="glitch-hud glitch-hud--tr">
-            <div className="glitch-hud-title">Stressor</div>
+            <div className="glitch-hud-title-row">
+              <span className="glitch-hud-title">Stressor</span>
+              <button
+                className="glitch-how-btn"
+                onClick={() => setShowHow((v) => !v)}
+                aria-expanded={showHow}
+              >{showHow ? "▲ hide" : "? how to play"}</button>
+            </div>
+            {showHow && (
+              <div className="glitch-how">
+                <p><strong>Goal:</strong> keep the room clean (instability &lt; 25%) for as long as possible.</p>
+                <ul>
+                  <li>🟦 <strong>CALM</strong> — alpha dominates. Score rises.</li>
+                  <li>🟡 <strong>TEARING</strong> — beta rising. Slow your breathing.</li>
+                  <li>🔴 <strong>FRACTURED</strong> — reality broken. Score drops fast.</li>
+                  <li>⚡ <strong>SNAP</strong> — sharp exhale detected. Room resets.</li>
+                </ul>
+                <p><strong>Stressor:</strong> enable the puzzle to deliberately break reality, then recover. Training biofeedback loop.</p>
+                <p><strong>Snap trick:</strong> inhale deeply, then exhale sharply through your mouth to trigger SNAP.</p>
+              </div>
+            )}
             <label className="glitch-toggle">
               <input
                 type="checkbox"
                 checked={puzzleOn}
                 onChange={(e) => setPuzzleOn(e.target.checked)}
               />
-              <span>Mental arithmetic, timed</span>
+              <span>Mental arithmetic stressor</span>
             </label>
             {puzzleOn && (
               <div className="glitch-diff">
@@ -404,6 +509,13 @@ export default function GlitchingReality({ eegData, onExit }: ExperienceProps) {
             )}
             <p className="glitch-hint">Breathe slowly to snap the room back.</p>
           </div>
+
+          {/* ── Coaching tip bottom-center ─────────────────────────── */}
+          {!snapshot.snapping && (
+            <div className={`glitch-coaching lvl-${stateKey}`}>
+              {currentTip}
+            </div>
+          )}
 
           {puzzleOn && puzzle && (
             <div className="glitch-puzzle">

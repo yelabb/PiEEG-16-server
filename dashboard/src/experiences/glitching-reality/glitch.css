@@ -258,6 +258,28 @@
   box-shadow: 0 0 8px currentColor;
 }
 
+/* ── Band power chips ─────────────────────────────────────────────── */
+.glitch-hud-bands {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+.glitch-band-chip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.85;
+}
+.glitch-band-val {
+  font-size: 0.7rem;
+  color: var(--gl-fg);
+  opacity: 0.9;
+}
+
 /* ── Stressor controls ────────────────────────────────────────────── */
 .glitch-toggle {
   display: flex;
@@ -377,3 +399,112 @@
   .glitch-hud-v { font-size: 11px; }
   .glitch-puzzle { min-width: 240px; bottom: 4vh; }
 }
+
+/* ── Tooltip ──────────────────────────────────────────────────────── */
+.gl-tip-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: baseline;
+}
+.gl-tip {
+  display: none;
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  min-width: 200px;
+  max-width: 280px;
+  padding: 7px 10px;
+  background: rgba(6, 14, 30, 0.96);
+  border: 1px solid var(--gl-line);
+  border-radius: 7px;
+  color: var(--gl-fg);
+  font-size: 11px;
+  line-height: 1.5;
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 400;
+  pointer-events: none;
+  white-space: normal;
+  z-index: 50;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+}
+.gl-tip-wrap:hover .gl-tip,
+.gl-tip-wrap:focus-within .gl-tip { display: block; }
+
+.glitch-tip-label {
+  cursor: help;
+}
+
+/* ── Session score ────────────────────────────────────────────────── */
+.glitch-hud-score-row { margin-bottom: 6px; }
+.glitch-score {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--gl-cyan);
+  text-shadow: 0 0 14px rgba(92,242,255,0.6);
+  letter-spacing: 0.06em;
+}
+
+/* ── Coaching tip (bottom-center) ────────────────────────────────── */
+.glitch-coaching {
+  position: absolute;
+  z-index: 16;
+  bottom: 22px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 8px 18px;
+  background: rgba(6, 10, 22, 0.78);
+  border: 1px solid var(--gl-line);
+  border-radius: 20px;
+  font-size: 12.5px;
+  font-style: italic;
+  color: var(--gl-dim);
+  text-align: center;
+  pointer-events: none;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  transition: color 0.6s;
+  max-width: 420px;
+  white-space: nowrap;
+}
+.glitch-coaching.lvl-calm  { color: var(--gl-cyan); border-color: rgba(92,242,255,0.25); }
+.glitch-coaching.lvl-drift { color: #c4f0ff; }
+.glitch-coaching.lvl-tear  { color: var(--gl-amber); border-color: rgba(255,179,71,0.3); }
+.glitch-coaching.lvl-frac  { color: var(--gl-rose);  border-color: rgba(255,51,102,0.4); }
+
+/* ── How to play panel ────────────────────────────────────────────── */
+.glitch-hud-title-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.glitch-how-btn {
+  appearance: none;
+  background: none;
+  border: 1px solid var(--gl-line);
+  color: var(--gl-dim);
+  font: inherit;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  padding: 2px 7px;
+  border-radius: 5px;
+  cursor: pointer;
+}
+.glitch-how-btn:hover { color: var(--gl-cyan); border-color: var(--gl-cyan); }
+
+.glitch-how {
+  margin-bottom: 10px;
+  padding: 10px 12px;
+  background: rgba(0,0,0,0.35);
+  border-radius: 8px;
+  border: 1px solid rgba(92,242,255,0.1);
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--gl-fg);
+}
+.glitch-how p { margin: 0 0 6px; }
+.glitch-how ul { margin: 0 0 6px; padding-left: 4px; list-style: none; }
+.glitch-how li { margin: 2px 0; }
+.glitch-how strong { color: var(--gl-cyan); }

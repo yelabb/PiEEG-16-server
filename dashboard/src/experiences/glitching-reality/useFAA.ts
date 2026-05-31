@@ -18,7 +18,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { EEGData } from "../../types";
 import { useSampleRate } from "../../lib/sampleRateStore";
-import { FftEngine } from "../../lib/fftEngine";
+import { FftEngine, FREQUENCY_BANDS } from "../../lib/fftEngine";
 
 const FFT_SIZE = 256;       // ≈1 s window at 250 Hz
 const UPDATE_MS = 80;       // 12.5 Hz analysis loop
@@ -27,8 +27,11 @@ const EMA_SLOW = 0.006;     // ~30 s rolling β baseline
 const EMA_CALM = 0.12;      // displayed calm-score smoothing
 const SNAP_DROP = 0.35;     // β drop ratio that triggers "snap to clarity"
 
+/** Band-power averages (all channels), smoothed. Keys match FREQUENCY_BANDS names. */
+export type BandAvg = Record<string, number>;
+
 export interface FAASignal {
-  /** Frontal Alpha Asymmetry, ln(α_Fp2) − ln(α_Fp1).  Positive ≈ approach. */
+  /** Frontal Alpha Asymmetry, ln(α_ch1) − ln(α_ch0).  Positive ≈ approach. */
   faa: number;
   /** α / (α + β) averaged over all channels, smoothed 0..1.  Higher = calmer. */
   calm: number;
@@ -38,9 +41,14 @@ export interface FAASignal {
   instability: number;
   /** True for ~600 ms after a deep-breath / sharp β drop. */
   snapping: boolean;
+  /** All-channel average band powers (δ θ α β γ), smoothed. */
+  bands: BandAvg;
+  /** Number of channels contributing to the signal. */
+  activeChannels: number;
 }
 
-const ZERO: FAASignal = { faa: 0, calm: 0.5, betaSurge: 0, instability: 0, snapping: false };
+const ZERO_BANDS: BandAvg = Object.fromEntries(FREQUENCY_BANDS.map((b) => [b.name, 0]));
+const ZERO: FAASignal = { faa: 0, calm: 0.5, betaSurge: 0, instability: 0, snapping: false, bands: ZERO_BANDS, activeChannels: 0 };
 
 export function useFAA(eegData: EEGData) {
   const sampleRate = useSampleRate();
@@ -57,6 +65,8 @@ export function useFAA(eegData: EEGData) {
     let aEMA = 0, bAvg = 0;            // smoothed all-channel α average / β average
     let a0EMA = 0, a1EMA = 0;          // per-channel α for FAA (ch 0 & ch 1)
     let bBaseline = 0;
+    // Smoothed per-band averages (all channels).
+    const bandEMA: Record<string, number> = Object.fromEntries(FREQUENCY_BANDS.map((b) => [b.name, 0]));
     let calmEMA = 0.5;
     let instEMA = 0;
     let snapUntil = 0;
@@ -70,8 +80,9 @@ export function useFAA(eegData: EEGData) {
       const wi = writeIndex.current;
       const si = samplesInBuffer.current;
 
-      // ── Accumulate α / β over all available channels ──────────────────
-      let aSum = 0, bSum = 0, count = 0;
+      // ── Accumulate all bands over all available channels ─────────────
+      const bandSum: Record<string, number> = Object.fromEntries(FREQUENCY_BANDS.map((b) => [b.name, 0]));
+      let count = 0;
       let a0Raw = 0, a1Raw = 0; // for FAA (ch 0 vs ch 1 proxy)
 
       for (let ch = 0; ch < numChannels; ch++) {
@@ -79,19 +90,22 @@ export function useFAA(eegData: EEGData) {
         if (!buf) continue;
         const r = fft.analyseRing(buf, wi, si);
         if (!r) continue;
-        const alpha = r.bandPowers.Alpha ?? 0;
-        const beta  = r.bandPowers.Beta  ?? 0;
-        aSum += alpha;
-        bSum += beta;
+        for (const b of FREQUENCY_BANDS) bandSum[b.name] += r.bandPowers[b.name] ?? 0;
         count++;
-        if (ch === 0) a0Raw = alpha;
-        if (ch === 1) a1Raw = alpha;
+        if (ch === 0) a0Raw = r.bandPowers.Alpha ?? 0;
+        if (ch === 1) a1Raw = r.bandPowers.Alpha ?? 0;
       }
 
       if (count === 0) return;
 
-      const a1Avg = aSum / count;
-      const bRaw  = bSum / count;
+      // Per-band averages across channels.
+      for (const b of FREQUENCY_BANDS) {
+        const raw = bandSum[b.name] / count;
+        bandEMA[b.name] += EMA_FAST * (raw - bandEMA[b.name]);
+      }
+
+      const a1Avg = bandSum.Alpha / count;
+      const bRaw  = bandSum.Beta  / count;
 
       // Smooth all-channel averages.
       aEMA  += EMA_FAST * (a1Avg - aEMA);
@@ -147,6 +161,8 @@ export function useFAA(eegData: EEGData) {
         betaSurge: surge,
         instability: instEMA,
         snapping,
+        bands: { ...bandEMA },
+        activeChannels: count,
       };
     };
 
